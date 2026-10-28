@@ -3,8 +3,10 @@
 The game only tells us the label at the *current* index of each setting. To show what a
 proposed index means ("-2.2 deg → -2.0 deg") we collect every (index, label) pair seen for
 the same car model: from all its recordings, and from saved .svm files that match one of
-those recordings closely (same car, same game version — older versions labelled some
-settings differently). Numeric labels are then interpolated; non-numeric ones ("P3",
+those recordings closely (same car, same game version). Saved setups from other versions
+of the same car model add a setting's labels only where they agree with every label this
+version has shown for it: updates relabel some settings, and that gives itself away.
+Numeric labels are then interpolated; non-numeric ones ("P3",
 "D38x1_1-2") are only shown where they've been seen.
 """
 
@@ -16,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from autosetup.feel.cars import model_of
 from autosetup.lmu.setup_space import CarSetup, parse_number
 from autosetup.lmu.svm import SvmFile, match_keys, score_keys
 from autosetup.store import Store
@@ -124,4 +127,22 @@ def build_scales(store: Store, car_signature: str, settings_dir: Path | None = N
             for k, i in values.items():
                 if k in points and k in labels:
                     points[k].setdefault(i, labels[k].strip())  # recordings win on conflicts
+        models = {model_of(vc) for (vc,) in store.con.execute(
+            """select distinct c.vehicle_class from car_classes c join recordings r using (car_name)
+               where r.car_signature = ?""", [car_signature]).fetchall()} - {None}
+        other: dict[str, dict[int, set[str]]] = collections.defaultdict(lambda: collections.defaultdict(set))
+        for svm in svms.values():
+            if model_of(svm.vehicle_class) not in models:
+                continue
+            labels = svm.vm_labels()
+            for k, i in svm.vm_values().items():
+                if k in points and k in labels:
+                    other[k][i].add(labels[k].strip())
+        for k, seen in other.items():
+            if any(len(v) > 1 for v in seen.values()):
+                continue  # the versions disagree among themselves
+            shared = [i for i in seen if i in points[k]]
+            if shared and all(seen[i] == {points[k][i]} for i in shared):
+                for i, v in seen.items():
+                    points[k].setdefault(i, next(iter(v)))
     return CarScales({k: Scale(k, dict(v)) for k, v in points.items()})

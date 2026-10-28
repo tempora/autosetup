@@ -40,3 +40,21 @@ def test_build_scales_merges_recordings_and_matching_svms(tmp_path, install):
         sc = build_scales(store, sig, install.settings)
     assert sc.label("VM_REAR_ANTISWAY", 3) == ("P4", True)
     assert sc.label("WM_CAMBER-W_FL", 28) == ("-2.2 deg", True)
+
+
+def test_other_versions_of_the_car_add_labels_only_where_they_agree(tmp_path, install):
+    def old(name: str, front: str, rear: str) -> None:
+        (install.settings / "Testway" / name).write_bytes("\r\n".join([
+            'VehicleClassSetting="GT3 Test_Car WEC2024"', "", "[SUSPENSION]", front, rear, "",
+            "[CONTROLS]", "SteerLockSetting=2//500 (15.0) deg", "RearBrakeSetting=40//47.0:53.0", "",
+            "[FRONTLEFT]", "CamberSetting=10//-4.0 deg", "", "[REARLEFT]", "RideHeightSetting=30//8.0 cm", ""]).encode())
+
+    old("old_a.svm", "FrontAntiSwaySetting=5//P9", "RearAntiSwaySetting=3//P4")
+    old("old_b.svm", "FrontAntiSwaySetting=7//P8", "RearAntiSwaySetting=6//P7")
+    with Store(tmp_path / "db.duckdb") as store:
+        store.import_all(install.telemetry)
+        store.learn_links(install.telemetry, install.settings)
+        sc = build_scales(store, store.recording(1)["car_signature"], install.settings)
+    assert sc.label("VM_REAR_ANTISWAY", 6) == ("P7", True)  # P4 at 3 agrees with this version
+    assert sc.label("VM_FRONT_ANTISWAY", 5) == ("P6", True)
+    assert sc.label("VM_FRONT_ANTISWAY", 7)[0] != "P8"  # P9 at 5 says the front bar was relabelled

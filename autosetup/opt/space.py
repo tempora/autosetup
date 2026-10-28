@@ -31,9 +31,13 @@ MAIN = [
     ("diff_preload", ["VM_DIFF_PRELOAD"]),
     ("spring_front", _axle("WM_SPRING", "front")),
     ("spring_rear", _axle("WM_SPRING", "rear")),
+    ("toe_front", ["VM_FRONT_TOEIN"]),
+    ("toe_rear", ["VM_REAR_TOEIN"]),
     ("brake_bias", ["VM_BRAKE_BALANCE"]),
+    ("tender_front", _axle("WM_TENDERSPRING", "front")),
+    ("tender_rear", _axle("WM_TENDERSPRING", "rear")),
 ]
-MAX_MAIN = 8
+MAX_MAIN = 12
 DAMPERS = [
     *((f"{part}_{axle}", _axle(f"WM_{key}", axle)) for axle in ("front", "rear")
       for part, key in (("slow_bump", "SLOWBUMP"), ("slow_rebound", "SLOWREBOUND"),

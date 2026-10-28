@@ -121,3 +121,22 @@ def test_a_fingerprint_carries_to_a_new_track():
     # And refined after one run there (B's own stint in the evidence).
     hist_b = bench.run(b, target, first, runs=3, seed=5, evidence=evidence, layout="B")
     assert hist_b[-1]["off"] < 0.25
+
+
+def test_toe_and_tender_springs_are_levers_where_the_car_has_them():
+    from autosetup.knowledge import load_knowledge
+    from autosetup.lmu.setup_space import CarSetup
+    from autosetup.opt.priors import sensitivities
+    from autosetup.opt.space import main_dims
+
+    def p(lo, hi, v, text):
+        return {"available": True, "minValue": lo, "maxValue": hi, "value": v, "stringValue": text}
+    data = {"VM_FRONT_TOEIN": p(0, 17, 7, "-0.117 deg"), "VM_REAR_TOEIN": p(0, 17, 10, "0.234 deg"),
+            **{f"WM_TENDERSPRING-W_{w}": p(0, 2, 1, "Standard") for w in ("FL", "FR")},
+            **{f"WM_TENDERSPRING-W_{w}": p(0, 1, 0, "Standard") for w in ("RL", "RR")}}
+    dims = main_dims(CarSetup.from_json(data))
+    assert [d.name for d in dims] == ["toe_front", "toe_rear", "tender_front"]  # the rear tender is fixed
+    s = sensitivities(dims, load_knowledge("GT3"))
+    assert s["toe_front"]["entry_low"] > 0  # toe-in at the front: lazier entry
+    assert s["toe_rear"]["exit_low"] > 0  # toe-in at the rear: safer exit
+    assert s["tender_front"]["mid_low"] < 0  # tender on: a softer front, more rotation

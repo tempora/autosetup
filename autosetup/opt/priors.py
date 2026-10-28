@@ -49,6 +49,17 @@ PRIORS: dict[str, tuple[str, dict[str, float]]] = {
     # Preload locks the rear axle: it resists rotation on entry and pushes on exit.
     "diff_preload": ("more", _cells(entry_low=0.7, mid_low=0.3, exit_low=0.8, entry_high=0.3, mid_high=0.1,
                                     exit_high=0.4)),
+    # Toe-out at the front sharpens turn-in; toe-in at the rear steadies the car on power
+    # and through long corners. Labels grow with toe-in.
+    "toe_front": ("up", _cells(entry_low=0.6, entry_high=0.4, mid_low=0.2, mid_high=0.1)),
+    "toe_rear": ("up", _cells(entry_low=0.2, entry_high=0.2, mid_low=0.5, mid_high=0.4, exit_low=0.7,
+                              exit_high=0.5)),
+    # A tender spring on (Off → Standard) softens the axle's first travel: like a softer
+    # spring there, a little.
+    "tender_front": ("more", _cells(entry_low=-0.2, mid_low=-0.3, exit_low=-0.3, entry_high=-0.1, mid_high=-0.2,
+                                    exit_high=-0.2)),
+    "tender_rear": ("more", _cells(entry_low=0.2, mid_low=0.3, exit_low=0.3, entry_high=0.1, mid_high=0.2,
+                                   exit_high=0.2)),
     # Brake bias forward: the fronts do more of the braking, the rear stays planted on entry.
     "brake_bias": ("front", _cells(entry_low=1.0, entry_high=0.8)),
     # Slow dampers shape each phase's weight transfer: on the brakes the front is in bump and
