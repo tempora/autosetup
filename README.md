@@ -1,6 +1,6 @@
 # LMU autosetup
 
-Telemetry-driven setup optimiser for Le Mans Ultimate. It looks for Pareto trade-offs between pace, drivability and tyre life, and learns from how you drive. UI rules are in [UI_LAYOUT_CONTRACT.md](UI_LAYOUT_CONTRACT.md).
+Telemetry-driven setup optimiser for Le Mans Ultimate: the fastest setup you can actually drive, from a few laps per run. You say how the car should feel (four buttons, a locked fingerprint); it finds the settings. UI rules are in [UI_LAYOUT_CONTRACT.md](UI_LAYOUT_CONTRACT.md).
 
 ## Setup
 
@@ -36,24 +36,46 @@ The page follows [UI_LAYOUT_CONTRACT.md](UI_LAYOUT_CONTRACT.md). It's desktop on
   - **Left:** session, the lap's time, sectors and key stats, and the session's stints. Expand a stint to pick a lap.
   - **Centre:** the track map. Under it are a slider that moves the car marker along the lap, a readout at that point, and thin traces. Drag over the traces to zoom; double-click or "Whole lap" resets.
   - **Compare** (off by default) adds a lap B: a second line, B and Δ in the stats, and a delta trace.
-- **Setup:** one large table of the session with a Stints / Laps switch. It covers pace, balance (understeer by phase and corner speed, countersteer), tyres per wheel, brakes, platform, aids, driving, and the settings that changed. **Next setup** opens the pop-up with the change rows, locks, change size, the collapsed rating, and **Write setup**.
+- **Setup:** one large table of the session with a Stints / Laps switch. **Next setup** opens the pop-up with the change rows, locks and **Write setup**. (The visual Setup page, buttons and Driver plot follow once the UI contract is amended.)
 - **History:** past sessions (one car at one track in one sitting). Picking one opens it in Lap Analysis and Setup until you go back to live.
 - **Chart icon:** the analysis sheet (Pareto, laps, balance, tyres, platform, driving, model).
 
-There are no trade-off sliders: the trade-off is learned (see below).
 
-### Next setup (phase 3)
+### Next setup (0.3)
 
-The setup bar proposes the next setup from the most recent stint that has at least 2 full laps. Each change comes with its reason. **Write setup** saves it as `autosetup_<car>_<track>_<n>.svm` in that track's Settings folder, ready to load in the garage without restarting. The lock icon on a row keeps that setting fixed; the advice then moves on to the next option.
+The goal is the fastest setup you can actually drive, from a few laps per run. **Write setup** saves the proposal as `autosetup_<car>_<track>_<n>.svm` in that track's Settings folder, ready to load in the garage without restarting. The lock icon on a row keeps that setting fixed.
 
-| Group | Decided by |
+| Step | What it does |
 |---|---|
-| Tyres | Pressure per wheel from the tread crown (centre vs edges), camber per axle from the inner–outer spread |
-| Brakes | Front/rear ducts from peak disc temperature |
-| Platform | Ride height from bottoming; lowering a car with room to spare when pace weight ≥ 60 %. On cars with a third spring, bottoming while hardly on the third packers (< 5 % of the lap) adds a packer step instead of ride height |
-| Balance | Entry / mid / exit, from your rating; otherwise only clear oversteer (countersteer, heavy TC). At most 2 moves, small steps, never detaching a bar |
+| Rules | **Tyres:** pressure from the tread crown, only ever down; camber from the inner–outer spread. **Brakes:** ducts from peak disc temperature; brake pressure by feel on cars without ABS. **Platform:** ride height (or third packers) up when the car bottoms. |
+| Target | **Your balance per phase (entry, mid, exit) × speed band (low, high):** your locked fingerprint for the car, plus your button presses. Without a fingerprint, the balance model's estimate at the stint you're on. |
+| Main block | **Up to 8 settings, in clicks** (rear wing, ride heights, bars, diff preload, springs, brake bias). The objective is predicted lap time; the constraints are every cell inside the target band, no bottoming or ride height under the class minimum, and kerbs no worse. The drag level (wing) is chosen first, then balance is solved with the rest. |
+| Dampers | **Slow/fast bump and rebound per axle, third-element dampers and packers, in clicks:** a steadier contact patch inside the same band, kerbs no worse. |
 
-Targets live in [`autosetup/knowledge/classes.toml`](autosetup/knowledge/classes.toml). They're calibrated on this install's GT3 data (mostly pro setups), so they flag outliers rather than restate textbook values. Tune them as you learn.
+**Balance model.** Where the car sits at this layout, measured, plus each setting's known direction at a fixed size (`opt/priors.py`); the sizes aren't learned from stints. At a layout the car hasn't been driven at, the car's other layouts (with more doubt) or the fingerprint stand in.
+
+**Lap-time model.** See *Lap-time model* below, plus a residual GP per sector and the aero map's doubt about any platform you haven't driven. Candidates are charged one sd of lap-time doubt, so an uncertain gain doesn't send you out on a guess.
+
+**The band wins.** If more rotation would be faster, the gap says so ("0.3 s available with more rotation"). A trust region around your setup grows after proposals that paid off and shrinks after ones that didn't. Ride heights move at most 5 mm per proposal, dampers at most 3 clicks (packers 2).
+
+`python -m autosetup.opt.bench` runs the loop on a toy car whose true balance slopes are 0.5–1.5× the priors. From 0.9° outside the band it gets inside in one run, holds it (≤ 0.06°), and gets 0.2–0.35 s faster in a few runs.
+
+### Car feel and the fingerprint
+
+Four buttons on two axes move the target by a fixed step (`feel_step_deg`); they never touch a setting.
+
+- **Looser / Safer:** mid-corner and exit rotation against rear grip margin (and how much countersteer is acceptable).
+- **Pointier / Lazier:** entry rotation and turn-in response.
+
+Presses add up, combine, and can be undone.
+
+**This is it** freezes the balance you're driving as the car's fingerprint, with a tolerance band (no more rotation, no less). It keeps:
+
+- the aero platform: wing, ride heights static and at speed, rake, aero balance;
+- the track's speed-band split;
+- the setup.
+
+The fingerprint belongs to the car (by model, across liveries and game updates). On another track it's the target, with the cells weighted by that track's corner mix. A car of the same class without one gets the class's fingerprints pooled, with a wider band.
 
 ### Third springs (prototypes)
 
@@ -63,76 +85,7 @@ LMU's packers are a stiff rate, not a wall. So contact shows as a knee in deflec
 
 GT3s log these channels with unrelated values, so the numbers only appear for axles that have a third element.
 
-The model learns the third spring, its packers and its four dampers like the corner settings, changing at most one third-spring setting per axle per proposal. The rules only touch packers for bottoming (see the table above). Running on the packers can be deliberate (aero platform), so whether you're on them too much is left to the model, which learns it from your laps.
-
-### Change per stint
-
-**Change per stint**, in the setup bar's *Changes* panel, sets how bold proposals are:
-
-| Size | Settings changed | Step |
-|---|---|---|
-| Small | 1 | one click |
-| Medium | 3 | about 8 % of each setting's range |
-| Large (default) | 5 | about 15 % of the range |
-
-The rules' balance moves also scale with the size: up to 4 moves and double steps on Large. The model fills the remaining slots with settings the rules don't touch, including all eight dampers, springs, wing, TC and ABS. Each slot goes to a different group, so you won't get three TC maps at once. On the toy-car benchmark with ~18 settings, after 20 stints (start 0, lower is better):
-
-| Size | Cost |
-|---|---|
-| Large | −0.17 |
-| Medium | −0.18 |
-| Small | +0.04 |
-| Random | +0.26 |
-
-Understeer and oversteer are fixed by phase with the bars, brake bias, diff, front ride height and rear wing. If the same complaint comes back, it gets a different tool than the one changed in the last two stints. Without a rating, telemetry counts as understeer when the understeer angle is above what GT3 laps usually show (classes.toml).
-
-### Learning what works for you (phase 4)
-
-Balance settings are also learned from your own stints. Each car + track layout gets its own model, a small Gaussian process (numpy only) for each objective:
-
-- **Pace:** the mean clean lap, corrected to a reference fuel load (`fuel_s_per_l` in the knowledge file) and to the 3rd lap of a stint. The second correction uses a within-stint trend fitted on stint-demeaned laps, which covers tyre wear and settling in.
-- **Tyres:** wear per lap.
-- **Drivability:** lap-to-lap spread, plus countersteer moments, plus your rating when you give one.
-
-Your experience on the car/track and the track temperature are inputs to the model, so getting faster yourself isn't credited to the setup.
-
-The model goes through two states:
-
-- **Learning:** fewer than 4 stints with 3+ clean laps, or fewer than 3 different setups. It asks for one click at a time on the setting it knows least about. That only happens when the rules aren't already fixing a balance problem.
-- **Ready:** up to two moves, picked by expected improvement under your trade-off weights, inside a trust region around the setup you're used to. The region grows after proposals that paid off and shrinks after ones that didn't.
-
-Rated balance complaints still get their direct fix. Telemetry-only rule moves give way to the model once it's ready. The **Model** tab shows what it has learned: the corrections, your improvement since stint 1, and each setting's expected effect with its uncertainty.
-
-To check that the loop converges:
-
-```
-.venv\Scripts\python -m autosetup.opt.bench
-```
-
-It runs a simulated car with known optimum, a driver who improves, and 0.25 s lap noise. Random clicking makes things worse, and staying put stays at 0 (numbers above). It also runs the transfer check below.
-
-### Learning what you prefer (phase 5)
-
-There are no trade-off sliders. How much pace, tyre wear and drivability matter to you is learned from what you do with the setups, with no extra input:
-
-| Evidence | Read as | Weight |
-|---|---|---|
-| You tried a new setup and went back to one you had before | the one you went back to won | 1 |
-| You built the next setup on the new one instead of going back | the new one won, weakly | 0.3 |
-| Two rated stints of the same car and track | the higher rating won | ½ per rating point |
-
-Each comparison sets the two stints' objectives against each other (corrected pace, wear, drivability), each scaled by how much a setup plausibly moves it. A Bradley–Terry model over the weights starts from pace 1, tyres 0.5, drivability 0.75; it takes about a dozen comparisons to move far from there. Preference is yours, not the car's, so evidence from every car and track is pooled. The Model tab shows the learned weights, their uncertainty and where they came from (`autosetup/opt/preference.py`).
-
-### Transfer between tracks (phase 5)
-
-The model for a car at a track also uses that car model's stints at other tracks. Each track keeps its own corrections and its own learning curve. Its objectives are shifted to this track's level, and the GP links tracks with a correlation ρ that it fits (prior around 0.7). So a new track starts from what the bars, dampers and diff did elsewhere, and still learns where it differs.
-
-The model counts as ready with 2 stints at this track, 4 in all and 3 different setups; reasons then read e.g. "Model of 2 stints + 3 at 1 other track". In the toy benchmark, track B wants more wing and a stiffer front bar than track A. After 12 stints at A, the first 6 stints at B score (mean true cost of stints 3–6, 8 seeds):
-
-| | Cost |
-|---|---|
-| Starting alone at B | +0.15 |
-| With A's stints | −0.10 |
+The third element's four dampers and its packers belong to the damper block (below); the third spring itself stays where you set it. The rules only touch packers for bottoming. Running on the packers can be deliberate (aero platform), so whether you're on them too much is left to the damper block's contact-patch and kerb numbers.
 
 ### Desktop app
 

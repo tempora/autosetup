@@ -64,16 +64,19 @@ def test_import_state_stints_pareto(server):
 def test_posts_validate_input(server):
     _, base = server
     call(base, "/api/import", {})
-    # No sliders: the trade-off is learned, and with no evidence it's the prior.
+    # No sliders, no weights: lap time is the objective, your balance the constraint.
     assert call(base, "/api/weights", {"pace": 1, "tyres": 0.2, "drivability": 0.5})[0] == 404
+    assert call(base, "/api/change-size", {"size": "small"})[0] == 404
+    assert call(base, "/api/feel", {"car_class": "GT3", "front": -1})[0] == 404
     state = call(base, "/api/state")[1]
-    assert state["weights"]["pace"] == 1.0 and state["preference"]["comparisons"] == 0
-    assert state["weights"]["tyres"] == pytest.approx(0.5, abs=0.05)
+    assert "weights" not in state and "change_size" not in state
     assert call(base, "/api/context", {"context": "nope"})[0] == 400
     name = "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
-    status, r = call(base, "/api/rating", {"file_name": name, "rating": 5, "entry": -1})
-    assert status == 200 and r["rating"]["rating"] == 5 and r["rating"]["entry"] == -1
-    assert call(base, "/api/rating", {"file_name": name, "entry": 3})[0] == 400
+    status, r = call(base, "/api/rating", {"file_name": name, "lockups": True, "note": "long brakes"})
+    assert status == 200 and r["rating"]["lockups"] is True and r["rating"]["note"] == "long brakes"
+    _, r = call(base, "/api/rating", {"file_name": name, "note": None})  # only the fields sent change
+    assert r["rating"]["lockups"] is True
+    assert call(base, "/api/feedback", {"stint": 999, "button": "pointier"})[0] == 400
     assert call(base, "/api/nope", {})[0] == 404
 
 
@@ -127,105 +130,83 @@ def test_a_broken_recording_is_tried_once_not_every_poll(tmp_path, install, monk
 
 def test_proposal_write_and_locks(server, install):
     app, base = server
+    rec = install.telemetry / "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
+    rec.unlink()
+    make_recording(rec, tyres=True)
     call(base, "/api/import", {})
-    call(base, "/api/change-size", {"size": "small"})  # one click per move keeps this exact
     stint = call(base, "/api/stints")[1]["stints"][0]["id"]
     _, pr = call(base, f"/api/proposal?stint={stint}")
-    assert pr["changes"] == []  # the synthetic stint has no tyre/brake data and isn't rated
-    name = "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
-    # Each click sends only its own field: quick clicks on different buttons don't undo each other.
-    _, r = call(base, "/api/rating", {"file_name": name, "lockups": True})
-    assert r["rating"]["lockups"] is True
-    _, r = call(base, "/api/rating", {"file_name": name, "entry": -1})
-    _, r = call(base, "/api/rating", {"file_name": name, "mid": 1})
-    assert (r["rating"]["lockups"], r["rating"]["entry"], r["rating"]["mid"]) == (True, -1, 1)
-    _, r = call(base, "/api/rating", {"file_name": name, "entry": None, "lockups": False})  # null clears one
-    assert (r["rating"]["lockups"], r["rating"]["entry"], r["rating"]["mid"]) == (False, None, 1)
-    _, pr = call(base, "/api/propose", {"stint": stint})
     assert pr["brake_pressure_by_feel"] is False  # not a prototype: no button
-    cls = pr["car_class"]
-    assert pr["feel"] == {"front": None, "rear": None}
-    assert call(base, "/api/feel", {"car_class": cls, "front": 2})[0] == 400
-    assert call(base, "/api/feel", {"car_class": cls, "front": -1})[1]["feel"] == {"front": -1, "rear": None}
-    assert call(base, "/api/feel", {"car_class": cls, "rear": 1})[1]["feel"] == {"front": -1, "rear": 1}  # each on its own
-    assert call(base, "/api/proposal?stint=%d" % stint)[1]["feel"] == {"front": -1, "rear": 1}
-    assert call(base, "/api/feel", {"car_class": cls, "front": None, "rear": None})[1]["feel"] == {"front": None, "rear": None}
-    # The speed answers are stored with the stint like the phase ratings.
-    _, r = call(base, "/api/rating", {"file_name": name, "fast": -1})
-    assert (r["rating"]["fast"], r["rating"]["mid"]) == (-1, 1)
-    assert call(base, "/api/rating", {"file_name": name, "slow": 3})[0] == 400
-    call(base, "/api/rating", {"file_name": name, "fast": None})
-    # Zones (corner speed × phase) in half points, kept with the stint's other ratings.
-    _, r = call(base, "/api/rating", {"file_name": name, "slow_exit": -1.5})
-    assert r["rating"]["slow_exit"] == -1.5 and r["rating"]["mid"] == 1
-    assert call(base, "/api/rating", {"file_name": name, "slow_exit": -1.25})[0] == 400
-    _, r = call(base, "/api/rating", {"file_name": name, "slow_exit": None})
-    assert "slow_exit" not in r["rating"]
-    [c] = pr["changes"]
-    assert c["keys"] == ["WM_RIDEHEIGHT-W_RL", "WM_RIDEHEIGHT-W_RR"] and c["delta"] == 2  # rake first, ~2 mm
+    [c] = pr["changes"]  # no corner passes on the synthetic stint: only the rules speak
+    assert c["keys"] == ["WM_CAMBER-W_FL", "WM_CAMBER-W_FR"] and "less negative camber" in c["reason"]
+    assert pr["plan"]["target"]["cells"] == {} and pr["notes"] == ["No corner passes yet"]
     assert pr["target"] == {"file": "autosetup_TestTeam1_Testway_1.svm", "folder": "Testway"}
 
     # A stale signature is refused; the right one writes into the track's folder.
     assert call(base, "/api/write", {"stint": stint, "signature": "stale"})[0] == 409
     status, w = call(base, "/api/write", {"stint": stint, "signature": pr["signature"]})
     assert status == 200 and w["file"] == "autosetup_TestTeam1_Testway_1.svm"
-    written = install.settings / "Testway" / w["file"]
-    assert written.is_file()
+    assert (install.settings / "Testway" / w["file"]).is_file()
     assert app.advisor.written(stint)[0]["file"] == w["file"]
 
-    # Locking the rear ride height moves the advice to the front bar.
-    rear = ["WM_RIDEHEIGHT-W_RL", "WM_RIDEHEIGHT-W_RR"]
-    status, lk = call(base, "/api/locks", {"stint": stint, "keys": rear, "locked": True})
-    assert status == 200 and lk["locks"] == rear
+    # A locked setting is left alone.
+    camber = ["WM_CAMBER-W_FL", "WM_CAMBER-W_FR"]
+    status, lk = call(base, "/api/locks", {"stint": stint, "keys": camber, "locked": True})
+    assert status == 200 and lk["locks"] == camber
     _, pr = call(base, f"/api/proposal?stint={stint}")
-    assert pr["changes"][0]["keys"] == ["VM_FRONT_ANTISWAY"]
-    assert pr["locks"] == [{"key": "WM_RIDEHEIGHT-W_RL", "name": "Ride height RL"},
-                           {"key": "WM_RIDEHEIGHT-W_RR", "name": "Ride height RR"}]
-    call(base, "/api/locks", {"stint": stint, "keys": rear, "locked": False})
+    assert pr["changes"] == [] and [x["key"] for x in pr["locks"]] == camber
+    call(base, "/api/locks", {"stint": stint, "keys": camber, "locked": False})
     assert call(base, f"/api/proposal?stint={stint}")[1]["locks"] == []
     assert call(base, "/api/locks", {"stint": stint, "keys": "VM_X"})[0] == 400
     assert call(base, "/api/proposal?stint=999")[0] == 400
 
 
-def test_model_learns_then_takes_over_balance(tmp_path, install):
-    """Store-backed: one qualifying stint → learning (one click); four stints on three
-    setups → ready, with the model's state in the proposal."""
-    from autosetup.proposals import MODEL_CONFIDENCE, Advisor
+def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, recorded):
+    """A real Interlagos stint: the target moves with the buttons, "This is it" locks a
+    fingerprint the Driver screen shows, histograms come per wheel."""
+    import shutil
 
-    with Store(tmp_path / "db.duckdb") as store:
-        adv = Advisor(store, install)
-        first = make_recording(install.telemetry / "a.duckdb", laps=4)
-        store.import_recording(first)
-        rid = store.con.execute("select id from recordings where file_name = 'a.duckdb'").fetchone()[0]
-        store.put_setting("change_size", "small")
-        pr = adv.proposal(rid)
-        assert pr.model["state"] == "learning" and pr.model["n_obs"] == 1
-        [c] = [c for c in pr.changes if c.group == "balance"]
-        assert c.source == "learning" and abs(c.delta) == 1 and c.reason.startswith("Learning (1 stint")
-        store.put_setting("change_size", "large")
-        moves = [c for c in adv.proposal(rid).changes if c.source == "learning"]
-        assert 1 < len(moves) <= 5
+    from autosetup.lmu.paths import LmuPaths
 
-        for i, rear in enumerate((2, 4, 3)):
-            store.import_recording(make_recording(install.telemetry / f"b{i}.duckdb", laps=4,
-                                                  values={"VM_REAR_ANTISWAY": rear}))
-        last = store.con.execute("select max(id) from recordings").fetchone()[0]
-        pr = adv.proposal(last)
-        assert pr.model["state"] == "ready" and pr.model["n_obs"] == 4 and pr.model["n_setups"] >= 3
-        assert pr.model["effects"] and pr.model["experience_effect"] is not None
-        # Four look-alike stints: enough to be "ready", not enough to be sure of anything, so
-        # the rules keep the balance and the model only learns.
-        assert pr.model["confidence"] is not None and pr.model["exploring"] == (pr.model["confidence"] < MODEL_CONFIDENCE)
-        sources = ("learning",) if pr.model["exploring"] else ("model",)
-        assert all(c.source in (*sources, "rules", "rating", "telemetry") for c in pr.changes)
-
-
-def test_change_size_setting(server):
-    _, base = server
-    assert call(base, "/api/state")[1]["change_size"] == "large"
-    assert call(base, "/api/change-size", {"size": "small"}) == (200, {"change_size": "small"})
-    assert call(base, "/api/state")[1]["change_size"] == "small"
-    assert call(base, "/api/change-size", {"size": "huge"})[0] == 400
+    root = tmp_path / "Le Mans Ultimate"
+    paths = LmuPaths(root)
+    paths.telemetry.mkdir(parents=True)
+    paths.settings.mkdir(parents=True)
+    src = recorded("interlagos_arb_r5")
+    shutil.copyfile(src, paths.telemetry / src.name)
+    store = Store(tmp_path / "db.duckdb")
+    app = App(store, paths)
+    httpd = make_server(app, "127.0.0.1", 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        call(base, "/api/import", {})
+        stint = call(base, "/api/stints")[1]["stints"][0]["id"]
+        _, t = call(base, f"/api/target?stint={stint}")
+        assert t["target"]["anchor"] == "current" and t["measured"]["cells"]
+        before = t["target"]["cells"]["entry_low"]
+        _, t = call(base, "/api/feedback", {"stint": stint, "button": "pointier"})
+        assert t["target"]["front"] == -1 and t["target"]["cells"]["entry_low"] < before
+        assert [e["kind"] for e in t["events"]] == ["press"]
+        _, t = call(base, "/api/feedback", {"stint": stint, "undo": True})
+        assert t["target"]["front"] == 0
+        assert call(base, "/api/feedback", {"stint": stint, "button": "faster"})[0] == 400
+        _, pr = call(base, f"/api/proposal?stint={stint}")
+        assert set(pr["plan"]["target"]["cells"]) and pr["plan"]["lap"] is not None
+        _, lk = call(base, "/api/lock", {"stint": stint})
+        assert lk["fingerprint"]["stint"] == stint and lk["target"]["anchor"] == "fingerprint"
+        _, d = call(base, "/api/driver")
+        [cls] = d["classes"]
+        [car] = cls["cars"]
+        assert car["line"] and abs(car["rear"]) < 10 and abs(car["front"]) < 10
+        _, h = call(base, f"/api/histograms?stint={stint}&kerbs=off&bin=25")
+        assert set(h["wheels"]) == {"fl", "fr", "rl", "rr"} and h["knee"] > 0
+        fl = h["wheels"]["fl"]
+        assert len(fl["edges"]) == len(fl["counts"]) + 1 and abs(fl["stats"]["bump"] + fl["stats"]["rebound"] - 1) < 0.02
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        store.close()
 
 
 def test_lap_and_setup_diff_endpoints(server, install):
@@ -250,7 +231,7 @@ def test_menu_screens(server, install):
     call(base, "/api/import", {})
     _, d = call(base, "/api/driver")
     [c] = d["classes"]
-    assert c["laps"] > 0 and c["rotation"] == [] and set(d["tradeoff"]) == {"pace", "drivability", "tyres"}
+    assert c["laps"] > 0 and c["cars"] == []  # no fingerprint locked yet
     _, a = call(base, "/api/about")
     assert a["recordings"] == 1 and a["laps"] > 0 and a["database"].endswith("db.duckdb")
 
@@ -258,11 +239,8 @@ def test_menu_screens(server, install):
     assert s["units"] == {"speed": "km/h", "temp": "°C", "pressure": "kPa"}
     assert [f["which"] for f in s["folders"]] == ["install", "telemetry", "settings", "database"]
     assert [x["car_class"] for x in s["classes"]] == [c["car_class"]]
-    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}, "change_size": "small"})
-    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h" and s["change_size"] == "small"
-    assert call(base, "/api/settings", {"change_size": "huge"})[0] == 400
-    _, s = call(base, "/api/settings", {"reset_class": c["car_class"]})
-    assert s["classes"][0]["reset_at"]
+    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}})
+    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h"
     assert call(base, "/api/open-folder", {"which": "nowhere"})[0] == 400
 
 

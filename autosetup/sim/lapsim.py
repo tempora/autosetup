@@ -89,14 +89,26 @@ class Result:
 
 
 def corner_speed(car: Car, kappa: np.ndarray) -> np.ndarray:
-    """Highest v with v²·|κ| ≤ lat(v), per step."""
+    """Highest v with v²·|κ| ≤ lat(v), per step, interpolated between the speed grid's
+    points (a quantised limit would make lap time jump with tiny setup changes).
+
+    Downforce grip can grow faster than v²·|κ|, so a fast corner may be possible above some
+    speed band it isn't possible in; the car comes into it from the straight, so the limit
+    is the top of what's possible, not the first speed that fails."""
     k = np.abs(kappa)
     cap = car.top_speed
-    ok = V_GRID ** 2 * k[:, None] <= car.lat_eff[None, :]  # (steps, speeds)
-    ok &= V_GRID[None, :] <= cap
-    # Highest speed of the first run of feasible speeds from zero.
-    first_bad = np.argmin(np.concatenate([ok, np.zeros((len(k), 1), bool)], axis=1), axis=1)
-    return np.maximum(V_GRID[np.clip(first_bad - 1, 0, len(V_GRID) - 1)], 1.0)
+    margin = car.lat_eff[None, :] - V_GRID[None, :] ** 2 * k[:, None]  # (steps, speeds)
+    good = (margin >= 0) & (V_GRID[None, :] <= cap)
+    n = len(V_GRID)
+    last = n - 1 - np.argmax(good[:, ::-1], axis=1)  # highest good speed index
+    any_good = good.any(axis=1)
+    rows = np.arange(len(k))
+    nxt = np.minimum(last + 1, n - 1)
+    m0, m1 = margin[rows, last], margin[rows, nxt]
+    frac = np.where((nxt > last) & (m1 < 0), np.clip(m0 / np.maximum(m0 - m1, 1e-12), 0.0, 1.0), 0.0)
+    v = V_GRID[last] + frac * (V_GRID[1] - V_GRID[0])
+    v = np.where(any_good, v, 1.0)
+    return np.clip(np.minimum(v, cap), 1.0, None)
 
 
 def _left(a_cap: float, a_used: float) -> float:

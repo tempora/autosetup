@@ -72,6 +72,12 @@ feel_tolerance_deg = 0.15
 # Damper knee (mm/s shaft velocity) between the slow and fast damper circuits. LMU doesn't
 # expose it; a starting value to check against the histograms (and DAM logs).
 damper_knee_mm_s = 50.0
+# Share of off-kerb shaft-velocity samples under the knee the damper module aims for (a
+# starting value: most road motion is slow, kerbs and bumps are the fast part).
+damper_ls_target = 0.85
+# Priors (opt/priors.py): how far a setting's whole range moves the cells it acts on,
+# understeer-angle degrees at weight 1.
+prior_full_range_deg = 0.6
 # Aero map priors (sim/aero.py): the direction each platform change pushes, at a size
 # that's a guess; aero_prior_sd × each one is its prior sd, so a few stints decide. Per
 # FULL range of rear wing, or per mm of front ride height / rake at speed.

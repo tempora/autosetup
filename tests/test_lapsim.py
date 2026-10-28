@@ -79,3 +79,20 @@ def test_driver_efficiency_is_recovered():
     car = toy_car()
     laps = [(t, car, simulate(t, car.scaled(0.91)).time)]
     assert fit_eta(laps) == pytest.approx(0.91, abs=0.005)
+
+
+def test_lap_time_is_smooth_in_downforce_even_with_a_staircase_envelope():
+    """Noisy envelope bins (a staircase once made non-decreasing) and a fast corner whose
+    need runs along the steps: lap time must still move smoothly with downforce, or the
+    optimiser's finite differences read jumps as sensitivities."""
+    from autosetup.sim.aero import envelope_car
+
+    rng = np.random.default_rng(4)
+    env = [("lat", v, 200, 16.0 * (1 + 6e-5 * v * v) + rng.normal(0, 0.8)) for v in np.arange(17.5, 70, 5.0)]
+    env += [("drive", v, 200, 9.0 * np.exp(-v / 45.0) + 1.0 - 7e-4 * v * v) for v in np.arange(17.5, 80, 5.0)]
+    env += [("brake", v, 200, 18.0 + 0.002 * v * v) for v in np.arange(22.5, 80, 5.0)]
+    car = envelope_car(env, 6e-5)
+    t = track((1200, 0), (300, 110), (900, 0), (200, 45), (600, 0), (250, 160))
+    times = np.array([simulate(t, car.perturb(d_lift=x * 2e-7)).time for x in range(-20, 21)])
+    assert np.abs(np.diff(times, 2)).max() < 0.002
+    assert np.all(np.diff(times) <= 1e-9)  # more downforce is never slower on this track

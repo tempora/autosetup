@@ -1,6 +1,12 @@
-"""Phase 4: learn from your stints which balance settings pay off, and propose the next one.
+"""Choosing the next setup.
 
-dataset.py   stints → corrected objectives (pace, tyres, drivability) with noise
-gp.py        small exact Gaussian process (numpy) with fixed per-point noise
-optimizer.py trust region + preference-weighted expected improvement
+space.py          the settings it works in: a main block and the dampers, in clicks
+priors.py         what each main setting does to the balance (direction, fixed size)
+balance_model.py  predicted balance per phase × speed band at a layout
+platform.py       ride-height safety
+laptime.py        predicted lap time: lap model + aero map + residual GP
+bo.py             the constrained search: fastest within your balance band
+dampers.py        the damper block: contact patch, kerbs no worse, same band
+gp.py             a small exact Gaussian process (numpy)
+bench.py          a toy car to check the loop converges
 """

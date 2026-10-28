@@ -27,9 +27,8 @@ from autosetup.lmu.builds import note_build
 from autosetup.lmu.paths import LmuPaths, game_running
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress
 from autosetup.metrics import METRICS_VERSION
-from autosetup.opt.balance import reset_key
-from autosetup.opt.dataset import ZONES
-from autosetup.opt.optimizer import CHANGE_SIZES
+from autosetup.knowledge import load_knowledge
+from autosetup.opt.dampers import histograms
 from autosetup.proposals import Advisor, ProposalConflict
 from autosetup.setup_writer import WriteError
 from autosetup.store import Store, read_recording
@@ -228,13 +227,10 @@ class App:
                    where r.car_class is not null and exists (
                        select 1 from laps l where l.recording_id = r.id and l.complete and not l.in_pits)
                    group by r.car_class order by max(r.file_mtime) desc""").fetchall()
-            resets = {c: self.store.get_setting(reset_key(c)) for c, _ in classes}
-            size = self.advisor.change_size()
         return {
             "units": units.current.to_json(), "unit_choices": {k: list(v) for k, v in units.CHOICES.items()},
-            "change_size": size,
             "folders": [{"which": k, "path": str(v) if v else None} for k, v in self.folders().items()],
-            "classes": [{"car_class": c, "ratings": n, "reset_at": resets[c]} for c, n in classes],
+            "classes": [{"car_class": c} for c, _ in classes],
             "recomputing": self.status["recomputing"], "recomputed": self.status["recomputed"],
         }
 
@@ -244,13 +240,6 @@ class App:
                 u = units.Units.from_json({**units.current.to_json(), **(body["units"] or {})})
                 self.store.put_setting("units", u.to_json())
                 units.set_current(u)
-            if "change_size" in body:
-                if body["change_size"] not in CHANGE_SIZES:
-                    raise ValueError(f"size must be one of {', '.join(CHANGE_SIZES)}")
-                self.store.put_setting("change_size", body["change_size"])
-            if body.get("reset_class"):
-                stamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-                self.store.put_setting(reset_key(str(body["reset_class"])), stamp)
         return self.settings()
 
     def open_folder(self, which: str) -> str:
@@ -275,7 +264,7 @@ class App:
 
     def driver(self) -> dict:
         with self.lock:
-            return driver.profile(self.store, self.advisor.preference().weights)
+            return driver.profile(self.store)
 
     # -- laps ------------------------------------------------------------------------
     def lap(self, rid: int, seq: int) -> dict:
@@ -349,15 +338,10 @@ class App:
     def state(self) -> dict:
         with self.lock:
             ctxs = analysis.contexts(self.store)
-            pref = self.advisor.preference().to_json()
-            size = self.advisor.change_size()
         return {
             "contexts": [dict(key=c.key, car_name=c.car_name, car_class=c.car_class, track=c.track,
                               layout=c.layout, stints=c.stints, last_recorded=c.last_recorded) for c in ctxs],
             "context": self.context_key(None),
-            "weights": pref["weights"],
-            "preference": pref,
-            "change_size": size,
             "objectives": [dict(key=k, label=label, unit=unit) for k, label, unit in analysis.OBJECTIVES],
             "watcher": dict(self.status, watching=self.paths is not None),
         }
@@ -468,6 +452,15 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/proposal":
                 with self.app.lock:
                     self._json(self.app.advisor.proposal_json(int(q["stint"])))
+            elif url.path == "/api/target":
+                with self.app.lock:
+                    self._json(self.app.advisor.target_json(int(q["stint"])))
+            elif url.path == "/api/histograms":
+                kerbs = {"on": True, "off": False, "both": None}[q.get("kerbs", "off")]
+                with self.app.lock:
+                    rec = self.app.store.recording(int(q["stint"]))
+                    self._json(histograms(self.app.store, int(q["stint"]), kerbs, float(q.get("bin", 25)),
+                                          load_knowledge(rec["car_class"])))
             elif url.path == "/api/driver":
                 self._json(self.app.driver())
             elif url.path == "/api/settings":
@@ -494,41 +487,29 @@ class Handler(BaseHTTPRequestHandler):
                 with app.lock:
                     app.store.put_setting("context", key)
                 self._json({"context": key})
-            elif self.path == "/api/change-size":
-                size = str(body.get("size"))
-                if size not in CHANGE_SIZES:
-                    return self._json({"error": f"size must be one of {', '.join(CHANGE_SIZES)}"}, 400)
+            elif self.path == "/api/feedback":
+                # {stint, button: pointier|lazier|looser|safer} | {stint, undo: true} | {stint, reset: true}
+                stint = int(body["stint"])
                 with app.lock:
-                    app.store.put_setting("change_size", size)
-                self._json({"change_size": size})
-            elif self.path == "/api/feel":
-                # {car_class, front?, rear?}: −1 Pointier/Looser, +1 Lazier/Safer, null unpicked.
-                cls = str(body["car_class"])
+                    if body.get("undo"):
+                        self._json(app.advisor.undo(stint))
+                    elif body.get("reset"):
+                        self._json(app.advisor.reset(stint))
+                    else:
+                        self._json(app.advisor.press(stint, str(body["button"])))
+            elif self.path == "/api/lock":
                 with app.lock:
-                    for side in ("front", "rear"):
-                        if side in body:
-                            app.advisor.set_feel(cls, side, int(body[side]) if body[side] is not None else None)
-                    self._json({"car_class": cls, "feel": app.advisor.feel(cls)})
+                    self._json(app.advisor.lock(int(body["stint"])))
             elif self.path == "/api/rating":
-                # Only the fields in the request change (null clears one): two quick
-                # clicks on different buttons mustn't undo each other.
+                # {file_name, lockups?, note?}: only the fields in the request change.
                 name = str(body["file_name"])
                 with app.lock:
-                    r = {k: v for k, v in (app.store.rating(name) or {}).items()
-                         if k in ("rating", "entry", "mid", "exit", "slow", "medium", "fast", "note", "lockups")}
-                    for k in ("rating", "entry", "mid", "exit", "slow", "medium", "fast"):
-                        if k in body:
-                            r[k] = int(body[k]) if body[k] is not None else None
+                    r = {k: v for k, v in (app.store.rating(name) or {}).items() if k in ("note", "lockups")}
                     if "lockups" in body:
                         r["lockups"] = bool(body["lockups"])
                     if "note" in body:
                         r["note"] = body["note"]
-                    base = ("rating", "entry", "mid", "exit", "slow", "medium", "fast", "lockups", "note")
-                    if any(k in body for k in base) or not any(z in body for z in ZONES):
-                        app.store.set_rating(name, **r)
-                    for z in ZONES:  # corner speed × phase, rating points in halves
-                        if z in body:
-                            app.store.set_zone_rating(name, z, float(body[z]) if body[z] is not None else None)
+                    app.store.set_rating(name, **r)
                     self._json({"rating": app.store.rating(name)})
             elif self.path == "/api/import":
                 self._json({"imported": app.import_now()})

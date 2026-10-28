@@ -86,13 +86,14 @@ def _with_values(data: dict, values: dict[str, int]) -> dict:
 
 
 def make_recording(path: Path, lap_dist_hz: int = 50, laps: int = 2, values: dict[str, int] | None = None,
-                   track: str = "Test Raceway", mtime: float | None = None) -> Path:
+                   track: str = "Test Raceway", mtime: float | None = None, tyres: bool = False) -> Path:
     """Write a recording the way the game does: fixed-rate tables without timestamps,
     event tables with ``ts``, channel rates in ``channelsList``.
 
     ``laps`` complete laps sit between a partial first lap and a final in-pit lap (the
     default matches DURATION); ``values`` overrides setup indices; ``mtime`` sets the
-    file time stints are ordered by."""
+    file time stints are ordered by; ``tyres``: add speed and tread temperatures with
+    the front inner edges 16 °C hotter than the outer (a camber rule to fire)."""
     duration = DURATION + (laps - 2) * LAP
     con = duckdb.connect(str(path))
     clock = T0 + np.arange(int(duration * 100) + 1) / 100.0
@@ -118,6 +119,17 @@ def make_recording(path: Path, lap_dist_hz: int = 50, laps: int = 2, values: dic
     t10 = T0 + np.arange(int(duration * 10) + 1) / 10.0
     wear = np.column_stack([1.0 - (t10 - T0) * k for k in (1e-4, 2e-4, 3e-4, 4e-4)])
     fixed("Tyres Wear", 10, {f"value{i + 1}": wear[:, i] for i in range(4)})
+    if tyres:
+        fixed("Ground Speed", 100, {"value": np.full(len(clock), 144.0)})
+        n10 = len(t10)
+        inner, outer = {"F": 90.0, "R": 85.0}, {"F": 74.0, "R": 76.0}
+        centre = {"F": 87.0, "R": 85.5}
+        # Car-frame sides: the inner edge is Right on the left wheels, Left on the right ones.
+        left = [outer["F"], inner["F"], outer["R"], inner["R"]]
+        right = [inner["F"], outer["F"], inner["R"], outer["R"]]
+        for name, vals in (("TyresTempLeft", left), ("TyresTempRight", right),
+                           ("TyresTempCentre", [centre["F"], centre["F"], centre["R"], centre["R"]])):
+            fixed(name, 10, {f"value{i + 1}": np.full(n10, v) for i, v in enumerate(vals)})
     events("Lap", [(T0, 1)] + [(T0 + 30.0 + LAP * k, 2 + k) for k in range(laps + 1)])
     events("In Pits", [(T0, 0), (T0 + 30.0 + LAP * laps + 5.0, 1)])
     meta = {

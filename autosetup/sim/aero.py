@@ -31,8 +31,10 @@ from autosetup.sim.lapsim import G, V_CAP, V_GRID, Car
 SLOPE_SD = 0.5  # m/s²: prior sd of a 25 m stretch's slope term
 DRAG_SD = 5e-4  # 1/m: prior sd of one stint's drag against the layout's others
 MIN_LAT_BINS = 3
+BRAKE_PER_LAT = 1.1  # braking against lateral grip, with no braking zone measured
 AT_LIMIT = 0.85  # a speed bin under this share of the running-max limit says nothing about downforce
 FEATURES = ("wing", "rh_front", "rake")
+SPAN_MM = 3.0  # mm beyond the driven ride heights / rake the aero map is still trusted
 
 
 def _fit_poly(v: np.ndarray, a: np.ndarray, w: np.ndarray, powers: list[int]) -> np.ndarray:
@@ -42,44 +44,65 @@ def _fit_poly(v: np.ndarray, a: np.ndarray, w: np.ndarray, powers: list[int]) ->
 
 
 def _lateral(lat: np.ndarray, lift_typ: float) -> tuple[np.ndarray, float]:
-    """Lateral grip limit against V_GRID. Downforce only adds grip, so the limit never
-    falls with speed: a lower top percentile at high speed is a track whose fast corners
-    are taken flat out, not a car with less grip. The curve is the running maximum of the
-    bins (non-decreasing); above the fastest bin it grows like the class's typical
-    downforce."""
+    """Lateral grip limit against V_GRID, as μ·g·(1 + c·v²).
+
+    Downforce only adds grip, so the limit never falls with speed: a lower top percentile
+    at high speed is a track whose fast corners are taken flat out, not a car with less
+    grip. So the curve is fitted to the running maximum of the bins (non-decreasing), and
+    in the smooth physical form: a staircase of noisy bins can run along v²·κ for a few
+    m/s and make a corner's speed jump with the smallest change. Too few bins for a slope:
+    the class's typical downforce."""
     order = np.argsort(lat[:, 0])
-    vb, ab = lat[order, 0], np.maximum.accumulate(lat[order, 2])
-    mu_g = float(ab[0] / (1.0 + lift_typ * vb[0] ** 2))
-    v = V_GRID
-    curve = np.interp(v, vb, ab)
-    above = v > vb[-1]
-    curve[above] = ab[-1] * (1.0 + lift_typ * v[above] ** 2) / (1.0 + lift_typ * vb[-1] ** 2)
-    return curve, mu_g
+    vb, ab, n = lat[order, 0], np.maximum.accumulate(lat[order, 2]), lat[order, 1]
+    if np.ptp(vb) >= 15.0:
+        a0, a2 = _fit_poly(vb ** 2, ab, n, [0, 1])
+    else:
+        a0, a2 = -1.0, 0.0
+    if a0 <= 0 or a2 < 0:  # no usable slope: hold the top bin's grip with the class's downforce
+        a0 = float(ab[-1] / (1.0 + lift_typ * vb[-1] ** 2))
+        a2 = a0 * lift_typ
+    return a0 + a2 * V_GRID ** 2, float(a0)
 
 
-def envelope_car(envelope: list[tuple[str, float, int, float]], lift_typ: float = 6e-5) -> Car | None:
+def envelope_car(envelope: list[tuple[str, float, int, float]], lift_typ: float = 6e-5,
+                 drag_typ: float = 7e-4) -> Car | None:
     """``envelope``: (kind, v, samples, value m/s²) bins, from extract.py; one stint's or
-    several stints' pooled. ``lift_typ``: the class's downforce term, for speeds above the
-    measured ones."""
+    several stints' pooled. ``lift_typ`` / ``drag_typ``: the class's downforce and drag,
+    for what a lap or two doesn't show: speeds above the measured ones, a braking curve
+    from a single braking zone (shaped like the grip: both are tyres plus downforce), a
+    drive curve from one or two straights (falling off towards top speed with the drag)."""
     by = {k: np.array([(v, n, a) for kind, v, n, a in envelope if kind == k]).reshape(-1, 3)
           for k in ("lat", "drive", "brake")}
     lat, drive, brake = by["lat"], by["drive"], by["brake"]
-    if len(lat) < MIN_LAT_BINS or len(drive) < 3 or len(brake) < 2:
+    if len(lat) < MIN_LAT_BINS or len(drive) < 1:
         return None
     v = V_GRID
     lat_curve, mu_g = _lateral(lat, lift_typ)
     # Drive: a smooth fit over the measured speeds; below them traction-limited (held),
     # above them extended along its end slope until it runs out (top speed).
     lo, hi = drive[:, 0].min(), drive[:, 0].max()
-    coef = _fit_poly(drive[:, 0], drive[:, 2], drive[:, 1], [0, 1, 2])
+    if len(drive) >= 3:
+        coef = _fit_poly(drive[:, 0], drive[:, 2], drive[:, 1], [0, 1, 2])
+    else:
+        a1 = float(np.average(drive[:, 2], weights=drive[:, 1]))
+        v1 = float(np.average(drive[:, 0], weights=drive[:, 1]))
+        coef = np.array([a1 + drag_typ * v1 * v1, 0.0, -drag_typ])
     f = lambda x: coef[0] + coef[1] * x + coef[2] * x * x  # noqa: E731
     end_slope = min(coef[1] + 2 * coef[2] * hi, -0.02)
     drive_curve = np.where(v < lo, f(lo), np.where(v > hi, f(hi) + end_slope * (v - hi), f(v)))
     # Braking: b0 + b2·v² (downforce and drag both grow with v²), b2 ≥ 0.
-    b0, b2 = _fit_poly(brake[:, 0] ** 2, brake[:, 2], brake[:, 1], [0, 1])
-    if b2 < 0:
-        b0, b2 = float(np.average(brake[:, 2], weights=brake[:, 1])), 0.0
-    brake_curve = b0 + b2 * v ** 2
+    if len(brake) >= 2:
+        b0, b2 = _fit_poly(brake[:, 0] ** 2, brake[:, 2], brake[:, 1], [0, 1])
+        if b2 < 0:
+            b0, b2 = float(np.average(brake[:, 2], weights=brake[:, 1])), 0.0
+        brake_curve = b0 + b2 * v ** 2
+    elif len(brake) == 1:
+        vb, _, ab = brake[0]
+        brake_curve = ab * lat_curve / float(np.interp(vb, v, lat_curve))
+        b0 = float(brake_curve[0])
+    else:
+        brake_curve = BRAKE_PER_LAT * lat_curve
+        b0 = float(brake_curve[0])
     return Car(lat=np.maximum(lat_curve, 1.0), drive=drive_curve, brake=np.maximum(brake_curve, 1.0),
                mu=mu_g / G, mu_brake=b0 / G)
 
@@ -96,9 +119,10 @@ def pooled(envelopes: list[list[tuple[str, float, int, float]]]) -> list[tuple[s
             for (kind, v), rows in sorted(acc.items())]
 
 
-def layout_car(envelopes: list[list[tuple[str, float, int, float]]], lift_typ: float) -> Car | None:
+def layout_car(envelopes: list[list[tuple[str, float, int, float]]], lift_typ: float,
+               drag_typ: float = 7e-4) -> Car | None:
     """The car at a layout from all its stints there (pooled envelope)."""
-    return envelope_car(pooled(envelopes), lift_typ)
+    return envelope_car(pooled(envelopes), lift_typ, drag_typ)
 
 
 def shrink(values: dict[int, tuple[float, float]], prior_sd: float) -> dict[int, float]:
@@ -303,6 +327,7 @@ class AeroMap:
     lift: Slopes
     balance: Slopes
     n: dict[str, int] = field(default_factory=dict)
+    span: dict[str, list[float]] = field(default_factory=dict)  # feature → [min, max] driven
 
     @classmethod
     def fit(cls, stints: list[Stint], knowledge: dict) -> "AeroMap":
@@ -321,9 +346,26 @@ class AeroMap:
                 y += list(ys - ys.mean())
                 var += [max(r[2][1], 1e-12) ** 2 for r in mine]
             X = np.array(X).reshape(len(X), len(FEATURES))
-            out[name] = Slopes.fit(X, np.array(y), np.array(var), *pri[name])
+            fit = Slopes.fit(X, np.array(y), np.array(var), *pri[name])
+            # Known directions are kept: a slope the data puts on the wrong side of its
+            # prior's direction (confounded stints, a narrow range) counts as zero.
+            prior_mean = pri[name][0]
+            wrong = (prior_mean != 0) & (np.sign(fit.mean) != np.sign(prior_mean))
+            fit.mean = np.where(wrong, 0.0, fit.mean)
+            out[name] = fit
             n[name] = len(y)
-        return cls(out["drag"], out["lift"], out["balance"], n)
+        xs = np.array([s.platform.x() for s in stints]).reshape(len(stints), len(FEATURES))
+        span = {f: [float(xs[:, i].min()), float(xs[:, i].max())] for i, f in enumerate(FEATURES)} if len(stints) else {}
+        return cls(out["drag"], out["lift"], out["balance"], n, span)
+
+    def within(self, platform: "Platform", wing_step: float, mm: float = SPAN_MM) -> bool:
+        """The platform is inside what was driven (plus a click of wing / ``mm``), where
+        the map is evidence and not a guess."""
+        if not self.span:
+            return True
+        x = platform.x()
+        margin = (wing_step, mm, mm)
+        return all(self.span[f][0] - m <= v <= self.span[f][1] + m for f, v, m in zip(FEATURES, x, margin))
 
     def car(self, base: Car, base_platform: Platform, platform: Platform) -> Car:
         """``base`` (measured on ``base_platform``) moved to ``platform``."""
@@ -332,9 +374,9 @@ class AeroMap:
 
     def to_json(self) -> dict:
         return {"drag": self.drag.to_json(), "lift": self.lift.to_json(), "balance": self.balance.to_json(),
-                "n": self.n}
+                "n": self.n, "span": self.span}
 
     @classmethod
     def from_json(cls, d: dict) -> "AeroMap":
         return cls(Slopes.from_json(d["drag"]), Slopes.from_json(d["lift"]), Slopes.from_json(d["balance"]),
-                   d.get("n", {}))
+                   d.get("n", {}), d.get("span", {}))

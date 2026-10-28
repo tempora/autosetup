@@ -6,9 +6,8 @@ import numpy as np
 
 from autosetup.metrics.compute import _third_contacts, _third_spring
 from autosetup.metrics.signals import GRID_HZ
-from autosetup.opt.dataset import build_dims
-from autosetup.opt.optimizer import group_of
-from tests.test_advisor import _setup, run
+from autosetup.opt.space import damper_dims, main_dims
+from tests.test_rules import _setup, run
 
 THIRD = {
     "VM_FRONT_3RD_PACKERS": dict(minValue=0, maxValue=21, value=14, stringValue="1.4 cm"),
@@ -70,8 +69,14 @@ def test_gt3_without_third_spring_is_unchanged():
     assert c.keys == ["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"] and THIRD_RH
 
 
-def test_model_learns_third_spring_packers_and_dampers():
-    dims = {d.name: d for d in build_dims(_setup(THIRD))}
-    assert {"VM_FRONT_3RD_SPRING", "VM_FRONT_3RD_PACKERS", "VM_REAR_3RD_SLOWBUMP"} <= set(dims)
-    assert group_of(dims["VM_FRONT_3RD_SPRING"]) == "third:F"
-    assert group_of(dims["VM_REAR_3RD_SLOWBUMP"]) == "third:R"
+def test_third_element_dampers_and_packers_are_the_damper_blocks():
+    """Third-element dampers and packers are optimised with the dampers (in clicks); the
+    third spring itself stays where it is (the platform rules and you set it)."""
+    setup = _setup(THIRD)
+    dampers = {d.name: d for d in damper_dims(setup)}
+    assert {"third_packers_front", "third_packers_rear", "third_slow_bump_rear"} <= set(dampers)
+    assert dampers["third_packers_front"].keys == ("VM_FRONT_3RD_PACKERS",)
+    assert (dampers["third_packers_front"].lo, dampers["third_packers_front"].hi) == (0, 20)
+    names = {d.name for d in main_dims(setup)} | set(dampers)
+    assert not any("3RD_SPRING" in k for d in main_dims(setup) + damper_dims(setup) for k in d.keys)
+    assert "rh_front" in names

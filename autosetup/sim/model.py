@@ -116,7 +116,7 @@ class LayoutModel:
         if not with_profile:
             return None
         lift_typ = float(knowledge["lift_c_typ"])
-        base = layout_car([s.envelope for s in stints], lift_typ)
+        base = layout_car([s.envelope for s in stints], lift_typ, float(knowledge["drag_k_typ"]))
         if base is None:
             return None
         kappa, _, _, sectors = min(with_profile, key=lambda s: s.profile[2]).profile
@@ -179,7 +179,8 @@ def aero_map(store, signature: str, knowledge: dict, refit: bool = False) -> Aer
     for layout in sorted(set(layouts.values())):
         mine = [s for s in stints if layouts[s.rid] == layout]
         drag = drag_deltas([row for s in mine for row in s.straights])
-        base = layout_car([s.envelope for s in mine if s.envelope], float(knowledge["lift_c_typ"]))
+        base = layout_car([s.envelope for s in mine if s.envelope], float(knowledge["lift_c_typ"]),
+                          float(knowledge["drag_k_typ"]))
         lift = lift_deltas({s.rid: s.envelope for s in mine}, base.mu) if base is not None else {}
         for s in mine:
             evidence.append(Stint(layout, s.platform, drag.get(s.rid), lift.get(s.rid), stint_balance(store, s.rid)))
