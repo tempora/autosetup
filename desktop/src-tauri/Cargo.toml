@@ -1,0 +1,21 @@
+[package]
+name = "autosetup-desktop"
+version = "0.3.0"
+license = "Apache-2.0"
+description = "autosetup desktop shell: a window around the local autosetup server"
+edition = "2021"
+rust-version = "1.90"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

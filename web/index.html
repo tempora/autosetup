@@ -1,0 +1,1737 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<title>autosetup</title>
+<style>
+/* Follows UI_LAYOUT_CONTRACT.md (approved 2026-10-22). Desktop only. */
+*{box-sizing:border-box}
+*{border-radius:0 !important}
+[hidden]{display:none !important}
+.theme-toggle,.round{border-radius:50% !important}
+:root{color-scheme:dark;--bg:#111214;--surface:#18191c;--line:#26282b;--text:#e4e4e2;--muted:#8a8d93;--danger:#e5534b;
+--s1:#4a90d9;--s2:#e08a3c;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--ease:cubic-bezier(.16,1,.3,1)}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f5f5f3;--surface:#eaeae7;--line:#d9d9d6;
+--text:#1d1e21;--muted:#686b71;--danger:#b42318;--s1:#2563ad;--s2:#b05a10}}
+:root[data-theme="light"]{color-scheme:light;--bg:#f5f5f3;--surface:#eaeae7;--line:#d9d9d6;
+--text:#1d1e21;--muted:#686b71;--danger:#b42318;--s1:#2563ad;--s2:#b05a10}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);min-width:1000px;min-height:640px;overflow:hidden;
+font:15px/1.5 "IBM Plex Sans","Segoe UI Variable","Segoe UI",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
+.mini{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+.ico{display:inline-block;vertical-align:middle;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:7px 14px;
+border:1px solid var(--line);background:transparent;font-size:14px;transition:background 150ms ease,color 150ms ease,border-color 150ms ease}
+.btn:hover{background:var(--surface)}
+.btn.on{background:var(--text);border-color:var(--text);color:var(--bg)}
+.btn.primary{background:var(--text);border-color:var(--text);color:var(--bg);min-height:46px;font-weight:600;padding:0 22px}
+.btn.quiet{border-color:transparent;color:var(--muted)}
+.btn.quiet:hover{color:var(--text);background:none}
+.btn:disabled{opacity:.4;cursor:default}
+.icon-btn{width:34px;height:34px;padding:0;border:1px solid transparent;background:none;color:var(--muted);
+display:inline-flex;align-items:center;justify-content:center;transition:color 150ms ease,border-color 150ms ease}
+.icon-btn:hover{color:var(--text);border-color:var(--line)}
+.seg{display:inline-grid;grid-auto-flow:column;gap:2px}
+.seg .btn{min-height:34px;padding:4px 14px;font-size:13px;color:var(--muted)}
+.seg .btn.on{color:var(--bg)}
+.empty{color:var(--muted);font-size:14px;padding:10px 0}
+
+/* ---------- nav ---------- */
+.app{display:grid;grid-template-rows:44px minmax(0,1fr);height:100vh}
+.nav{display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;height:100%}
+.tab{position:relative;height:100%;padding:0 16px;border:none;background:none;color:var(--muted);font-size:14px;font-weight:500;transition:color 150ms ease}
+.tab:hover:not(:disabled){color:var(--text)}
+.tab.on{color:var(--text)}
+.tab::after{content:"";position:absolute;left:16px;right:16px;bottom:-1px;height:2px;background:var(--text);transform:scaleX(0);transition:transform 200ms var(--ease)}
+.tab.on::after{transform:scaleX(1)}
+.tab:disabled{opacity:.35;cursor:default}
+.hist-mark{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.err{color:var(--danger);font-size:13px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- screens ---------- */
+main{position:relative;min-height:0}
+.screen{position:absolute;inset:0;opacity:0;visibility:hidden;transform:scale(.99);
+transition:opacity 200ms var(--ease),transform 200ms var(--ease),visibility 200ms}
+.screen.on{opacity:1;visibility:visible;transform:none}
+.split{display:grid;grid-template-columns:300px minmax(0,1fr)}
+.left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.left-scroll{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:18px 20px}
+.left-scroll>section{padding:0 0 18px;margin:0 0 18px;border-bottom:1px solid var(--line)}
+.left-scroll>section:last-child{border-bottom:none;margin-bottom:0}
+.pinned{display:flex;flex-direction:column;gap:8px;padding:14px 20px 18px;border-top:1px solid var(--line)}
+.pinned .btn{width:100%;justify-content:space-between}
+.sess .track{font-size:16px;font-weight:600;line-height:1.35}
+.sess .car{font-size:13.5px;color:var(--muted)}
+
+/* welcome */
+.welcome{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}
+.welcome h1{margin:0;font-size:28px;font-weight:500;letter-spacing:-.01em}
+.welcome p{margin:0;max-width:560px;color:var(--muted);font-size:16px}
+
+/* lap analysis: left */
+.lap-time{font:500 30px/1.15 var(--mono);margin:4px 0 12px}
+.kv{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono)}
+.kv td{padding:3px 0;text-align:right;white-space:nowrap}
+.kv td:first-child{text-align:left;font:13.5px/1.5 "IBM Plex Sans",system-ui,sans-serif;color:var(--muted)}
+.kv th{text-align:right;padding:0 0 4px;font:600 11px var(--mono);color:var(--muted)}
+.kv .win{font-weight:600}
+.stint-row{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:38px;padding:6px 8px;border:none;
+background:none;text-align:left;font:14px var(--mono);transition:background 150ms ease}
+.stint-row:hover{background:var(--surface)}
+.stint-row .ico{transition:transform 200ms var(--ease);margin-right:6px}
+.stint-row[aria-expanded="true"] .ico{transform:rotate(90deg)}
+.laps{overflow:hidden;transition:height 200ms var(--ease)}
+.lap-row{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:6px;width:100%;min-height:32px;padding:3px 8px 3px 28px;
+border:none;background:none;text-align:left;font:13.5px var(--mono);color:var(--text);transition:background 150ms ease}
+.lap-row:hover{background:var(--surface)}
+.lap-row.dropped{color:var(--muted)}
+.lap-row .mark{width:12px;height:3px}
+
+/* lap analysis: centre */
+.centre{display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px 24px 16px}
+.map-box{position:relative;flex:1;min-height:200px}
+#map{display:block;width:100%;height:100%}
+#map text{font:11px var(--mono);fill:var(--muted)}
+.map-tools{position:absolute;right:0;top:0}
+.readout{display:flex;gap:22px;font:14px/1.5 var(--mono);min-height:24px;padding:6px 0 2px;white-space:nowrap;overflow:hidden}
+.readout .k{color:var(--muted);margin-right:6px;font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:12.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;margin:0;background:none;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:20px;margin-top:-9px;background:var(--text);border:none;transition:transform 150ms ease}
+input[type=range]:active::-webkit-slider-thumb{transform:scaleX(1.4)}
+input[type=range]::-moz-range-track{height:2px;background:var(--line)}
+input[type=range]::-moz-range-thumb{width:12px;height:20px;background:var(--text);border:none}
+.traces svg{display:block;width:100%}
+.traces text{font:10.5px var(--mono);fill:var(--muted)}
+.grid line{stroke:var(--line);stroke-width:1}
+
+/* setup */
+.setup-centre{display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px 24px 16px;gap:10px}
+.table-scroll{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;border-top:1px solid var(--line)}
+table.big{border-collapse:separate;border-spacing:0;font:13.5px/1.4 var(--mono)}
+table.big th,table.big td{padding:5px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.big thead th{position:sticky;top:0;z-index:2;background:var(--bg);font:600 11.5px var(--mono);color:var(--muted)}
+table.big tbody th{position:sticky;left:0;z-index:1;background:var(--bg);text-align:left;font:13.5px "IBM Plex Sans",system-ui,sans-serif;color:var(--text);min-width:220px}
+table.big thead th:first-child{left:0;z-index:3}
+table.big th .u{color:var(--muted);font:11.5px var(--mono);margin-left:6px}
+table.big tr.grp th{padding-top:16px;color:var(--muted);font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase}
+table.big td.chg{font-weight:600}
+table.big td.dropped,table.big th.dropped{color:var(--muted)}
+table.big tbody tr:hover td,table.big tbody tr:hover th{background:var(--surface)}
+
+/* history */
+.hist{height:100%;overflow:auto;padding:18px 24px}
+table.list{width:100%;max-width:1100px;border-collapse:collapse;font:14px/1.5 var(--mono)}
+table.list th{text-align:left;padding:6px 12px;font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+table.list td{padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.list td:first-child,table.list td:nth-child(2){font-family:"IBM Plex Sans",system-ui,sans-serif;white-space:normal}
+table.list tbody tr{cursor:pointer;transition:background 150ms ease}
+table.list tbody tr:hover{background:var(--surface)}
+table.list tr.cur td{font-weight:600}
+
+/* ---------- setup pop-up ---------- */
+.modal-back{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);
+opacity:0;visibility:hidden;transition:opacity 200ms var(--ease),visibility 200ms}
+.modal-back.open{opacity:1;visibility:visible}
+.modal{width:min(720px,calc(100vw - 48px));max-height:calc(100vh - 80px);display:flex;flex-direction:column;background:var(--bg);
+border:1px solid var(--line);transform:scale(.97) translateY(6px);transition:transform 200ms var(--ease)}
+.modal-back.open .modal{transform:none}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
+.modal-file{font:600 15px/1.35 var(--mono);overflow-wrap:anywhere;margin-top:2px}
+.modal-body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:4px 20px 12px}
+.modal-foot{display:flex;align-items:center;gap:12px;padding:12px 20px 16px;border-top:1px solid var(--line)}
+.modal-foot .status{flex:1;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.modal-foot .status.error{color:var(--danger)}
+.change{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:2px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.change .name{font-size:15px}
+.change .delta{font:15px var(--mono);text-align:right}
+.change .vals{grid-column:1/-1;font:13px var(--mono);color:var(--muted)}
+.change .why{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.lock{width:34px;height:34px;padding:0;border:none;background:none;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;transition:color 150ms ease}
+.lock:hover,.lock[aria-pressed="true"]{color:var(--text)}
+.modal-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.expect{font:12.5px var(--mono);color:var(--muted);padding:10px 0;border-bottom:1px solid var(--line)}
+details.rate{padding:10px 0}
+details.rate>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;min-height:34px;color:var(--muted);font-size:14px}
+details.rate>summary::-webkit-details-marker{display:none}
+details.rate>summary .ico{transition:transform 200ms var(--ease)}
+details.rate[open]>summary .ico{transform:rotate(90deg)}
+.rate-grid{display:grid;grid-template-columns:100px auto;gap:6px 12px;align-items:center;padding:6px 0 0 22px;font-size:13px;color:var(--muted)}
+.rate-grid .seg .btn{padding:4px 10px;min-width:38px}
+.zones{display:grid;grid-template-columns:72px repeat(3,minmax(0,1fr));gap:8px 12px;align-items:start;font-size:12px}
+.zones .head{color:var(--muted);text-align:center}
+.zones .ends{grid-column:2/-1;display:flex;justify-content:space-between;color:var(--muted);font-size:11px}
+.zones .row{color:var(--muted);padding-top:2px}
+.slide{display:grid;grid-template-columns:1fr 14px;align-items:center;gap:2px 4px}
+.slide input{width:100%;accent-color:var(--text);margin:0}
+.slide.unset input{opacity:.35}
+.slide .val{grid-column:1;text-align:center;color:var(--text);line-height:1.2;min-height:2.4em}
+.slide.unset .val{color:var(--muted)}
+.slide .clear{grid-row:1;grid-column:2;border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0}
+.slide.unset .clear{visibility:hidden}
+#rating .btn{font-family:var(--mono)}
+.feel{display:flex;gap:10px}
+
+/* ---------- analysis sheet ---------- */
+.tip{position:fixed;z-index:200;pointer-events:none;background:var(--surface);border:1px solid var(--line);
+padding:6px 9px;font:12px/1.45 var(--mono);color:var(--muted);display:none;max-width:260px}
+.tip b{color:var(--text);font-weight:600}
+.sheet{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;
+opacity:0;visibility:hidden;transform:scale(.99);transition:opacity 200ms var(--ease),transform 200ms var(--ease),visibility 200ms}
+.sheet.open{opacity:1;visibility:visible;transform:none}
+.sheet .body{flex:1;min-height:0;display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;padding:20px 24px 0;overflow:hidden}
+.sheet-tabs{display:flex;flex-direction:column;gap:2px}
+.stab{min-height:36px;padding:8px 12px;border:none;background:none;font-size:14px;color:var(--muted);text-align:left;transition:color 150ms ease,background 150ms ease}
+.stab:hover{color:var(--text)}
+.stab.on{color:var(--text);background:var(--surface);font-weight:600}
+#view{min-height:0;min-width:0;overflow-y:auto;scrollbar-width:thin;padding-bottom:16px}
+.sheet .foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:10px 24px;border-top:1px solid var(--line)}
+.chart{margin:0 0 22px}
+.chart h3{margin:0 0 8px;font-size:14px;font-weight:600}
+.multi{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 22px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+svg.plot{display:block;width:100%;overflow:visible}
+svg.plot text{font:11px var(--mono);fill:var(--muted)}
+table.data{width:100%;border-collapse:collapse;font:12.5px/1.4 var(--mono)}
+table.data th{font:600 11px/1.3 "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;
+color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.data td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.data th:first-child,table.data td:first-child{text-align:left;white-space:normal}
+.table-wrap{overflow-x:auto}
+/* ---------- menu (§1) ---------- */
+.menu-wrap{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 5px);z-index:60;min-width:200px;padding:4px 0;background:var(--bg);border:1px solid var(--line);
+opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity 150ms var(--ease),transform 150ms var(--ease),visibility 150ms}
+.menu.open{opacity:1;visibility:visible;transform:none}
+.mitem{display:block;width:100%;min-height:36px;padding:8px 14px;border:none;background:none;text-align:left;font-size:14px;transition:background 150ms ease}
+.mitem:hover,.mitem:focus-visible{background:var(--surface)}
+
+/* ---------- driver, settings (§16, §17) ---------- */
+.page{height:100%;overflow-y:auto;scrollbar-width:thin;padding:18px 24px 32px}
+.page-inner{max-width:1000px}
+.page>.page-inner>section{padding:0 0 22px;margin:0 0 22px;border-bottom:1px solid var(--line)}
+.page>.page-inner>section:last-child{border-bottom:none}
+.page h2{margin:0 0 12px;font-size:17px;font-weight:600}
+.page h2 .mono{font-size:13.5px;font-weight:400;color:var(--muted);margin-left:8px}
+.page .mini{margin:14px 0 4px}
+table.facts{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono)}
+table.facts th{text-align:left;padding:6px 12px 6px 0;font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+table.facts td{padding:7px 12px 7px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+table.facts td.line{font-family:"IBM Plex Sans",system-ui,sans-serif;white-space:normal;width:50%}
+table.facts td:first-child{font-family:"IBM Plex Sans",system-ui,sans-serif}
+.srow{display:grid;grid-template-columns:200px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:46px;padding:6px 0;border-bottom:1px solid var(--line)}
+.srow>span:first-child{font-size:14px;color:var(--muted)}
+.srow .path{font:13px var(--mono);overflow-wrap:anywhere}
+.srow .acts{display:flex;align-items:center;gap:8px}
+.kbd{font:13px var(--mono);padding:1px 6px;border:1px solid var(--line)}
+@media(prefers-reduced-motion:reduce){*{transition:none !important}}
+</style></head><body>
+<div class="app">
+ <nav class="nav">
+  <div class="tabs" role="tablist">
+   <button type="button" class="tab" role="tab" data-screen="analysis" id="tab-analysis">Lap Analysis</button>
+   <button type="button" class="tab" role="tab" data-screen="setup" id="tab-setup">Setup</button>
+   <button type="button" class="tab" role="tab" data-screen="history" id="tab-history">History</button>
+  </div>
+  <div class="hist-mark" id="hist-mark" hidden><span id="hist-label"></span><button type="button" class="btn quiet" id="hist-back">Back to live</button></div>
+  <div class="hist-mark" id="menu-mark" hidden><span id="menu-label"></span><button type="button" class="btn quiet" id="menu-back">Back</button></div>
+  <div class="nav-right">
+   <span class="err" id="err"></span>
+   <button id="sheet-open" class="icon-btn" type="button" aria-label="Analysis" title="Analysis"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/><line x1="7" y1="16" x2="7" y2="11"/><line x1="12" y1="16" x2="12" y2="6"/><line x1="17" y1="16" x2="17" y2="9"/></svg></button>
+   <div class="menu-wrap">
+    <button id="menu-btn" class="icon-btn" type="button" aria-label="Menu" title="Menu" aria-haspopup="menu" aria-expanded="false"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+    <div class="menu" id="menu" role="menu">
+     <button type="button" class="mitem" role="menuitem" data-go="driver">Driver</button>
+     <button type="button" class="mitem" role="menuitem" data-go="settings">Settings</button>
+     <button type="button" class="mitem" role="menuitem" data-go="keys">Keyboard shortcuts</button>
+     <button type="button" class="mitem" role="menuitem" data-go="about">About</button>
+    </div>
+   </div>
+   <button id="theme-toggle" class="icon-btn theme-toggle" type="button" aria-label="Theme" title="Theme"></button>
+  </div>
+ </nav>
+ <main>
+  <section class="screen" id="screen-welcome" aria-label="Welcome">
+   <div class="welcome"><h1>Welcome back</h1><p id="fact"></p></div>
+  </section>
+
+  <section class="screen split" id="screen-analysis" aria-label="Lap Analysis">
+   <aside class="left">
+    <div class="left-scroll">
+     <section class="sess"><div class="track" data-f="track"></div><div class="car" data-f="car"></div></section>
+     <section id="lapbox"></section>
+     <section><div class="mini" style="margin-bottom:6px">Stints</div><div id="stints"></div></section>
+    </div>
+    <div class="pinned">
+     <button type="button" class="btn" id="compare" aria-pressed="false">Compare</button>
+     <button type="button" class="btn next-setup">Next setup</button>
+    </div>
+   </aside>
+   <div class="centre">
+    <div class="map-box" id="map-box"><svg id="map" role="img" aria-label="Track map"></svg>
+     <div class="map-tools"><button type="button" class="btn quiet" id="zoom-reset" hidden>Whole lap</button></div></div>
+    <div class="readout" id="readout"></div>
+    <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Position on lap">
+    <div class="traces" id="traces"></div>
+   </div>
+  </section>
+
+  <section class="screen split" id="screen-setup" aria-label="Setup">
+   <aside class="left">
+    <div class="left-scroll">
+     <section class="sess"><div class="track" data-f="track"></div><div class="car" data-f="car"></div></section>
+     <section><div class="mini">Base</div><div class="mono" id="base-stint" style="margin-top:4px"></div></section>
+    </div>
+    <div class="pinned"><button type="button" class="btn next-setup">Next setup</button></div>
+   </aside>
+   <div class="setup-centre">
+    <div class="seg" id="table-by" role="group" aria-label="Columns"></div>
+    <div class="table-scroll" id="table-scroll"></div>
+   </div>
+  </section>
+
+  <section class="screen" id="screen-history" aria-label="History">
+   <div class="hist" id="history"></div>
+  </section>
+
+  <section class="screen" id="screen-driver" aria-label="Driver">
+   <div class="page"><div class="page-inner" id="driver"></div></div>
+  </section>
+
+  <section class="screen" id="screen-settings" aria-label="Settings">
+   <div class="page"><div class="page-inner" id="settings"></div></div>
+  </section>
+ </main>
+</div>
+
+<div class="modal-back" id="modal">
+ <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-file">
+  <div class="modal-head">
+   <div><div class="mini">Next setup</div><div class="modal-file" id="modal-file"></div></div>
+   <button type="button" class="icon-btn" id="modal-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="modal-body">
+   <div id="changes"></div>
+   <div class="expect" id="expect" hidden></div>
+   <div class="modal-row"><span class="mini">Change size</span><div class="seg" id="change-size" role="group" aria-label="Change size"></div></div>
+   <div class="modal-row" id="car-feel-row" hidden><span class="mini">Car feel</span>
+    <div class="feel"><div class="seg" id="feel-front" role="group" aria-label="Front feel"></div><div class="seg" id="feel-rear" role="group" aria-label="Rear feel"></div></div></div>
+   <details class="rate" id="rate-details">
+    <summary><svg class="ico" width="14" height="14" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg><span id="rate-title">Rate</span></summary>
+    <div class="rate-grid">
+     <span>Overall</span><div class="seg" id="rating"></div>
+     <span>Balance</span><div class="zones" id="zones"></div>
+     <span id="brake-feel-label" hidden>Brakes</span><div class="seg" id="brake-feel" hidden></div>
+    </div>
+   </details>
+  </div>
+  <div class="modal-foot"><span class="status" id="status" role="status"></span><button id="write" class="btn primary" type="button" disabled>Write setup</button></div>
+ </div>
+</div>
+
+<div class="modal-back pop" id="keys">
+ <div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="width:min(460px,calc(100vw - 48px))">
+  <div class="modal-head"><div class="mini">Keyboard shortcuts</div><button type="button" class="icon-btn pop-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+  <div class="modal-body" id="keys-body"></div>
+ </div>
+</div>
+
+<div class="modal-back pop" id="about">
+ <div class="modal" role="dialog" aria-modal="true" aria-label="About" style="width:min(520px,calc(100vw - 48px))">
+  <div class="modal-head"><div class="mini">About</div><button type="button" class="icon-btn pop-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+  <div class="modal-body" id="about-body"></div>
+ </div>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Analysis">
+ <div class="body">
+  <div class="sheet-tabs" id="sheet-tabs" role="tablist"></div>
+  <div id="view"></div>
+ </div>
+ <div class="foot">
+  <button type="button" class="btn quiet" id="table-toggle">Table</button>
+  <button type="button" class="btn" id="sheet-close">Close</button>
+ </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const MOON = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const SUN = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></svg>';
+const LOCK = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const UNLOCK = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+const CHEV = '<svg class="ico" width="12" height="12" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>';
+const WHEELS = ["fl", "fr", "rl", "rr"];
+// Display units (Settings, §17). Data arrives in km/h, °C and kPa; LMU's own setting
+// labels are shown as the garage shows them.
+const UNIT = {speed: "km/h", temp: "°C", pressure: "kPa"};
+function cv(q, v) {
+ if (v == null || !isFinite(v)) return v;
+ if (q === "speed") return UNIT.speed === "mph" ? v * 0.621371 : v;
+ if (q === "temp") return UNIT.temp === "°F" ? v * 9 / 5 + 32 : v;
+ if (q === "dtemp") return UNIT.temp === "°F" ? v * 9 / 5 : v;
+ if (q === "pressure") return UNIT.pressure === "psi" ? v * 0.145038 : v;
+ return v;
+}
+const uname = q => ({speed: UNIT.speed, temp: UNIT.temp, dtemp: UNIT.temp, pressure: UNIT.pressure})[q] || "";
+const qdec = (q, d) => q === "pressure" && UNIT.pressure === "psi" ? d + 1 : d;
+const S = {
+ screen: "welcome", state: null, live: {state: "off"}, history: false,
+ session: null,      // the session on screen: {id, context, car_name, layout, ...}
+ stints: [], sel: null, expanded: new Set(),
+ a: null, b: null, compare: false, lapA: null, lapB: null, map: null, mapCtx: null,
+ zoom: null, pos: 0, target: 0, proposal: null, written: new Set(), tableBy: "stint", table: null,
+ tab: "pareto", tableView: false,
+};
+
+// ---------- helpers ----------
+const fmtLap = t => t == null ? "–" : `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, "0")}`;
+const fx = (v, d = 2) => v == null || !isFinite(v) ? "–" : Number(v).toFixed(d);
+const signed = (v, d = 0) => v == null || !isFinite(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const fmtDate = s => {
+ const m = String(s || "").match(/(\d{4})-(\d\d)-(\d\d)T(\d\d)_(\d\d)/);
+ return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : String(s || "");
+};
+function el(tag, attrs = {}, text) {
+ const e = document.createElement(tag);
+ for (const [k, v] of Object.entries(attrs)) {
+  if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v);
+ }
+ if (text != null) e.textContent = text;
+ return e;
+}
+function sv(tag, attrs = {}, text) {
+ const e = document.createElementNS(SVGNS, tag);
+ for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+ if (text != null) e.textContent = text;
+ return e;
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+async function api(url, body) {
+ const opt = body === undefined ? {cache: "no-store"} :
+  {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+ const r = await fetch(url, opt);
+ const data = await r.json().catch(() => ({}));
+ if (!r.ok) throw new Error(data.error || r.statusText);
+ return data;
+}
+const showError = msg => { $("err").textContent = msg || ""; $("err").title = msg || ""; };
+
+// ---------- theme ----------
+const LIGHT = matchMedia("(prefers-color-scheme: light)");
+function themePref() { try { return localStorage.getItem("autosetup.theme") || "system"; } catch (e) { return "system"; } }
+function setThemePref(p) {
+ try { if (p === "system") localStorage.removeItem("autosetup.theme"); else localStorage.setItem("autosetup.theme", p); } catch (e) {}
+ applyTheme(p === "system" ? (LIGHT.matches ? "light" : "dark") : p);
+}
+function applyTheme(t) {
+ document.documentElement.dataset.theme = t;
+ $("theme-toggle").innerHTML = t === "light" ? SUN : MOON;
+ drawAll();
+ if (S.screen === "setup") renderTable();
+ if (S.screen === "settings") renderSettings();
+ if ($("sheet").classList.contains("open")) renderView();
+}
+LIGHT.addEventListener("change", () => { if (themePref() === "system") setThemePref("system"); });
+$("theme-toggle").onclick = () => setThemePref(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+
+// ---------- screens ----------
+const MENU_SCREENS = {driver: "Driver", settings: "Settings"};
+function show(screen) {
+ if (MENU_SCREENS[screen] && !MENU_SCREENS[S.screen]) S.prev = S.screen;
+ S.screen = screen;
+ for (const s of ["welcome", "analysis", "setup", "history", "driver", "settings"]) $("screen-" + s).classList.toggle("on", s === screen);
+ for (const b of document.querySelectorAll(".tab")) { const on = b.dataset.screen === screen; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); }
+ renderNav();
+ if (screen === "analysis") requestAnimationFrame(drawAll);
+ if (screen === "setup") loadTable();
+ if (screen === "history") loadHistory();
+ if (screen === "driver") loadDriver();
+ if (screen === "settings") loadSettings();
+}
+for (const b of document.querySelectorAll(".tab")) b.onclick = () => { if (!b.disabled) show(b.dataset.screen); };
+function renderNav() {
+ const has = !!S.session, menu = MENU_SCREENS[S.screen];
+ $("tab-analysis").disabled = !has;
+ $("tab-setup").disabled = !has;
+ $("hist-mark").hidden = !S.history || !!menu;
+ $("menu-mark").hidden = !menu;
+ if (menu) $("menu-label").textContent = menu;
+ if (S.history && S.session) $("hist-label").textContent = `History: ${S.session.car_name} · ${S.session.layout}`;
+}
+function renderSession() {
+ const s = S.session, o = S.live;
+ const track = s ? s.layout : (o.state === "live" ? o.track || "" : "");
+ const car = s ? s.car_name : (o.state === "live" ? o.vehicle || "" : "");
+ for (const e of document.querySelectorAll('[data-f="track"]')) e.textContent = track;
+ for (const e of document.querySelectorAll('[data-f="car"]')) e.textContent = car;
+}
+
+// ---------- sessions: live, history ----------
+async function openSession(id, history) {
+ const sessions = (await api("/api/sessions")).sessions;
+ S.session = sessions.find(s => s.id === id) || null;
+ S.history = history && !!S.session;
+ S.a = S.b = null; S.compare = false; S.proposal = null; S.table = null; S.expanded = new Set(); S.zoom = null;
+ renderNav(); renderSession();
+ await loadStints(false);
+}
+// Reloads that arrive while one is running are merged into a single follow-up.
+let stintsRun = null, stintsQueued = null;
+function loadStints(keep = true) {
+ if (stintsRun) { stintsQueued = stintsQueued === null ? keep : stintsQueued && keep; return stintsRun; }
+ stintsRun = (async () => {
+  try { await loadStintsNow(keep); }
+  finally {
+   stintsRun = null;
+   if (stintsQueued !== null) { const k = stintsQueued; stintsQueued = null; loadStints(k); }
+  }
+ })();
+ return stintsRun;
+}
+async function loadStintsNow(keep) {
+ if (!S.session) { S.stints = []; renderLeft(); drawAll(); return; }
+ const before = S.stints.length;
+ S.stints = (await api(`/api/stints?session=${S.session.id}`)).stints;
+ if (!keep || S.stints.length !== before) {
+  // New outing (or a fresh session): show the newest stint's best clean lap.
+  if (!keep || !S.compare) { S.a = null; }
+ }
+ await loadMap();
+ pickDefaults();
+ renderLeft();
+ await loadLaps();
+ loadProposal();
+ if (S.screen === "setup") loadTable(true);
+}
+async function pollLive() {
+ try {
+  const o = await api("/api/live");
+  const was = S.live;
+  S.live = o;
+  if (!S.history && o.state === "live") {
+   if (o.session && (!S.session || S.session.id !== o.session)) {
+    await openSession(o.session, false);
+    if (S.screen === "welcome") show("analysis");
+   } else if (!o.session && S.screen === "welcome") {
+    renderSession(); show("analysis");  // first outing of this car + track not imported yet
+   }
+  }
+  if (was.state !== o.state) renderSession();
+ } catch (e) { /* the health check handles a down server */ }
+ setTimeout(pollLive, 3000);
+}
+$("hist-back").onclick = async () => {
+ S.history = false;
+ const o = S.live;
+ if (o.state === "live" && o.session) { await openSession(o.session, false); show("analysis"); }
+ else { S.session = null; S.stints = []; renderNav(); renderSession(); show("welcome"); loadWelcome(); }
+};
+async function loadWelcome() {
+ try { $("fact").textContent = (await api("/api/welcome")).fact || ""; } catch (e) {}
+}
+async function loadHistory() {
+ const box = $("history");
+ let sessions = [];
+ try { sessions = (await api("/api/sessions")).sessions; } catch (e) { showError(e.message); }
+ if (!sessions.length) { box.replaceChildren(el("div", {class: "empty"}, "No sessions yet")); return; }
+ const t = el("table", {class: "list"});
+ const head = el("tr");
+ for (const h of ["Car", "Track", "Date", "Stints", "Laps", "Best"]) head.append(el("th", {}, h));
+ const thead = el("thead"); thead.append(head);
+ const body = el("tbody");
+ for (const s of sessions) {
+  const tr = el("tr", {tabindex: 0, class: S.session && S.session.id === s.id ? "cur" : ""});
+  for (const v of [s.car_name, s.layout, fmtDate(s.recorded_at), String(s.stints), String(s.laps), fmtLap(s.best)]) tr.append(el("td", {}, v));
+  const open = async () => { await openSession(s.id, true); show("analysis"); };
+  tr.onclick = open;
+  tr.onkeydown = e => { if (e.key === "Enter") open(); };
+  body.append(tr);
+ }
+ t.append(thead, body);
+ box.replaceChildren(t);
+}
+async function loadState() {
+ S.state = await api("/api/state");
+ renderChangeSize();
+ showError(S.state.watcher.last_error);
+ return S.state.watcher;
+}
+let importStamp = null, refreshing = false;
+async function refresh() {
+ // One at a time: while the server is busy, refreshes would otherwise pile up and all
+ // reload the stints together when it answers.
+ if (refreshing) return;
+ refreshing = true;
+ try {
+  const w = await loadState();
+  const stamp = `${w.imported}|${w.last_import}`;
+  const imported = importStamp !== null && stamp !== importStamp;
+  importStamp = stamp;
+  if (imported && S.session) {
+   if (!S.history && S.live.session && S.live.session !== S.session.id) await openSession(S.live.session, false);
+   else await loadStints(true);
+  }
+ } catch (e) { /* server down: the health check reloads */ }
+ finally { refreshing = false; }
+}
+
+// ---------- stints and laps (left) ----------
+const stintNo = st => S.stints.indexOf(st) + 1;
+const stintById = id => S.stints.find(s => s.id === id) || null;
+const racingLaps = st => st.laps.filter(l => l.complete && !l.in_pits);
+const lapKey = (stint, seq) => `${stint}:${seq}`;
+const parseKey = k => { const [a, b] = String(k).split(":").map(Number); return {stint: a, seq: b}; };
+function bestLap(st) {
+ const laps = racingLaps(st), clean = laps.filter(l => l.clean), pool = clean.length ? clean : laps;
+ return pool.length ? pool.reduce((a, l) => (l.time < a.time ? l : a)) : null;
+}
+const baseStint = () => [...S.stints].reverse().find(s => (s.summary.racing_laps || 0) >= 2) || S.stints[S.stints.length - 1] || null;
+function keyOk(k) { return k && S.stints.some(s => racingLaps(s).some(l => lapKey(s.id, l.seq) === k)); }
+function pickDefaults() {
+ if (!keyOk(S.a)) {
+  const st = [...S.stints].reverse().find(s => bestLap(s)) || null;
+  const l = st && bestLap(st);
+  S.a = l ? lapKey(st.id, l.seq) : null;
+ }
+ if (S.a) S.expanded.add(parseKey(S.a).stint);
+ if (S.compare && (!keyOk(S.b) || S.b === S.a)) S.b = defaultB();
+ S.sel = S.a ? parseKey(S.a).stint : null;
+}
+function defaultB() {
+ // The best lap of the latest earlier stint on a different setup; else the best other lap.
+ const st = stintById(parseKey(S.a).stint);
+ const idx = S.stints.indexOf(st);
+ let changed = st.changes.length > 0;
+ for (let i = idx - 1; i >= 0; i--) {
+  if (changed) { const l = bestLap(S.stints[i]); if (l) return lapKey(S.stints[i].id, l.seq); }
+  changed = changed || S.stints[i].changes.length > 0;
+ }
+ let best = null;
+ for (const s of S.stints) for (const l of racingLaps(s)) {
+  const k = lapKey(s.id, l.seq);
+  if (k !== S.a && l.clean && (!best || l.time < best.time)) best = {k, time: l.time};
+ }
+ return best ? best.k : null;
+}
+function renderLeft() {
+ renderLapBox();
+ const box = $("stints");
+ if (!S.stints.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
+ box.replaceChildren(...[...S.stints].reverse().map(st => {
+  const wrap = el("div");
+  const laps = racingLaps(st), best = bestLap(st), open = S.expanded.has(st.id);
+  const row = el("button", {type: "button", class: "stint-row", "aria-expanded": open});
+  const left = el("span"); left.innerHTML = CHEV; left.append(`Stint ${stintNo(st)}`);
+  row.append(left, el("span", {class: "muted"}, `${fmtLap(best && best.time)} · ${laps.length}`));
+  const list = el("div", {class: "laps"});
+  list.hidden = !open;
+  for (const l of laps) {
+   const k = lapKey(st.id, l.seq);
+   const b = el("button", {type: "button", class: "lap-row" + (l.clean ? "" : " dropped")});
+   const mark = el("span", {class: "mark"});
+   if (k === S.a) mark.style.background = css("--s1");
+   else if (S.compare && k === S.b) mark.style.background = css("--s2");
+   b.append(mark, el("span", {}, `Lap ${l.lap}`), el("span", {}, fmtLap(l.time)));
+   b.onclick = () => { if (S.compare) S.b = k; else { S.a = k; S.sel = st.id; } renderLeft(); loadLaps(); };
+   list.append(b);
+  }
+  row.onclick = () => { if (S.expanded.has(st.id)) S.expanded.delete(st.id); else S.expanded.add(st.id); renderLeft(); };
+  wrap.append(row, list);
+  return wrap;
+ }));
+}
+const LAP_ROWS = [
+ ["S1", l => l.trace.sectors[0], 3], ["S2", l => l.trace.sectors[1], 3], ["S3", l => l.trace.sectors[2], 3],
+ ["Top speed", l => cv("speed", l.metrics.speed_max ?? Math.max(...l.trace.speed.filter(v => v != null))), 1],
+ ["Min speed", l => cv("speed", l.metrics.speed_min ?? Math.min(...l.trace.speed.filter(v => v != null))), 1],
+ ["Full throttle %", l => l.metrics.full_throttle_frac != null ? l.metrics.full_throttle_frac * 100 : null, 0],
+ ["TC s", l => l.metrics.tc_s, 1],
+];
+function renderLapBox() {
+ const box = $("lapbox"), A = S.lapA, B = S.compare ? S.lapB : null;
+ box.replaceChildren();
+ if (!A) return;
+ const name = l => `Stint ${stintNo(stintById(l.stint)) || "?"} · Lap ${l.lap}`;
+ box.append(el("div", {class: "mini"}, name(A)), el("div", {class: "lap-time"}, fmtLap(A.time)));
+ const t = el("table", {class: "kv"});
+ if (B) {
+  const h = el("tr");
+  for (const x of ["", "A", "B", "Δ"]) h.append(el("th", {}, x));
+  t.append(h);
+  const r = el("tr");
+  r.append(el("td", {}, "Lap"), el("td", {class: A.time < B.time ? "win" : ""}, fmtLap(A.time)), el("td", {class: B.time < A.time ? "win" : ""}, fmtLap(B.time)), el("td", {}, signed(A.time - B.time, 3)));
+  t.append(r);
+ }
+ for (const [label, f, dec] of LAP_ROWS) {
+  const va = f(A), vb = B ? f(B) : null;
+  if (va == null && vb == null) continue;
+  const r = el("tr");
+  r.append(el("td", {}, label), el("td", {}, fx(va, dec)));
+  if (B) r.append(el("td", {}, fx(vb, dec)), el("td", {}, va != null && vb != null ? signed(va - vb, dec) : "–"));
+  t.append(r);
+ }
+ box.append(t);
+}
+$("compare").onclick = () => {
+ S.compare = !S.compare;
+ $("compare").classList.toggle("on", S.compare);
+ $("compare").setAttribute("aria-pressed", S.compare);
+ if (S.compare && (!keyOk(S.b) || S.b === S.a)) S.b = S.a ? defaultB() : null;
+ if (S.compare && S.b) S.expanded.add(parseKey(S.b).stint);
+ renderLeft(); loadLaps();
+};
+
+// ---------- laps, map, slider, traces ----------
+async function loadMap() {
+ if (!S.session) { S.map = null; return; }
+ if (S.mapCtx === S.session.context && S.map) return;
+ try { const r = await api("/api/trackmap?context=" + encodeURIComponent(S.session.context)); S.map = r.map; S.mapCtx = S.session.context; }
+ catch (e) { S.map = null; }
+}
+const lapCache = new Map();
+async function getLap(k) {
+ if (!k) return null;
+ if (lapCache.has(k)) return lapCache.get(k);
+ const {stint, seq} = parseKey(k);
+ try { const l = await api(`/api/lap?stint=${stint}&seq=${seq}`); lapCache.set(k, l); return l; } catch (e) { return null; }
+}
+async function loadLaps() {
+ const [a, b] = await Promise.all([getLap(S.a), getLap(S.compare ? S.b : null)]);
+ S.lapA = a; S.lapB = b;
+ renderLapBox();
+ drawAll();
+}
+function lapLength() {
+ return S.map ? S.map.length : Math.max(...[S.lapA, S.lapB].filter(Boolean).map(l => l.trace.distance.at(-1)), 1);
+}
+const visibleRange = () => S.zoom || [0, lapLength()];
+function valueAt(lap, key, d) {
+ if (!lap) return null;
+ const tr = lap.trace, i = Math.round(d / tr.step_m);
+ return i >= 0 && i < tr.distance.length ? tr[key][i] : null;
+}
+function drawAll() {
+ if (S.screen !== "analysis") return;
+ drawMap(); drawTraces(); syncSlider(); drawMarkers(); drawReadout();
+ $("zoom-reset").hidden = !S.zoom;
+}
+$("zoom-reset").onclick = () => { S.zoom = null; drawAll(); };
+
+let mapP = null;  // world -> screen for the current map drawing
+function drawMap() {
+ const svg = $("map");
+ svg.replaceChildren();
+ mapP = null;
+ const box = $("map-box").getBoundingClientRect();
+ const W = Math.max(200, box.width), H = Math.max(200, box.height);
+ svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+ if (!S.map) return;
+ const [d0, d1] = visibleRange(), pts = S.map.points;
+ const laps = [S.lapB, S.lapA].filter(l => l && l.trace.x && l.trace.x[0] != null);
+ let xs = [], ys = [];
+ if (S.zoom) for (const l of laps) l.trace.distance.forEach((d, i) => { if (d >= d0 && d <= d1 && l.trace.x[i] != null) { xs.push(l.trace.x[i]); ys.push(-l.trace.y[i]); } });
+ if (!xs.length) { xs = pts.map(p => p[1]); ys = pts.map(p => -p[2]); }
+ const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), pad = 24;
+ const k = Math.min((W - 2 * pad) / ((x1 - x0) || 1), (H - 2 * pad) / ((y1 - y0) || 1));
+ const ox = (W - (x1 - x0) * k) / 2, oy = (H - (y1 - y0) * k) / 2;
+ const P = (x, y) => [ox + (x - x0) * k, oy + (-y - y0) * k];
+ mapP = P;
+ const path = list => list.map((p, i) => (i ? "L" : "M") + P(p[0], p[1]).map(v => v.toFixed(1)).join(",")).join("");
+ const defs = sv("defs"), clip = sv("clipPath", {id: "map-clip"});
+ clip.append(sv("rect", {x: 0, y: 0, width: W, height: H})); defs.append(clip); svg.append(defs);
+ const g = sv("g", {"clip-path": "url(#map-clip)"});
+ svg.append(g);
+ const trackW = Math.max(7, Math.min(60, 12 * k));
+ g.append(sv("path", {d: path(pts.map(p => [p[1], p[2]])) + "Z", fill: "none", stroke: css("--line"), "stroke-width": trackW, "stroke-linejoin": "round"}));
+ for (const l of laps) {
+  const seg = [];
+  l.trace.distance.forEach((d, i) => { if (d >= d0 - 20 && d <= d1 + 20 && l.trace.x[i] != null) seg.push([l.trace.x[i], l.trace.y[i]]); });
+  if (seg.length > 1) g.append(sv("path", {d: path(seg), fill: "none", stroke: l === S.lapA ? css("--s1") : css("--s2"), "stroke-width": 2, "stroke-linejoin": "round"}));
+ }
+ const marks = [[0, "S/F"], ...(S.map.sectors || []).map((d, i) => [d, "S" + (i + 2)])];
+ const at = d => { const i = Math.max(0, Math.min(pts.length - 1, Math.round(d / (S.map.step_m || 10)))); return [pts[i][1], pts[i][2]]; };
+ for (const [d, label] of marks) {
+  if (d < d0 - 50 || d > d1 + 50) continue;
+  const [ax, ay] = P(...at(d)), [bx, by] = P(...at(Math.min(d + 20, S.map.length - 1)));
+  const nx = -(by - ay), ny = bx - ax, nl = Math.hypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl, r = trackW / 2 + 6;
+  g.append(sv("line", {x1: ax - ux * r, y1: ay - uy * r, x2: ax + ux * r, y2: ay + uy * r, stroke: css("--muted"), "stroke-width": label === "S/F" ? 2.5 : 1.5}));
+  g.append(sv("text", {x: ax + ux * (r + 12), y: ay + uy * (r + 12) + 4, "text-anchor": "middle"}, label));
+ }
+ g.append(sv("g", {id: "markers"}));
+}
+function drawMarkers() {
+ const g = $("markers");
+ if (!g || !mapP) return;
+ g.replaceChildren();
+ for (const l of [S.lapB, S.lapA]) {
+  const x = valueAt(l, "x", S.pos), y = valueAt(l, "y", S.pos);
+  if (x == null || y == null) continue;
+  const [cx, cy] = mapP(x, y);
+  g.append(sv("circle", {cx, cy, r: 6, fill: l === S.lapA ? css("--s1") : css("--s2"), stroke: css("--bg"), "stroke-width": 2}));
+ }
+}
+function drawReadout() {
+ const r = $("readout");
+ r.replaceChildren();
+ if (!S.lapA) return;
+ const d = S.pos, A = S.lapA, B = S.compare ? S.lapB : null;
+ const item = (k, v) => { const s = el("span"); s.append(el("span", {class: "k"}, k), document.createTextNode(v)); r.append(s); };
+ const both = (key, scale, dec, unit) => {
+  const a = valueAt(A, key, d), b = B ? valueAt(B, key, d) : null;
+  const f = v => v == null ? "–" : fx(v * scale, dec);
+  return B ? `${f(a)} / ${f(b)}${unit}` : `${f(a)}${unit}`;
+ };
+ item("", `${fx(d / 1000, 2)} km`);
+ item("Speed", both("speed", cv("speed", 1), 0, " " + UNIT.speed));
+ item("Gear", both("gear", 1, 0, ""));
+ item("Throttle", both("throttle", 100, 0, " %"));
+ item("Brake", both("brake", 100, 0, " %"));
+ item("Steering", both("steer", 1, 0, "°"));
+ if (B) { const ta = valueAt(A, "time", d), tb = valueAt(B, "time", d); item("Δ", ta != null && tb != null ? `${signed(ta - tb, 3)} s` : "–"); }
+}
+// The slider spans the visible part of the lap; the marker eases towards it.
+function syncSlider() {
+ const [d0, d1] = visibleRange();
+ S.target = Math.min(Math.max(S.target, d0), d1);
+ S.pos = Math.min(Math.max(S.pos, d0), d1);
+ $("slider").value = Math.round((S.target - d0) / ((d1 - d0) || 1) * 1000);
+}
+let raf = 0;
+const FOLLOW = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 0.3;  // share of the gap closed per frame
+function moveTo(d) {
+ S.target = d;
+ if (!raf) { raf = requestAnimationFrame(step); setTimeout(() => { if (raf) step(); }, 50); }  // frames can be paused
+}
+function step() {
+ if (raf) cancelAnimationFrame(raf);
+ raf = 0;
+ const diff = S.target - S.pos;
+ S.pos = Math.abs(diff) < 1 ? S.target : S.pos + diff * FOLLOW;
+ drawMarkers(); drawReadout(); drawCursor();
+ if (S.pos !== S.target) raf = requestAnimationFrame(step);
+}
+$("slider").oninput = e => { const [d0, d1] = visibleRange(); moveTo(d0 + e.target.value / 1000 * (d1 - d0)); };
+
+const TRACES = [
+ {key: "delta", title: "Δ", h: 54, dec: 2},
+ {key: "speed", title: "Speed", h: 64, dec: 0},
+ {key: "throttle", title: "Throttle", h: 34, scale: 100, fixed: [0, 100]},
+ {key: "brake", title: "Brake", h: 34, scale: 100, fixed: [0, 100]},
+ {key: "steer", title: "Steering", h: 44},
+];
+let traceGeom = [];
+function series(lap, key, scale = 1) {
+ if (!lap) return null;
+ if (key === "delta") {
+  if (!S.lapA || !S.lapB) return null;
+  const a = S.lapA.trace.time, b = S.lapB.trace.time, n = Math.min(a.length, b.length);
+  return Array.from({length: n}, (_, i) => a[i] == null || b[i] == null ? null : a[i] - b[i]);
+ }
+ const v = lap.trace[key];
+ return v && v.some(x => x != null) ? v.map(x => (x == null ? null : x * scale)) : null;
+}
+function drawTraces() {
+ const box = $("traces");
+ box.replaceChildren();
+ traceGeom = [];
+ const A = S.lapA, B = S.compare ? S.lapB : null;
+ if (!A) return;
+ const [d0, d1] = visibleRange();
+ const W = Math.max(300, box.clientWidth), ml = 64, mr = 4;
+ const sx = d => ml + (d - d0) / ((d1 - d0) || 1) * (W - ml - mr);
+ const colors = {A: css("--s1"), B: css("--s2")};
+ for (const tr of TRACES) {
+  if (tr.key === "delta" && !B) continue;
+  const scale = tr.key === "speed" ? cv("speed", 1) : tr.scale || 1;
+  const data = tr.key === "delta" ? [["A", series(A, "delta")]] : [["B", series(B, tr.key, scale)], ["A", series(A, tr.key, scale)]];
+  const present = data.filter(d => d[1]);
+  if (!present.length) continue;
+  const step = A.trace.step_m, i0 = Math.max(0, Math.floor(d0 / step)), i1 = Math.ceil(d1 / step);
+  let lo = Infinity, hi = -Infinity;
+  for (const [, v] of present) for (let i = i0; i <= Math.min(i1, v.length - 1); i++) if (v[i] != null) { lo = Math.min(lo, v[i]); hi = Math.max(hi, v[i]); }
+  if (!isFinite(lo)) continue;
+  if (tr.fixed) [lo, hi] = tr.fixed;
+  if (tr.key === "delta") { const m = Math.max(Math.abs(lo), Math.abs(hi), 0.05); lo = -m; hi = m; }
+  else if (!tr.fixed) { const p = (hi - lo || 1) * 0.08; lo -= p; hi += p; }
+  // Shorter traces in a short window: the map keeps most of the screen.
+  const H = Math.round(tr.h * Math.min(1, Math.max(0.6, innerHeight / 900))), sy = v => 2 + (1 - (v - lo) / ((hi - lo) || 1)) * (H - 4);
+  const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": tr.title});
+  svg.append(sv("text", {x: 0, y: H / 2 + 4}, tr.title));
+  svg.append(sv("line", {x1: ml, x2: W - mr, y1: H - 0.5, y2: H - 0.5, stroke: css("--line"), "stroke-width": 1}));
+  if (tr.key === "delta") svg.append(sv("line", {x1: ml, x2: W - mr, y1: sy(0), y2: sy(0), stroke: css("--line"), "stroke-width": 1}));
+  for (const [which, v] of present) {
+   let d = "", pen = false;
+   for (let i = i0; i <= Math.min(i1, v.length - 1); i++) {
+    if (v[i] == null) { pen = false; continue; }
+    d += (pen ? "L" : "M") + sx(i * step).toFixed(1) + "," + sy(v[i]).toFixed(1);
+    pen = true;
+   }
+   svg.append(sv("path", {d, fill: "none", stroke: colors[which], "stroke-width": 1.5, "stroke-linejoin": "round"}));
+  }
+  const cursor = sv("line", {x1: 0, x2: 0, y1: 0, y2: H, stroke: css("--text"), "stroke-width": 1});
+  const brush = sv("rect", {x: 0, y: 0, width: 0, height: H, fill: css("--muted"), "fill-opacity": 0.18, visibility: "hidden"});
+  const hit = sv("rect", {x: ml, y: 0, width: W - ml - mr, height: H, fill: "transparent", style: "cursor:crosshair"});
+  svg.append(brush, cursor, hit);
+  box.append(svg);
+  traceGeom.push({cursor, sx});
+  attachTraceEvents(hit, svg, brush, sx, W, ml, mr, d0, d1);
+ }
+ drawCursor();
+}
+function attachTraceEvents(hit, svg, brush, sx, W, ml, mr, d0, d1) {
+ const toD = e => {
+  const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width);
+  return d0 + (Math.max(ml, Math.min(W - mr, x)) - ml) / (W - ml - mr) * (d1 - d0);
+ };
+ let start = null;
+ hit.addEventListener("pointerdown", e => { start = toD(e); hit.setPointerCapture(e.pointerId); moveTo(start); syncSliderValue(start); });
+ hit.addEventListener("pointermove", e => {
+  if (start == null) return;
+  const d = toD(e);
+  moveTo(d); syncSliderValue(d);
+  const a = sx(Math.min(start, d)), b = sx(Math.max(start, d));
+  brush.setAttribute("x", a); brush.setAttribute("width", b - a); brush.setAttribute("visibility", "visible");
+ });
+ hit.addEventListener("pointerup", e => {
+  const d = toD(e);
+  brush.setAttribute("visibility", "hidden");
+  if (start != null && Math.abs(d - start) > 30) { S.zoom = [Math.min(start, d), Math.max(start, d)]; S.target = S.pos = S.zoom[0]; start = null; drawAll(); return; }
+  start = null;
+ });
+ hit.addEventListener("dblclick", () => { S.zoom = null; drawAll(); });
+}
+function syncSliderValue(d) { const [d0, d1] = visibleRange(); $("slider").value = Math.round((d - d0) / ((d1 - d0) || 1) * 1000); }
+function drawCursor() {
+ for (const g of traceGeom) { const x = g.sx(S.pos); g.cursor.setAttribute("x1", x); g.cursor.setAttribute("x2", x); }
+}
+let resizeTimer = 0;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawAll(); if ($("sheet").classList.contains("open")) renderView(); }, 120); });
+
+// ---------- setup table ----------
+function seg(boxId, values, labels, current, onPick) {
+ $(boxId).replaceChildren(...values.map((v, i) => {
+  const b = el("button", {type: "button", class: "btn" + (v === current ? " on" : ""), "aria-pressed": v === current}, labels[i]);
+  b.onclick = () => onPick(v === current ? null : v);
+  return b;
+ }));
+}
+async function loadTable(force = false) {
+ renderBase();
+ seg("table-by", ["stint", "lap"], ["Stints", "Laps"], S.tableBy, v => { if (v) { S.tableBy = v; loadTable(true); } });
+ if (!S.session) { $("table-scroll").replaceChildren(); return; }
+ if (!force && S.table && S.table.session === S.session.id && S.table.by === S.tableBy) { renderTable(); return; }
+ try { S.table = await api(`/api/table?session=${S.session.id}&by=${S.tableBy}`); } catch (e) { showError(e.message); return; }
+ renderTable();
+}
+function renderBase() {
+ const st = baseStint();
+ $("base-stint").textContent = st ? `Stint ${stintNo(st)}` : "–";
+}
+function renderTable() {
+ const box = $("table-scroll"), tb = S.table;
+ if (!tb || !tb.columns.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
+ const t = el("table", {class: "big"});
+ const head = el("tr");
+ head.append(el("th", {}, ""));
+ for (const c of tb.columns) head.append(el("th", {class: c.clean === false ? "dropped" : ""}, c.label));
+ const thead = el("thead"); thead.append(head);
+ const body = el("tbody");
+ for (const g of tb.groups) {
+  const gr = el("tr", {class: "grp"});
+  gr.append(el("th", {}, g.name));
+  for (let i = 0; i < tb.columns.length; i++) gr.append(el("td", {}, ""));
+  body.append(gr);
+  for (const r of g.rows) {
+   const tr = el("tr");
+   const th = el("th", {}, r.label), q = r.quantity;
+   if (r.unit) th.append(el("span", {class: "u"}, q ? uname(q) : r.unit));
+   tr.append(th);
+   r.values.forEach((raw, i) => {
+    const v = q ? cv(q, raw) : raw, prev = i ? r.values[i - 1] : raw;
+    const text = v == null ? "–" : (typeof v === "number" ? (r.unit === "s" && r.dec === 3 && v >= 60 ? fmtLap(v) : fx(v, qdec(q, r.dec))) : v);
+    const changed = g.name === "Setup" && i > 0 && raw !== prev;
+    tr.append(el("td", {class: (changed ? "chg" : "") + (tb.columns[i].clean === false ? " dropped" : "")}, text));
+   });
+   body.append(tr);
+  }
+ }
+ t.append(thead, body);
+ box.replaceChildren(t);
+}
+
+// ---------- next setup (pop-up) ----------
+let proposalTimer = null, proposalBusy = false, proposalAgain = false, ratingSeq = 0;
+function scheduleProposal() {
+ clearTimeout(proposalTimer);
+ proposalTimer = setTimeout(loadProposal, 400);
+}
+async function loadProposal() {
+ clearTimeout(proposalTimer);
+ // One request at a time; asks while it runs become one follow-up with the latest state.
+ if (proposalBusy) { proposalAgain = true; return; }
+ const st = baseStint();
+ if (!st) { S.proposal = null; renderSetupButtons(); return; }
+ proposalBusy = true;
+ let pr = null, failed = null;
+ try { pr = await api("/api/proposal?stint=" + st.id); }
+ catch (e) { failed = e; }
+ finally { proposalBusy = false; }
+ if (proposalAgain) { proposalAgain = false; return loadProposal(); }  // outdated already: don't redraw with it
+ if (failed) showError(failed.message);
+ S.proposal = pr;
+ renderSetupButtons(); renderBase();
+ if ($("modal").classList.contains("open")) renderModal();
+ if ($("sheet").classList.contains("open") && S.tab === "model") renderView();
+}
+function renderSetupButtons() {
+ const pr = S.proposal, n = pr && pr.changes ? pr.changes.length : 0;
+ for (const b of document.querySelectorAll(".next-setup")) {
+  b.replaceChildren(el("span", {}, "Next setup"), el("span", {class: "mono"}, n ? String(n) : ""));
+  b.disabled = !baseStint();
+ }
+}
+function openModal() {
+ if (!baseStint()) return;
+ setStatus("");
+ renderModal();
+ $("modal").classList.add("open");
+ $("modal-close").focus();
+}
+const closeModal = () => $("modal").classList.remove("open");
+for (const b of document.querySelectorAll(".next-setup")) b.onclick = openModal;
+$("modal-close").onclick = closeModal;
+$("modal").addEventListener("click", e => { if (e.target === $("modal")) closeModal(); });
+// Keyboard (§18): Esc closes the topmost thing; the rest only when nothing is open.
+const openPop = () => document.querySelector(".pop.open");
+document.addEventListener("keydown", e => {
+ if (e.key === "Escape") {
+  if ($("menu").classList.contains("open")) closeMenu(true);
+  else if (openPop()) closePop(openPop());
+  else if ($("modal").classList.contains("open")) closeModal();
+  else if ($("sheet").classList.contains("open")) { $("sheet").classList.remove("open"); hideTip(); }
+  return;
+ }
+ if (e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof Element && e.target.matches("input:not([type=range]),textarea,select,[contenteditable]"))) return;
+ if ($("menu").classList.contains("open") || openPop() || $("modal").classList.contains("open") || $("sheet").classList.contains("open")) return;
+ const tab = {"1": "analysis", "2": "setup", "3": "history"}[e.key];
+ if (tab) { if (!$("tab-" + tab).disabled) show(tab); return; }
+ if (S.screen === "analysis" && (e.key === "ArrowLeft" || e.key === "ArrowRight") && S.lapA) {
+  e.preventDefault();
+  const [d0, d1] = visibleRange(), d = Math.min(d1, Math.max(d0, S.target + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 50 : 5)));
+  moveTo(d); syncSliderValue(d);
+  return;
+ }
+ if ((e.key === "c" || e.key === "C") && S.screen === "analysis") { $("compare").click(); return; }
+ if ((e.key === "n" || e.key === "N") && (S.screen === "analysis" || S.screen === "setup")) openModal();
+});
+function setStatus(text, error = false) { $("status").textContent = text || ""; $("status").classList.toggle("error", !!error); }
+function renderModal() {
+ const pr = S.proposal, box = $("changes");
+ $("modal-file").textContent = pr && pr.target ? pr.target.file : (pr && pr.error ? "" : "No changes");
+ $("expect").hidden = true;
+ if (!pr) { box.replaceChildren(); }
+ else if (pr.error) { box.replaceChildren(); setStatus(pr.error, true); }
+ else {
+  box.replaceChildren(...pr.changes.map(c => {
+   const row = el("div", {class: "change"});
+   row.append(el("span", {class: "name"}, c.name), el("span", {class: "delta"}, signed(c.delta)));
+   const b = el("button", {type: "button", class: "lock", "aria-pressed": "false", "aria-label": "Lock " + c.name});
+   b.innerHTML = UNLOCK;
+   b.onclick = () => setLock(c.keys, true);
+   row.append(b, el("span", {class: "vals"}, `${c.before_text} → ${c.approx ? "≈ " : ""}${c.after_text}`));
+   if (c.reason) row.append(el("span", {class: "why"}, c.reason));
+   return row;
+  }));
+  for (const l of pr.locks || []) {
+   const row = el("div", {class: "change"});
+   row.append(el("span", {class: "name muted"}, l.name), el("span", {}, ""));
+   const b = el("button", {type: "button", class: "lock", "aria-pressed": "true", "aria-label": "Unlock " + l.name});
+   b.innerHTML = LOCK;
+   b.onclick = () => setLock([l.key], false);
+   row.append(b);
+   box.append(row);
+  }
+  const m = pr.model;
+  if (m && m.state === "ready" && m.predicted) {
+   const p = m.predicted;
+   $("expect").textContent = `pace ${signed(p.pace[0], 2)} ± ${fx(p.pace[1])} s · wear ${signed(p.tyres[0], 2)} %/lap · drivability ${signed(p.drivability[0], 2)}`;
+   $("expect").hidden = false;
+  }
+ }
+ renderCarFeel();
+ renderRating();
+ const ready = !!(pr && pr.changes.length && pr.target && !pr.error);
+ const done = ready && S.written.has(pr.signature);
+ $("write").disabled = !ready || done;
+ $("write").textContent = done ? "Written" : "Write setup";
+}
+async function setLock(keys, locked) {
+ const st = baseStint();
+ if (!st) return;
+ try { await api("/api/locks", {stint: st.id, keys, locked}); await loadProposal(); } catch (e) { setStatus(e.message, true); }
+}
+let renderedSize = null;
+function renderChangeSize() {
+ const cur = S.state.change_size;
+ // Called on every state poll: rebuilding the buttons each time would swallow clicks.
+ if (cur === renderedSize && $("change-size").childElementCount) return;
+ renderedSize = cur;
+ seg("change-size", ["small", "medium", "large"], ["Small", "Medium", "Large"], cur, async v => {
+  if (!v || v === cur) return;
+  try { await api("/api/change-size", {size: v}); S.state.change_size = v; renderChangeSize(); await loadProposal(); }
+  catch (e) { setStatus(e.message, true); }
+ });
+}
+// How the proposals aim, per car class, a step either way from what your ratings taught:
+// front Lazier/Pointier, rear Safer/Looser. Pick, write the setup, drive it; pick again to
+// try another feel (picking the lit one unpicks it).
+let renderedFeel = null;
+function renderCarFeel() {
+ const pr = S.proposal, cls = pr && pr.car_class;
+ $("car-feel-row").hidden = !cls;
+ if (!cls) return;
+ const feel = pr.feel || {};
+ const key = `${cls}|${feel.front}|${feel.rear}`;
+ if (key === renderedFeel && $("feel-front").childElementCount) return;  // rebuilding would swallow clicks
+ renderedFeel = key;
+ const pick = side => async v => {
+  pr.feel = {...feel, [side]: v}; renderCarFeel();
+  try { await api("/api/feel", {car_class: cls, [side]: v}); scheduleProposal(); }
+  catch (e) { setStatus(e.message, true); }
+ };
+ seg("feel-front", [1, -1], ["Lazier", "Pointier"], feel.front ?? null, pick("front"));
+ seg("feel-rear", [1, -1], ["Safer", "Looser"], feel.rear ?? null, pick("rear"));
+}
+const BALANCE_WORDS = {"-2": "A lot of oversteer", "-1.5": "Quite a lot of oversteer", "-1": "Oversteer",
+ "-0.5": "A little oversteer", "0": "Neutral", "0.5": "A little understeer", "1": "Understeer",
+ "1.5": "Quite a lot of understeer", "2": "A lot of understeer"};
+const SPEED_ROWS = [["slow", "Low speed"], ["medium", "Mid speed"], ["fast", "High speed"]];
+const PHASE_COLS = [["entry", "Corner entry"], ["mid", "Mid corner"], ["exit", "Corner exit"]];
+// The balance grid: each corner phase within each corner speed, a slider from oversteer
+// (left) to understeer (right), neutral in the centre, in half rating points.
+function renderZones(r, pick) {
+ const box = $("zones");
+ if (!box.firstChild) {
+  box.append(el("span"), ...PHASE_COLS.map(([, p]) => el("span", {class: "head"}, p)));
+  const ends = el("div", {class: "ends"}); ends.append(el("span", {}, "◀ oversteer"), el("span", {}, "understeer ▶"));
+  box.append(el("span"), ends);
+  for (const [sp, s] of SPEED_ROWS) {
+   box.append(el("span", {class: "row"}, s));
+   for (const [ph] of PHASE_COLS) box.append(el("div", {class: "slide", id: `zone-${sp}_${ph}`}));
+  }
+ }
+ for (const [sp] of SPEED_ROWS) for (const [ph] of PHASE_COLS) {
+  const z = `${sp}_${ph}`;
+  balanceSlider(`zone-${z}`, r[z] ?? null, pick(z));
+ }
+}
+// Built once per box and then only updated, so a re-render never replaces the slider under
+// a drag. Saved on release; × clears the rating (an unrated one sits greyed in the centre).
+function balanceSlider(boxId, value, onPick) {
+ const box = $(boxId);
+ if (!box.firstChild) {
+  const input = el("input", {type: "range", min: -2, max: 2, step: 0.5, "aria-label": boxId.replace("zone-", "").replace("_", " ") + " balance"});
+  const val = el("span", {class: "val"});
+  const clear = el("button", {type: "button", class: "clear", "aria-label": "Clear"}, "×");
+  input.onpointerdown = () => { box._dragging = true; };
+  input.oninput = () => { box.classList.remove("unset"); val.textContent = BALANCE_WORDS[String(Number(input.value))]; };
+  input.onchange = () => { box._dragging = false; box._pick(Number(input.value)); };
+  clear.onclick = () => box._pick(null);
+  box.append(input, clear, val);
+ }
+ box._pick = onPick;
+ const [input, , val] = box.children;
+ box.classList.toggle("unset", value == null);
+ if (!box._dragging) input.value = value ?? 0;
+ val.textContent = value == null ? "Not rated" : BALANCE_WORDS[String(Number(value))];
+}
+function renderRating() {
+ const st = baseStint(), r = (st && st.rating) || {};
+ $("rate-title").textContent = st ? `Rate stint ${stintNo(st)}` : "Rate";
+ // A click shows at once and sends only its own field, so quick clicks on different
+ // buttons can't undo each other; only the newest reply is kept, and the proposal
+ // reloads once the clicks settle.
+ const pick = field => async v => {
+  if (!st) return;
+  const value = field === "lockups" ? v === true : v;
+  st.rating = {...(st.rating || {}), [field]: value};
+  renderRating();
+  const seq = ++ratingSeq;
+  try {
+   const saved = (await api("/api/rating", {file_name: st.file_name, [field]: value})).rating;
+   if (seq === ratingSeq) { st.rating = saved; renderRating(); }
+   scheduleProposal();
+  } catch (e) { setStatus(e.message, true); }
+ };
+ seg("rating", [1, 2, 3, 4, 5], ["1", "2", "3", "4", "5"], r.rating ?? null, pick("rating"));
+ renderZones(r, pick);
+ // Prototypes (no ABS): brake pressure rises each stint until you say it's too much.
+ const byFeel = !!(S.proposal && S.proposal.brake_pressure_by_feel);
+ $("brake-feel-label").hidden = $("brake-feel").hidden = !byFeel;
+ if (byFeel) seg("brake-feel", [true], ["Too much brake pressure"], r.lockups ? true : null, pick("lockups"));
+}
+$("write").onclick = async () => {
+ const st = baseStint(), pr = S.proposal;
+ if (!st || !pr) return;
+ $("write").disabled = true;
+ try {
+  const r = await api("/api/write", {stint: st.id, signature: pr.signature});
+  S.written.add(pr.signature);
+  setStatus(`Written: Settings\\${r.folder}\\${r.file}`);
+ } catch (e) { setStatus(e.message, true); await loadProposal(); }
+ renderModal();
+};
+
+// ---------- analysis sheet ----------
+const TABS = [["pareto", "Pareto"], ["laps", "Laps"], ["balance", "Balance"], ["tyres", "Tyres"], ["platform", "Platform"], ["driving", "Driving"], ["model", "Model"]];
+function renderTabs() {
+ $("sheet-tabs").replaceChildren(...TABS.map(([k, label]) => {
+  const b = el("button", {type: "button", role: "tab", class: "stab" + (S.tab === k ? " on" : ""), "aria-selected": S.tab === k}, label);
+  b.onclick = () => { S.tab = k; renderTabs(); renderView(); };
+  return b;
+ }));
+}
+$("sheet-open").onclick = () => { $("sheet").classList.add("open"); renderTabs(); renderView(); };
+$("sheet-close").onclick = () => { $("sheet").classList.remove("open"); hideTip(); };
+$("table-toggle").onclick = () => { S.tableView = !S.tableView; $("table-toggle").textContent = S.tableView ? "Charts" : "Table"; renderView(); };
+function renderView() {
+ const view = $("view");
+ hideTip();
+ view.replaceChildren();
+ if (!S.stints.length) { view.append(el("div", {class: "empty"}, "No laps yet")); return; }
+ ({pareto: viewPareto, laps: viewLaps, balance: viewBalance, tyres: viewTyres, platform: viewPlatform, driving: viewDriving, model: viewModel})[S.tab](view);
+}
+function section(view, title) {
+ const box = el("div", {class: "chart"});
+ box.append(el("h3", {}, title));
+ view.append(box);
+ return box;
+}
+function table(box, headers, rows) {
+ const wrap = el("div", {class: "table-wrap"});
+ const t = el("table", {class: "data"});
+ const tr = el("tr");
+ headers.forEach(h => tr.append(el("th", {}, h)));
+ const thead = el("thead"); thead.append(tr);
+ const tb = el("tbody");
+ rows.forEach(r => { const row = el("tr"); r.forEach(c => row.append(el("td", {}, c))); tb.append(row); });
+ t.append(thead, tb);
+ wrap.append(t);
+ box.append(wrap);
+}
+function legend(box, items) {
+ const lg = el("div", {class: "legend"});
+ for (const it of items) {
+  const s = el("span");
+  const sw = sv("svg", {width: 12, height: 12, viewBox: "0 0 12 12", "aria-hidden": "true"});
+  sw.append(sv("circle", {cx: 6, cy: 6, r: 4, fill: it.filled ? it.color : "none", stroke: it.color, "stroke-width": 2}));
+  s.append(sw, document.createTextNode(it.label));
+  lg.append(s);
+ }
+ box.append(lg);
+}
+const current = () => stintById(S.sel) || S.stints[S.stints.length - 1] || null;
+async function select(st) {
+ const l = bestLap(st);
+ if (!l) return;
+ S.a = lapKey(st.id, l.seq); S.sel = st.id; S.expanded.add(st.id);
+ $("sheet").classList.remove("open"); hideTip();
+ if (S.screen !== "analysis") show("analysis");
+ renderLeft(); await loadLaps();
+}
+
+// ---------- tooltip ----------
+const tip = $("tip");
+function showTip(e, lines) {
+ tip.replaceChildren();
+ lines.forEach((l, i) => { const d = el("div"); if (i === 0) d.append(el("b", {}, l)); else d.textContent = l; tip.append(d); });
+ tip.style.display = "block";
+ const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+ const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+ tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+// ---------- chart primitives ----------
+function niceTicks(lo, hi, n = 4) {
+ if (lo === hi) { lo -= 1; hi += 1; }
+ const step0 = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(step0));
+ const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step0);
+ const ticks = [];
+ for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+ return {ticks, step};
+}
+function frame(box, {height = 220, xs, ys, xInt = false, xLabel, yLabel, yZero = false, yFmt = v => String(v)}) {
+ const width = Math.max(240, box.clientWidth || 600);
+ const m = {l: 52, r: 12, t: 8, b: yLabel || xLabel ? 36 : 24};
+ let [ylo, yhi] = [Math.min(...ys), Math.max(...ys)];
+ if (yZero) { ylo = Math.min(ylo, 0); yhi = Math.max(yhi, 0); }
+ const pad = (yhi - ylo || 1) * 0.08;
+ const yt = niceTicks(ylo - pad, yhi + pad);
+ const y0 = Math.min(yt.ticks[0], ylo - pad), y1 = Math.max(yt.ticks[yt.ticks.length - 1], yhi + pad);
+ let x0, x1;
+ if (xInt) { x0 = Math.min(...xs) - 0.5; x1 = Math.max(...xs) + 0.5; }
+ else { const xp = (Math.max(...xs) - Math.min(...xs) || 1) * 0.08; x0 = Math.min(...xs) - xp; x1 = Math.max(...xs) + xp; }
+ const sx = v => m.l + (v - x0) / (x1 - x0) * (width - m.l - m.r);
+ const sy = v => m.t + (1 - (v - y0) / (y1 - y0)) * (height - m.t - m.b);
+ const svg = sv("svg", {class: "plot", viewBox: `0 0 ${width} ${height}`, height, role: "img"});
+ const g = sv("g", {class: "grid"});
+ for (const t of yt.ticks) {
+  if (t < y0 || t > y1) continue;
+  g.append(sv("line", {x1: m.l, x2: width - m.r, y1: sy(t), y2: sy(t)}));
+  svg.append(sv("text", {x: m.l - 6, y: sy(t) + 4, "text-anchor": "end"}, yFmt(t)));
+ }
+ svg.prepend(g);
+ const xticks = xInt ? xs.filter((v, i, a) => a.indexOf(v) === i) : niceTicks(x0, x1, 5).ticks.filter(t => t >= x0 && t <= x1);
+ const every = Math.ceil(xticks.length / Math.max(2, Math.floor(width / 60)));
+ xticks.forEach((t, i) => {
+  if (i % every) return;
+  svg.append(sv("text", {x: sx(t), y: height - m.b + 16, "text-anchor": "middle"}, xInt ? "#" + t : fx(t, 1)));
+ });
+ if (xLabel) svg.append(sv("text", {x: width - m.r, y: height - 4, "text-anchor": "end"}, xLabel));
+ if (yLabel) svg.append(sv("text", {x: m.l, y: height - 4, "text-anchor": "start"}, yLabel));
+ box.append(svg);
+ return {svg, sx, sy, width, height, m};
+}
+function dot(f, x, y, {color, filled = true, selected = false, onTip, onClick}) {
+ const surface = css("--surface");
+ const g = sv("g", {tabindex: 0});
+ if (selected) g.append(sv("circle", {cx: x, cy: y, r: 9, fill: "none", stroke: css("--text"), "stroke-width": 1.5}));
+ g.append(sv("circle", {cx: x, cy: y, r: 5, fill: filled ? color : surface, stroke: filled ? surface : color, "stroke-width": 2}));
+ if (!filled) g.lastChild.setAttribute("r", 4);
+ const hit = sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"});
+ g.append(hit);
+ if (onTip) {
+  g.addEventListener("pointermove", e => showTip(e, onTip()));
+  g.addEventListener("pointerleave", hideTip);
+  g.addEventListener("focus", () => { const r = hit.getBoundingClientRect(); showTip({clientX: r.right, clientY: r.top}, onTip()); });
+  g.addEventListener("blur", hideTip);
+ }
+ if (onClick) { g.style.cursor = "pointer"; g.addEventListener("click", onClick); g.addEventListener("keydown", e => { if (e.key === "Enter") onClick(); }); }
+ f.svg.append(g);
+}
+const pick = st => () => select(st);
+
+// ---------- views ----------
+function viewPareto(view) {
+ const pts = S.stints.filter(st => st.summary.median != null);
+ if (S.tableView) {
+  const box = section(view, "Stints by objective");
+  table(box, ["Stint", "Median lap", "Wear %/lap", "Consistency σ s", "Pareto"],
+   S.stints.map(st => [`#${stintNo(st)}`, fmtLap(st.summary.median), fx(st.summary.wear_per_lap), fx(st.summary.consistency, 3), st.pareto ? "yes" : "no"]));
+  return;
+ }
+ if (pts.length < 2) { view.append(el("div", {class: "empty"}, "Too few stints")); return; }
+ const pairs = [["wear_per_lap", "Pace against tyre wear", "wear %/lap", 2], ["consistency", "Pace against consistency", "σ lap time s", 3]];
+ for (const [key, title, unit, dec] of pairs) {
+  const use = pts.filter(st => st.summary[key] != null);
+  const box = section(view, title);
+  legend(box, [{label: "Pareto front", color: css("--s1"), filled: true}, {label: "Dominated", color: css("--s2"), filled: false}]);
+  if (use.length < 2) { box.append(el("div", {class: "empty"}, "Too few laps")); continue; }
+  const f = frame(box, {xs: use.map(st => st.summary.median), ys: use.map(st => st.summary[key]), xLabel: "median lap s", yLabel: unit, yFmt: v => fx(v, dec)});
+  for (const st of use) dot(f, f.sx(st.summary.median), f.sy(st.summary[key]), {
+   color: st.pareto ? css("--s1") : css("--s2"), filled: st.pareto, selected: st.id === S.sel, onClick: pick(st),
+   onTip: () => [`Stint #${stintNo(st)}`, `median ${fmtLap(st.summary.median)}`, `${unit} ${fx(st.summary[key], dec)}`, st.pareto ? "Pareto front" : "dominated"],
+  });
+ }
+}
+function viewLaps(view) {
+ const rows = S.stints.flatMap(st => st.laps.filter(l => l.complete && !l.in_pits).map(l => ({st, l})));
+ if (S.tableView) {
+  const box = section(view, "Laps");
+  table(box, ["Stint", "Lap", "Time", "Clean"], rows.map(({st, l}) => [`#${stintNo(st)}`, String(l.lap), fmtLap(l.time), l.clean ? "yes" : "no"]));
+  return;
+ }
+ const box = section(view, "Lap times by stint");
+ legend(box, [{label: "Clean lap", color: css("--s1"), filled: true}, {label: "Dropped", color: css("--s2"), filled: false}]);
+ if (!rows.length) { box.append(el("div", {class: "empty"}, "No laps yet")); return; }
+ const clean = rows.filter(r => r.l.clean).map(r => r.l.time);
+ const ys = clean.length ? clean : rows.map(r => r.l.time);
+ const lo = Math.min(...ys), hi = Math.max(...ys);
+ const shown = rows.filter(r => r.l.time <= hi + (hi - lo + 0.5) * 0.6);
+ const f = frame(box, {height: 260, xs: S.stints.map(stintNo), ys: shown.map(r => r.l.time), xInt: true, yLabel: "lap s", yFmt: v => fx(v, 1)});
+ for (const st of S.stints) if (st.summary.median != null) {
+  const x = f.sx(stintNo(st)), y = f.sy(st.summary.median);
+  f.svg.append(sv("line", {x1: x - 14, x2: x + 14, y1: y, y2: y, stroke: css("--text"), "stroke-width": 2}));
+ }
+ const n = {};
+ for (const {st, l} of shown) {
+  const k = stintNo(st); n[k] = (n[k] || 0) + 1;
+  const jitter = ((n[k] * 7) % 11 - 5) * 1.6;
+  dot(f, f.sx(k) + jitter, f.sy(l.time), {color: l.clean ? css("--s1") : css("--s2"), filled: l.clean, onClick: pick(st),
+   onTip: () => [fmtLap(l.time), `stint #${k} · lap ${l.lap}`, l.clean ? "clean" : (l.off_track ? "off track" : "slow")]});
+ }
+}
+function multiples(view, title, sub, series, unit, dec, zero) {
+ const box = section(view, title);
+ const grid = el("div", {class: "multi"});
+ box.append(grid);
+ for (const [key, name] of series) {
+  const pts = S.stints.map(st => [stintNo(st), st.summary[key], st]).filter(p => p[1] != null);
+  const cell = el("div");
+  cell.append(el("div", {class: "mini"}, name));
+  grid.append(cell);
+  if (!pts.length) { cell.append(el("div", {class: "empty"}, "No data")); continue; }
+  const f = frame(cell, {height: 160, xs: pts.map(p => p[0]), ys: pts.map(p => p[1]), xInt: true, yZero: zero, yFmt: v => fx(v, dec)});
+  if (zero) f.svg.append(sv("line", {x1: f.m.l, x2: f.width - f.m.r, y1: f.sy(0), y2: f.sy(0), stroke: css("--muted"), "stroke-width": 1}));
+  if (pts.length > 1) f.svg.append(sv("polyline", {points: pts.map(p => `${f.sx(p[0])},${f.sy(p[1])}`).join(" "),
+   fill: "none", stroke: css("--s1"), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+  for (const [x, y, st] of pts) dot(f, f.sx(x), f.sy(y), {color: css("--s1"), selected: st.id === S.sel, onClick: pick(st),
+   onTip: () => [`${fx(y, dec)} ${unit}`, `stint #${x}`, name]});
+ }
+}
+function viewBalance(view) {
+ const series = [["us_entry", "Entry (braking)"], ["us_mid", "Mid-corner"], ["us_exit", "Exit (throttle)"], ["us_slow", "Slow corners"], ["us_fast", "Fast corners"]];
+ const sub = "";
+ if (S.tableView) {
+  const box = section(view, "Balance by phase");
+  table(box, ["Stint", ...series.map(s => s[1]), "Countersteer/lap", "TC s/lap", "ABS s/lap"],
+   S.stints.map(st => [`#${stintNo(st)}`, ...series.map(s => fx(st.summary[s[0]])), fx(st.summary.countersteer_events, 1), fx(st.summary.tc_s, 1), fx(st.summary.abs_s, 1)]));
+  return;
+ }
+ multiples(view, "Balance by phase", sub, series, "deg", 2, true);
+ multiples(view, "Stability and aids", "",
+  [["countersteer_events", "Countersteer moments"], ["steer_reversals_per_min", "Steering reversals / min"], ["tc_s", "TC active s"], ["abs_s", "ABS active s"]], "", 1, false);
+}
+function viewTyres(view) {
+ const st = current();
+ if (!st) return;
+ const s = st.summary;
+ const sub = "";
+ if (S.tableView) {
+  const box = section(view, "Tyres");
+  const T = UNIT.temp, P = UNIT.pressure;
+  table(box, ["Corner", `Inner ${T}`, `Centre ${T}`, `Outer ${T}`, `Spread ${T}`, `Crown ${T}`, `Hot ${P}`, `Carcass ${T}`, "Wear %/lap", `Brake max ${T}`],
+   WHEELS.map(w => [w.toUpperCase(), fx(cv("temp", s["t_inner_" + w]), 1), fx(cv("temp", s["t_centre_" + w]), 1), fx(cv("temp", s["t_outer_" + w]), 1),
+    signed(cv("dtemp", s["t_spread_" + w]), 1), signed(cv("dtemp", s["t_crown_" + w]), 1), fx(cv("pressure", s["p_hot_" + w]), qdec("pressure", 1)),
+    fx(cv("temp", s["t_carcass_" + w]), 1), fx(s["wear_" + w]), fx(cv("temp", s["brake_temp_max_" + w]), 0)]));
+  return;
+ }
+ const box = section(view, "Tread temperature");
+ const grid = el("div", {class: "multi"});
+ box.append(grid);
+ const all = WHEELS.flatMap(w => ["t_inner_", "t_centre_", "t_outer_"].map(p => cv("temp", s[p + w]))).filter(v => v != null);
+ if (!all.length) { box.append(el("div", {class: "empty"}, "No tyre data")); return; }
+ const lo = Math.floor(Math.min(...all) - 4), hi = Math.ceil(Math.max(...all) + 2);
+ for (const w of WHEELS) {
+  const cell = el("div");
+  cell.append(el("div", {class: "mini"}, w.toUpperCase()));
+  grid.append(cell);
+  const vals = [["Inner", cv("temp", s["t_inner_" + w])], ["Centre", cv("temp", s["t_centre_" + w])], ["Outer", cv("temp", s["t_outer_" + w])]];
+  const width = Math.max(240, cell.clientWidth || 280), height = 150, m = {l: 40, r: 8, t: 18, b: 22};
+  const svg = sv("svg", {class: "plot", viewBox: `0 0 ${width} ${height}`, height, role: "img"});
+  const sy = v => m.t + (1 - (v - lo) / (hi - lo)) * (height - m.t - m.b);
+  const g = sv("g", {class: "grid"});
+  for (const t of niceTicks(lo, hi, 3).ticks) { g.append(sv("line", {x1: m.l, x2: width - m.r, y1: sy(t), y2: sy(t)})); svg.append(sv("text", {x: m.l - 6, y: sy(t) + 4, "text-anchor": "end"}, String(t))); }
+  svg.prepend(g);
+  const band = (width - m.l - m.r) / 3, bw = Math.min(24, band - 2);
+  vals.forEach(([label, v], i) => {
+   const cx = m.l + band * (i + 0.5);
+   svg.append(sv("text", {x: cx, y: height - 6, "text-anchor": "middle"}, label));
+   if (v == null) return;
+   const r = sv("rect", {x: cx - bw / 2, y: sy(v), width: bw, height: sy(lo) - sy(v), fill: css("--s1")});
+   r.addEventListener("pointermove", e => showTip(e, [`${fx(v, 1)} ${UNIT.temp}`, `${w.toUpperCase()} ${label.toLowerCase()}`]));
+   r.addEventListener("pointerleave", hideTip);
+   svg.append(r, sv("text", {x: cx, y: sy(v) - 5, "text-anchor": "middle"}, fx(v, 1)));
+  });
+  cell.append(svg, el("div", {class: "num"}, `${fx(cv("pressure", s["p_hot_" + w]), qdec("pressure", 1))} ${UNIT.pressure} · wear ${fx(s["wear_" + w])} %/lap · spread ${signed(cv("dtemp", s["t_spread_" + w]), 1)} ${UNIT.temp}`));
+ }
+ multiples(view, "Tyre wear per lap", "", [["wear_per_lap", "All corners"]], "%/lap", 2, false);
+}
+function viewPlatform(view) {
+ const cols = [["rh_min_fl", "Min RH FL mm", 1], ["rh_min_fr", "Min RH FR mm", 1], ["rh_min_rl", "Min RH RL mm", 1], ["rh_min_rr", "Min RH RR mm", 1],
+  ["bottoming_s", "Bottoming s/lap", 2], ["rake_fast", "Rake fast mm", 1], ["kerb_s", "Kerb s/lap", 1]];
+ if (S.tableView) {
+  const box = section(view, "Platform");
+  table(box, ["Stint", ...cols.map(c => c[1])], S.stints.map(st => [`#${stintNo(st)}`, ...cols.map(c => fx(st.summary[c[0]], c[2]))]));
+  return;
+ }
+ multiples(view, "Ride height", "",
+  [["rh_min_fl", "FL"], ["rh_min_fr", "FR"], ["rh_min_rl", "RL"], ["rh_min_rr", "RR"]], "mm", 1, false);
+ multiples(view, "Platform", "", [["bottoming_s", "Bottoming s"], ["rake_fast", `Rake above ${fx(cv("speed", 144), 0)} ${UNIT.speed}, mm`]], "", 2, false);
+}
+function viewPreference(view) {
+ const p = S.state && S.state.preference;
+ if (!p) return;
+ const names = {pace: "Pace", tyres: "Tyres", drivability: "Drivability"};
+ const src = p.by_source || {};
+ const box = section(view, "Trade-off");
+ table(box, ["Objective", "Weight", "±", "Start"], Object.keys(names).map(k =>
+  [names[k], `${Math.round(p.simplex[k] * 100)} %`, `${Math.round(p.sd[k] * 100)} %`, `${Math.round(p.prior[k] * 100)} %`]));
+ table(box, ["Evidence", "Count"], [["Reverts", String(src.revert || 0)], ["Keeps", String(src.keep || 0)], ["Ratings", String(src.rating || 0)]]);
+}
+function viewModel(view) {
+ viewPreference(view);
+ const pr = S.proposal, m = pr && pr.model;
+ if (!m || m.state === "off") {
+  view.append(el("div", {class: "empty"}, "No model yet"));
+  return;
+ }
+ const box = section(view, "Model");
+ const ee = m.experience_effect;
+ table(box, ["Item", "Value"], [
+  ["State", m.state === "ready" ? "Ready" : "Learning"],
+  ["Stints used", `${m.n_obs} (${m.n_setups} setup${m.n_setups === 1 ? "" : "s"})`],
+  ["Stints left out", m.excluded.length ? String(m.excluded.length) : "–"],
+  ["Fuel correction", `${fx(m.fuel_s_per_l, 3)} s per litre, to ${fx(m.ref_fuel, 1)} L`],
+  ["Within-stint trend", `${signed(m.trend_s_per_lap, 3)} s per lap`],
+  ["Lap-to-lap noise", `${fx(m.lap_sigma, 2)} s`],
+  ["Your improvement since stint 1", ee ? `${signed(ee[0], 2)} ± ${fx(ee[1])} s` : "–"],
+  ["Trust region", `${Math.round(m.radius * 100)} % of each setting's range`],
+ ]);
+ const effects = (m.effects || []).slice().sort((a, b) => Math.abs(b.pace[0]) / (b.pace[1] || 1) - Math.abs(a.pace[0]) / (a.pace[1] || 1));
+ if (!effects.length) return;
+ const sub = "";
+ if (S.tableView) {
+  const t = section(view, "Per step");
+  table(t, ["Setting", "Pace s", "Wear %/lap", "Drivability s"], effects.map(e => [e.name,
+   `${signed(e.pace[0], 2)} ± ${fx(e.pace[1])}`, `${signed(e.tyres[0], 3)} ± ${fx(e.tyres[1], 3)}`, `${signed(e.drivability[0], 2)} ± ${fx(e.drivability[1])}`]));
+  return;
+ }
+ const t = section(view, "Pace per step");
+ const rowH = 26, m0 = {l: 150, r: 16, t: 8, b: 26};
+ const width = Math.max(300, t.clientWidth || 600), height = m0.t + m0.b + rowH * effects.length;
+ const lo = Math.min(0, ...effects.map(e => e.pace[0] - e.pace[1])), hi = Math.max(0, ...effects.map(e => e.pace[0] + e.pace[1]));
+ const ticks = niceTicks(lo, hi, 4).ticks;
+ const x0 = Math.min(lo, ticks[0]), x1 = Math.max(hi, ticks[ticks.length - 1]);
+ const sx = v => m0.l + (v - x0) / (x1 - x0 || 1) * (width - m0.l - m0.r);
+ const svg = sv("svg", {class: "plot", viewBox: `0 0 ${width} ${height}`, height, role: "img"});
+ const g = sv("g", {class: "grid"});
+ for (const tk of ticks) {
+  g.append(sv("line", {x1: sx(tk), x2: sx(tk), y1: m0.t, y2: height - m0.b}));
+  svg.append(sv("text", {x: sx(tk), y: height - 8, "text-anchor": "middle"}, signed(tk, 2)));
+ }
+ svg.append(g, sv("line", {x1: sx(0), x2: sx(0), y1: m0.t, y2: height - m0.b, stroke: css("--muted"), "stroke-width": 1}));
+ effects.forEach((e, i) => {
+  const y = m0.t + rowH * (i + 0.5);
+  svg.append(sv("text", {x: m0.l - 8, y: y + 4, "text-anchor": "end"}, e.name));
+  svg.append(sv("line", {x1: sx(e.pace[0] - e.pace[1]), x2: sx(e.pace[0] + e.pace[1]), y1: y, y2: y,
+   stroke: css("--s1"), "stroke-width": 2, "stroke-linecap": "round"}));
+  dot({svg}, sx(e.pace[0]), y, {color: css("--s1"), onTip: () => [`${signed(e.pace[0], 2)} ± ${fx(e.pace[1])} s per lap`, e.name,
+   `wear ${signed(e.tyres[0], 3)} %/lap · drivability ${signed(e.drivability[0], 2)}`]});
+ });
+ svg.append(sv("text", {x: width - m0.r, y: height - 8 - 14, "text-anchor": "end"}, "s/lap"));
+ t.append(svg);
+}
+function viewDriving(view) {
+ const cols = [["full_throttle_frac", "Full throttle %", 100], ["coast_frac", "Coasting %", 100], ["trail_brake_frac", "Trail braking %", 100],
+  ["throttle_apply_rate", "Throttle rate /s", 1], ["brake_g_p98", "Peak decel g", 1], ["lat_g_p98", "Peak lateral g", 1], ["steer_reversals_per_min", "Steer reversals /min", 1]];
+ const box = section(view, "Driving style");
+ table(box, ["Stint", ...cols.map(c => c[1])], S.stints.map(st => [`#${stintNo(st)}`, ...cols.map(c => {
+  const v = st.summary[c[0]]; return v == null ? "–" : (v * c[2]).toFixed(c[2] === 100 ? 0 : 2);
+ })]));
+}
+
+
+// ---------- menu (§1) ----------
+function openMenu() { $("menu").classList.add("open"); $("menu-btn").setAttribute("aria-expanded", "true"); $("menu").querySelector(".mitem").focus(); }
+function closeMenu(focus) { $("menu").classList.remove("open"); $("menu-btn").setAttribute("aria-expanded", "false"); if (focus) $("menu-btn").focus(); }
+$("menu-btn").onclick = e => { e.stopPropagation(); if ($("menu").classList.contains("open")) closeMenu(); else openMenu(); };
+document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
+for (const b of document.querySelectorAll(".mitem")) b.onclick = () => {
+ closeMenu();
+ const go = b.dataset.go;
+ if (go === "keys") openPopup("keys"); else if (go === "about") openAbout(); else show(go);
+};
+$("menu-back").onclick = () => show(S.prev === "welcome" && S.session ? "analysis" : (S.prev || "welcome"));
+function openPopup(id) { $(id).classList.add("open"); $(id).querySelector(".pop-close").focus(); }
+function closePop(p) { p.classList.remove("open"); }
+for (const p of document.querySelectorAll(".pop")) {
+ p.querySelector(".pop-close").onclick = () => closePop(p);
+ p.addEventListener("click", e => { if (e.target === p) closePop(p); });
+}
+
+// ---------- keyboard shortcuts (§18), about (§19) ----------
+function kvTable(rows) {
+ const t = el("table", {class: "kv"});
+ for (const [k, v, mono] of rows) {
+  const r = el("tr"), c = el("td", {style: "text-align:left;white-space:normal;overflow-wrap:anywhere"});
+  if (mono) c.append(...v); else c.textContent = v;
+  r.append(el("td", {}, k), c);
+  t.append(r);
+ }
+ return t;
+}
+(() => {
+ const keys = (...ks) => ks.map(k => el("span", {class: "kbd"}, k)).flatMap((x, i) => i ? [document.createTextNode(" "), x] : [x]);
+ const rows = [["Tabs", keys("1", "2", "3"), true], ["Slider 5 m", keys("←", "→"), true], ["Slider 50 m", keys("Shift", "←", "→"), true],
+  ["Compare", keys("C"), true], ["Next setup", keys("N"), true], ["Close", keys("Esc"), true]];
+ $("keys-body").replaceChildren(kvTable(rows));
+ for (const td of $("keys-body").querySelectorAll("td:last-child")) td.style.textAlign = "right";
+})();
+async function openAbout() {
+ openPopup("about");
+ try {
+  const a = await api("/api/about");
+  $("about-body").replaceChildren(kvTable([["Version", a.version], ["Metrics version", String(a.metrics_version)],
+   ["Database", [el("span", {class: "mono"}, a.database)], true], ["Recordings", String(a.recordings)], ["Laps", String(a.laps)]]));
+ } catch (e) { $("about-body").replaceChildren(el("div", {class: "empty"}, e.message)); }
+}
+
+// ---------- driver (§16) ----------
+const PHASE_NAME = {};
+for (const [sp, s] of [["slow", "Low speed"], ["medium", "Mid speed"], ["fast", "High speed"]])
+ for (const [ph, p] of [["entry", "entry"], ["mid", "mid corner"], ["exit", "exit"]]) PHASE_NAME[`${sp}_${ph}`] = `${s} ${p}`;
+function factsTable(headers, rows) {
+ const t = el("table", {class: "facts"}), h = el("tr");
+ headers.forEach(x => h.append(el("th", {}, x)));
+ const thead = el("thead"); thead.append(h);
+ const tb = el("tbody");
+ for (const r of rows) {
+  const tr = el("tr");
+  r.forEach((c, i) => tr.append(el("td", {class: i === r.length - 1 ? "line" : ""}, c)));
+  tb.append(tr);
+ }
+ t.append(thead, tb);
+ return t;
+}
+async function loadDriver() {
+ const box = $("driver");
+ let d;
+ try { d = await api("/api/driver"); } catch (e) { showError(e.message); return; }
+ if (!d.classes.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
+ const parts = d.classes.map(c => {
+  const sec = el("section"), h = el("h2", {}, c.car_class);
+  h.append(el("span", {class: "mono"}, `${c.laps} laps · ${c.ratings} rating${c.ratings === 1 ? "" : "s"}`));
+  sec.append(h, el("div", {class: "mini"}, "Rotation"));
+  sec.append(c.rotation.length ? factsTable(["Where", "Liked", "Usual", ""], c.rotation.map(r =>
+   [PHASE_NAME[r.phase], `${fx(r.liked)}°`, `${fx(r.usual)}°`, r.line])) : el("div", {class: "empty"}, "No ratings yet"));
+  sec.append(el("div", {class: "mini"}, "Setups you go towards"));
+  sec.append(c.setups.length ? factsTable(["Setting", "Δ range", "Car/tracks", ""], c.setups.map(r =>
+   [r.name, `${signed(r.delta * 100, 0)} %`, String(r.tracks), r.line])) : el("div", {class: "empty"}, "No kept setups yet"));
+  return sec;
+ });
+ const t = d.tradeoff, trade = el("section");
+ trade.append(el("h2", {}, "Trade-off"), el("div", {class: "mono"},
+  `Pace ${fx(t.pace)} · Drivability ${fx(t.drivability)} · Tyres ${fx(t.tyres)}`));
+ box.replaceChildren(...parts, trade);
+}
+
+// ---------- settings (§17) ----------
+const FOLDER_NAME = {install: "LMU install", telemetry: "Telemetry", settings: "Settings", database: "Database"};
+let confirmReset = null, dataStatus = "";
+function srow(label, ...right) {
+ const r = el("div", {class: "srow"});
+ r.append(el("span", {}, label));
+ const mid = right.length > 1 ? right[0] : el("span");
+ const acts = el("div", {class: "acts"});
+ acts.append(...(right.length > 1 ? right.slice(1) : right));
+ r.append(mid, acts);
+ return r;
+}
+function segEl(values, labels, current, onPick) {
+ const box = el("div", {class: "seg", role: "group"});
+ box.append(...values.map((v, i) => {
+  const b = el("button", {type: "button", class: "btn" + (v === current ? " on" : ""), "aria-pressed": v === current}, labels[i]);
+  b.onclick = () => { if (v !== current) onPick(v); };
+  return b;
+ }));
+ return box;
+}
+async function loadSettings() {
+ try { S.settings = await api("/api/settings"); Object.assign(UNIT, S.settings.units); } catch (e) { showError(e.message); return; }
+ renderSettings();
+}
+async function putSettings(body) {
+ try {
+  S.settings = await api("/api/settings", body);
+  Object.assign(UNIT, S.settings.units);
+  S.state.change_size = S.settings.change_size;
+ } catch (e) { showError(e.message); return; }
+ renderSettings(); renderChangeSize();
+ if (body.units) { renderLapBox(); drawAll(); if (S.table) renderTable(); if ($("sheet").classList.contains("open")) renderView(); }
+ if (body.units || body.change_size || body.reset_class) await loadProposal();
+}
+function renderSettings() {
+ const st = S.settings, box = $("settings");
+ if (!st) return;
+ const ch = st.unit_choices;
+ const appearance = el("section");
+ appearance.append(el("h2", {}, "Appearance"),
+  srow("Theme", segEl(["system", "dark", "light"], ["System", "Dark", "Light"], themePref(), v => setThemePref(v))));
+ const unitsSec = el("section");
+ unitsSec.append(el("h2", {}, "Units"),
+  srow("Speed", segEl(ch.speed, ch.speed, st.units.speed, v => putSettings({units: {speed: v}}))),
+  srow("Temperature", segEl(ch.temp, ch.temp, st.units.temp, v => putSettings({units: {temp: v}}))),
+  srow("Pressure", segEl(ch.pressure, ch.pressure, st.units.pressure, v => putSettings({units: {pressure: v}}))));
+ const prop = el("section");
+ prop.append(el("h2", {}, "Proposals"),
+  srow("Change size", segEl(["small", "medium", "large"], ["Small", "Medium", "Large"], st.change_size, v => putSettings({change_size: v}))));
+ const data = el("section");
+ data.append(el("h2", {}, "Data"));
+ for (const f of st.folders) {
+  const open = el("button", {type: "button", class: "btn quiet"}, "Open folder");
+  open.disabled = !f.path;
+  open.onclick = async () => { try { await api("/api/open-folder", {which: f.which}); } catch (e) { showError(e.message); } };
+  data.append(srow(FOLDER_NAME[f.which] || f.which, el("span", {class: "path"}, f.path || "–"), open));
+ }
+ const imp = el("button", {type: "button", class: "btn"}, "Import now");
+ imp.onclick = async () => {
+  imp.disabled = true;
+  try { const r = await api("/api/import", {}); dataStatus = `Imported ${r.imported}`; } catch (e) { showError(e.message); }
+  renderSettings();
+ };
+ const rec = el("button", {type: "button", class: "btn"}, st.recomputing ? "Recomputing" : "Recompute metrics");
+ rec.disabled = st.recomputing;
+ rec.onclick = async () => {
+  try { await api("/api/recompute", {}); } catch (e) { showError(e.message); return; }
+  await loadSettings(); pollRecompute();
+ };
+ const status = st.recomputed != null && !st.recomputing ? `Recomputed ${st.recomputed}` : dataStatus;
+ data.append(srow("", el("span", {class: "mono muted"}, status), imp, rec));
+ const prof = el("section");
+ prof.append(el("h2", {}, "Driver profile"));
+ if (!st.classes.length) prof.append(el("div", {class: "empty"}, "No laps yet"));
+ for (const c of st.classes) {
+  const info = el("span", {class: "mono muted"}, `${c.ratings} rating${c.ratings === 1 ? "" : "s"}` + (c.reset_at ? ` · reset ${fmtStamp(c.reset_at)}` : ""));
+  if (confirmReset === c.car_class) {
+   const yes = el("button", {type: "button", class: "btn"}, "Confirm reset"), no = el("button", {type: "button", class: "btn quiet"}, "Cancel");
+   yes.onclick = () => { confirmReset = null; putSettings({reset_class: c.car_class}); };
+   no.onclick = () => { confirmReset = null; renderSettings(); };
+   prof.append(srow(c.car_class, info, no, yes));
+  } else {
+   const b = el("button", {type: "button", class: "btn"}, "Reset rotation learning");
+   b.onclick = () => { confirmReset = c.car_class; renderSettings(); };
+   prof.append(srow(c.car_class, info, b));
+  }
+ }
+ box.replaceChildren(appearance, unitsSec, prop, data, prof);
+}
+const fmtStamp = s => { const m = String(s).match(/(\d{4})-(\d\d)-(\d\d)/); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s); };
+async function pollRecompute() {
+ await loadSettings();
+ if (S.settings && S.settings.recomputing) setTimeout(pollRecompute, 1000);
+}
+
+// ---------- start ----------
+setThemePref(themePref());
+(async () => {
+ try { const w = await loadState(); importStamp = `${w.imported}|${w.last_import}`; } catch (e) { showError(e.message); }
+ try { S.settings = await api("/api/settings"); Object.assign(UNIT, S.settings.units); } catch (e) {}
+ try { S.live = await api("/api/live"); } catch (e) {}
+ renderNav();
+ if (S.live.state === "live" && S.live.session) { await openSession(S.live.session, false); show("analysis"); }
+ else if (S.live.state === "live") { renderSession(); show("analysis"); }
+ else { show("welcome"); loadWelcome(); }
+ setTimeout(pollLive, 3000);
+ setInterval(refresh, 1000);
+})();
+let down = false;
+setInterval(async () => {
+ try { const r = await fetch("/api/health", {cache: "no-store"}); if (!r.ok) throw 0; if (down) location.reload(); down = false; }
+ catch (e) { down = true; }
+}, 2000);
+</script>
+</body></html>

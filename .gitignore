@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.duckdb
+*.duckdb.wal
+build/
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+dist/
+scratch/

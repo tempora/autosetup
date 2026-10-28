@@ -1,0 +1,33 @@
+[project]
+name = "autosetup"
+version = "0.3.0"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+description = "Telemetry-driven, driver-adaptive setup optimiser for Le Mans Ultimate"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.1",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+desktop = ["pyinstaller>=6.10"]  # freezes the server the Tauri app bundles (desktop/)
+
+[project.scripts]
+autosetup = "autosetup.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["autosetup*"]
+
+[tool.setuptools.package-data]
+autosetup = ["knowledge/*.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not install'"
+markers = ["install: reads the local LMU install (slow; run with -m install)"]
