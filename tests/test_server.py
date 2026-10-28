@@ -98,6 +98,31 @@ def test_watcher_waits_for_files_to_settle(tmp_path, install):
         assert app.status["imported"] == 2
 
 
+def test_a_backlog_is_imported_newest_first_in_rounds(tmp_path, install, monkeypatch):
+    import os
+
+    import autosetup.server as server_mod
+
+    monkeypatch.setattr(server_mod, "IMPORT_BATCH", 2)
+    oldest = install.telemetry / "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
+    os.utime(oldest, (900.0, 900.0))
+    for i in range(5):
+        make_recording(install.telemetry / f"old{i}.duckdb", mtime=1000.0 + i)
+    with Store(tmp_path / "db.duckdb") as store:
+        app = App(store, install)
+        names = lambda: {r[0] for r in store.con.execute("select file_name from recordings").fetchall()}
+        assert app.poll(now=5000.0) == 0  # first sighting
+        assert app.poll(now=5000.0 + SETTLE_S) == 2
+        assert names() == {"old4.duckdb", "old3.duckdb"}
+        make_recording(install.telemetry / "fresh.duckdb", mtime=2000.0)  # an outing finished meanwhile
+        assert app.poll(now=6000.0) == 2  # still settling: the backlog goes on
+        assert names() == {"old4.duckdb", "old3.duckdb", "old2.duckdb", "old1.duckdb"}
+        assert app.poll(now=6000.0 + SETTLE_S) == 2  # settled: ahead of the rest of the backlog
+        assert "fresh.duckdb" in names() and oldest.name not in names()
+        assert app.poll(now=7000.0) == 1
+        assert app.poll(now=8000.0) == 0
+
+
 def test_a_broken_recording_is_tried_once_not_every_poll(tmp_path, install, monkeypatch):
     import autosetup.server as server_mod
 

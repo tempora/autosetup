@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,6 +43,13 @@ SETTLE_S = 3.0
 
 
 SLOW_S = 1.0  # requests slower than this are written to the log
+# Recordings per watcher round, newest first. A first start can face gigabytes of old
+# recordings: in small rounds the newest outings show up first, the links are learned and
+# the page refreshes between rounds, and an outing finished meanwhile jumps the queue.
+IMPORT_BATCH = 8
+# Recordings read at once. Reading is mostly numpy holding the GIL, so threads give about
+# 2x and more of them don't help; one while the game runs, to leave the CPU to it.
+IMPORT_WORKERS = min(4, os.cpu_count() or 1)
 
 
 def log(message: str) -> None:
@@ -96,12 +104,15 @@ class App:
             self._stop.wait(interval)
 
     def poll(self, now: float | None = None) -> int:
-        """Import recordings whose size has been stable for SETTLE_S. Returns the count."""
+        """Import recordings whose size has been stable for SETTLE_S, at most IMPORT_BATCH
+        of them, newest first. Returns the count."""
         if self.paths is None:
             return 0
         now = time.time() if now is None else now
         ready = []
-        for f in sorted(self.paths.telemetry.glob("*.duckdb"), key=lambda p: p.stat().st_mtime):
+        with self.lock:  # one query, not one per file: the folder can hold thousands
+            imported = set(self.store.con.execute("select file_name, file_size from recordings").fetchall())
+        for f in sorted(self.paths.telemetry.glob("*.duckdb"), key=lambda p: p.stat().st_mtime, reverse=True):
             size = f.stat().st_size
             seen = self._seen.get(f.name)
             if in_progress(f):
@@ -116,50 +127,67 @@ class App:
             if seen is None or seen[0] != size:
                 self._seen[f.name] = (size, now)
                 continue
-            if now - seen[1] >= SETTLE_S:
-                with self.lock:
-                    if in_progress(f) or not self.store.has_recording(f):
-                        ready.append(f)  # in-progress files are reported as waiting
+            if now - seen[1] >= SETTLE_S and (in_progress(f) or (f.name, size) not in imported):
+                if self._unusable.get(f.name) != _stamp(f):  # else it would hold a place in every round
+                    ready.append(f)  # in-progress files are reported as waiting
         if not ready:
             self.status["waiting"] = []
             self.status["last_error"] = None
             return 0
-        return self.import_files(ready)
+        return self.import_files(ready[:IMPORT_BATCH])
 
     def import_files(self, files: list[Path]) -> int:
         """Import finished stints. Files LMU is still writing (locked, or the car hasn't
         come back to the pits yet) are listed in status["waiting"] and retried on the next
-        poll; they're not errors. Errors from an earlier round clear once a round is clean."""
+        poll; they're not errors. Errors from an earlier round clear once a round is clean.
+        Files are read in parallel (the slow part, without the lock: the app stays
+        responsive) and saved in the order given."""
         self.status["importing"] = True
         n = 0
         waiting, errors, new = [], [], []
-        running = self._game_running() if any(in_progress(f) for f in files) else False
+        running = self._game_running() if len(files) > 1 or any(in_progress(f) for f in files) else False
         t0 = time.perf_counter()
+
+        def failed(f: Path, stamp, e: Exception) -> None:  # one bad file mustn't block the rest, nor be retried every poll
+            self._unusable[f.name] = stamp
+            errors.append(f"{f.name}: {type(e).__name__}: {e}")
+            log(f"import failed: {errors[-1]}")
+
         try:
+            todo = []
             for f in files:
-                stamp = _stamp(f)
-                if self._unusable.get(f.name) == stamp:
-                    continue  # no usable data or failed before, and unchanged since
+                stamp = None
                 try:
+                    stamp = _stamp(f)
+                    if self._unusable.get(f.name) == stamp:
+                        continue  # no usable data or failed before, and unchanged since
                     if running and in_progress(f):
                         raise RecordingBusy(f"{f.name}: outing still running")
                     with self.lock:
                         if self.store.has_recording(f):
                             continue
-                    rec = read_recording(f)  # the slow part, without the lock: the app stays responsive
-                    if rec is None:
-                        self._unusable[f.name] = stamp
-                        continue
-                    with self.lock:
-                        self.store.save_recording(rec)
-                    new.append(f.name)
-                    n += 1
+                    todo.append((f, stamp))
                 except RecordingBusy:
                     waiting.append(f.name)
-                except Exception as e:  # one bad file mustn't block the rest, nor be retried every poll
-                    self._unusable[f.name] = stamp
-                    errors.append(f"{f.name}: {type(e).__name__}: {e}")
-                    log(f"import failed: {errors[-1]}")
+                except Exception as e:
+                    failed(f, stamp, e)
+            workers = 1 if running else IMPORT_WORKERS
+            with ThreadPoolExecutor(max_workers=max(1, min(workers, len(todo))), thread_name_prefix="import") as ex:
+                reads = [(f, stamp, ex.submit(read_recording, f)) for f, stamp in todo]
+                for f, stamp, fut in reads:
+                    try:
+                        rec = fut.result()
+                        if rec is None:
+                            self._unusable[f.name] = stamp
+                            continue
+                        with self.lock:
+                            self.store.save_recording(rec)
+                        new.append(f.name)
+                        n += 1
+                    except RecordingBusy:
+                        waiting.append(f.name)
+                    except Exception as e:
+                        failed(f, stamp, e)
             if n and self.paths:
                 with self.lock:
                     self.store.learn_links(self.paths.telemetry, self.paths.settings, only=new)
@@ -188,7 +216,7 @@ class App:
             return 0
         with self.lock:
             files = [f for f in self.paths.telemetry.glob("*.duckdb") if not self.store.has_recording(f)]
-        return self.import_files(sorted(files, key=lambda p: p.stat().st_mtime))
+        return self.import_files(sorted(files, key=lambda p: p.stat().st_mtime, reverse=True))
 
     def recompute(self, force: bool = True) -> bool:
         """Recompute lap metrics in the background: every recording, or with ``force``
@@ -203,7 +231,9 @@ class App:
         def run() -> None:
             try:
                 t0 = time.perf_counter()
-                done, _ = self.store.recompute_metrics(self.paths.telemetry, force=force, lock=self.lock)
+                done, _ = self.store.recompute_metrics(
+                    self.paths.telemetry, force=force, lock=self.lock,
+                    workers=1 if self._game_running() else IMPORT_WORKERS)
                 self.status["recomputed"] = done
                 if done:
                     log(f"recomputed metrics of {done} recording{'s' if done != 1 else ''} in {time.perf_counter() - t0:.0f} s")

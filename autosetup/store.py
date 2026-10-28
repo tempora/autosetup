@@ -12,6 +12,7 @@ import contextlib
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -239,6 +240,14 @@ def read_recording(path: Path) -> ReadRecording | None:
     return ReadRecording(path, st.st_size, st.st_mtime, columns, laps, results, obs)
 
 
+def _reanalyse(path: Path) -> tuple[list, Observations, str]:
+    """A stored recording's metrics and observations again, from its file."""
+    with Session.open(path) as s:
+        laps = s.laps()
+        results, obs = _analyse(s, laps, CarSetup.from_json(s.setup_json))
+        return results, obs, s.metadata.get("TrackLayout") or s.track
+
+
 def _analyse(s: Session, laps: list, setup: CarSetup) -> tuple[list, Observations]:
     """Lap metrics and the models' observations, from one load of the signals."""
     if not laps:
@@ -437,45 +446,49 @@ class Store:
                          [sim.rh_front, sim.rh_rear, rid])
 
     def recompute_metrics(self, telemetry_dir: Path, force: bool = False,
-                          lock: threading.RLock | None = None) -> tuple[int, list[str]]:
+                          lock: threading.RLock | None = None, workers: int = 1) -> tuple[int, list[str]]:
         """Recompute metrics for recordings summarised by an older METRICS_VERSION (or all,
-        with ``force``). Recordings whose file is gone keep their old metrics. ``lock``:
-        held only while writing each recording, so a server keeps answering meanwhile."""
+        with ``force``), newest first. Recordings whose file is gone keep their old
+        metrics. ``lock``: held only while writing each recording, so a server keeps
+        answering meanwhile. ``workers``: files read at once."""
         lock = lock or contextlib.nullcontext()
         with lock:
             rows = self.con.execute(
-                "select id, file_name from recordings where ? or metrics_version is distinct from ?",
+                "select id, file_name from recordings where ? or metrics_version is distinct from ? "
+                "order by file_mtime desc",
                 [force, METRICS_VERSION],
             ).fetchall()
-        done, missing = 0, []
+        done, missing, todo = 0, [], []
         for rid, name in rows:
             f = telemetry_dir / name
             if not f.is_file():
                 missing.append(name)
-                continue
-            if in_progress(f):
-                continue  # LMU is writing it; it's re-imported when the outing ends
-            try:
-                with Session.open(f) as s:
-                    laps = s.laps()
-                    results, obs = _analyse(s, laps, CarSetup.from_json(s.setup_json))
-                    layout = s.metadata.get("TrackLayout") or s.track
-            except RecordingBusy:
-                continue
-            with lock:
-                self.con.execute("begin")
+            elif not in_progress(f):  # else LMU is writing it; it's re-imported when the outing ends
+                todo.append((rid, f))
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            reads = [(rid, ex.submit(_reanalyse, f)) for rid, f in todo]
+            for rid, fut in reads:
                 try:
-                    for table in ("lap_metrics", "lap_sectors", *OBSERVATION_TABLES):
-                        self.con.execute(f"delete from {table} where recording_id = ?", [rid])
-                    self._insert_metrics(rid, results)
-                    self._insert_observations(rid, layout, obs)
-                    self.con.execute("update recordings set metrics_version = ? where id = ?", [METRICS_VERSION, rid])
-                    self.con.execute("commit")
-                except Exception:
-                    self.con.execute("rollback")
-                    raise
-            done += 1
+                    results, obs, layout = fut.result()
+                except RecordingBusy:
+                    continue
+                self._save_metrics(rid, results, obs, layout, lock)
+                done += 1
         return done, missing
+
+    def _save_metrics(self, rid: int, results: list, obs: Observations, layout: str, lock) -> None:
+        with lock:
+            self.con.execute("begin")
+            try:
+                for table in ("lap_metrics", "lap_sectors", *OBSERVATION_TABLES):
+                    self.con.execute(f"delete from {table} where recording_id = ?", [rid])
+                self._insert_metrics(rid, results)
+                self._insert_observations(rid, layout, obs)
+                self.con.execute("update recordings set metrics_version = ? where id = ?", [METRICS_VERSION, rid])
+                self.con.execute("commit")
+            except Exception:
+                self.con.execute("rollback")
+                raise
 
     def import_all(self, telemetry_dir: Path, only_finished: bool = True, game_running: bool | None = None
                    ) -> tuple[list[int], list[tuple[Path, str]], list[Path]]:
