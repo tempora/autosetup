@@ -4,7 +4,7 @@
 >
 > **Conflict protocol.** If a request conflicts with the contract, ask the user before deviating. Decisions the contract doesn't cover are the user's call: ask, don't guess.
 >
-> Approved by the user on 2026-10-22. Any change that breaks the rules below is an unauthorized regression.
+> Approved by the user on 2026-10-22; amended with the user on 2026-10-23 (menu screens) and 2026-10-28 (0.3: visual Setup page, feel buttons, fingerprint, Driver plot). Any change that breaks the rules below is an unauthorized regression.
 
 ## Screens
 
@@ -41,7 +41,18 @@ Dragging over the traces zooms in, and double-click resets. When Compare is on, 
 - which stint the next setup is built from
 - **Next setup · N**, which opens the setup pop-up
 
-**Centre:** one large table.
+**Centre:** a visual page of the stint the next setup is built from. An **Advanced** switch at the top right swaps it for the table (below); off by default.
+- **Balance map:** a grid, rows Low / High speed, columns Entry / Mid / Exit. Each cell shows where the stint is against its target band (colour: `--us` understeer, `--os` oversteer, neutral inside the band) and, small, the value predicted after the proposed changes. Cells that don't count at this track (too little of the lap) are dimmed.
+- **Side view:** the car from the side with its ride heights at speed and its rake, current and proposed.
+- **Top view:** the car from above, marking each setting the proposal changes where it sits on the car, with an arrow for its direction.
+- **Lap Δ:** the predicted lap-time change with its doubt (`−0.20 ± 0.13 s`), and one bar per sector.
+- **Suspension:** four shaft-velocity histograms, one per wheel, laid out like the car (2×2).
+  - Rebound left (−), bump right (+). The slow region (under the knee) is shaded and the knee is marked.
+  - Overlays: current (`--s1`), previous stint (`--s2`), and a target shape (a `--muted` outline: the current shape made symmetric).
+  - Controls: bin width `10 | 25 | 50 mm/s` and kerbs `Off | On | Both`.
+  - Under each: bump / rebound %, slow / fast %, skew, load variation.
+
+**Advanced:** one large table.
 - A **Stints / Laps** switch picks the columns, newest on the right. The header row stays visible.
 - Row groups:
   - pace
@@ -61,14 +72,14 @@ Dragging over the traces zooms in, and double-click resets. When Compare is on, 
 ### 6. Setup Pop-up
 Its own window over the screen, containing:
 - the change rows: name, signed delta, `from → to`, one reason line, and a lock on each row
-- change size
-- **Car feel**, per car class: front **Lazier / Pointier**, rear **Safer / Looser**, each a step either way from what your ratings taught (picking the lit one unpicks it). Picking updates the proposal at once, so you can try a feel for a stint. Unpicked by default (the usual targets).
-- **Rate stint**, collapsed (it never opens on its own), one section: Overall 1–5, then the **balance grid**: rows Low / Mid / High speed, columns Corner entry / Mid corner / Corner exit, each cell a slider from oversteer (left) to understeer (right), Neutral in the centre, nine stops (A lot of · Quite a lot of · plain · A little — oversteer, Neutral, the same towards understeer; half rating points: "A little" only teaches what you like, a point or more is fixed directly). Unrated cells sit greyed in the centre reading "Not rated"; × clears one. Saved on release. The speed rows teach the balance you like at each speed and are fixed with that speed's tools (mechanical when slow, aero when fast). On prototypes (no ABS) it also has a **Too much brake pressure** button: brake pressure rises a step each stint until you press it
+- **Feel**, two pairs of buttons: rear **Looser · Safer**, front **Pointier · Lazier**. Each press moves the target a step; the net presses show beside each pair (`Looser 2`), with **Undo**. Then **This is it**, which locks the balance of this stint as the car's fingerprint. Presses update the proposal at once.
+- the gap line, when the band is what costs time ("0.3 s available with more rotation")
+- on prototypes (no ABS), **Too much brake pressure**: brake pressure rises a step each stint until you press it
 - **Write setup**
 - Close (Esc also closes it)
 
 ### 7. Analysis Sheet
-Stays, opened by its icon: Pareto, laps, balance, tyres, platform, driving, model. Each has a table view.
+Stays, opened by its icon: laps, balance, tyres, platform, driving. Each has a table view.
 
 ## Behaviour
 
@@ -85,7 +96,7 @@ Minimum window 1000×640. No phone layout, no phone tabs, no phone breakpoints.
 Except the Welcome → Lap Analysis move and new stints appearing in the list. The page never navigates, scrolls itself or opens a pop-up unasked.
 
 ### 11. No Clutter, No AI Fluff
-- No trade-off sliders (the trade-off is learned).
+- No trade-off sliders and no balance sliders: lap time is the objective, and how the car should feel is the four buttons and the fingerprint.
 - No helper text, tips, badges, pills, cards, callouts, avatars or explainer copy.
 - **No decorative text anywhere.** That means no sentence that explains nothing:
   - chart or table subtitles
@@ -98,7 +109,9 @@ Except the Welcome → Lap Analysis move and new stints appearing in the list. T
 - The only sentences allowed:
   - the one-line reason on each change row
   - the fun fact on Welcome
-  - one line per finding on the Driver screen
+  - one line per car on the Driver screen
+  - the gap line in the pop-up ("0.3 s available with more rotation")
+  - "No setup in reach meets the target", when none does
   - real errors
 
 ### 12. No Screenshots
@@ -126,8 +139,11 @@ Neutral graphite, not Gruvbox yellow.
 | `--muted` | `#8a8d93` | `#686b71` |
 | `--s1` (lap A) | `#4a90d9` | `#2563ad` |
 | `--s2` (lap B) | `#e08a3c` | `#b05a10` |
+| `--us` (understeer) | `#3aa6a0` | `#1f7f79` |
+| `--os` (oversteer) | `#d9534f` | `#b93a36` |
 
-- Lap A is always `--s1` and lap B always `--s2`, everywhere.
+- Lap A is always `--s1` and lap B always `--s2`, everywhere; in the suspension histograms the current stint is `--s1` and the previous one `--s2`.
+- `--us` / `--os` are only for the balance map.
 - Text never takes a data colour.
 - Light applies under `prefers-color-scheme: light` or `data-theme="light"` on `<html>`.
 
@@ -139,19 +155,23 @@ Neutral graphite, not Gruvbox yellow.
 - `GET /api/health` is polled every 2s, and the page reloads when it recovers. `GET /api/live` is polled every 3s to detect the session open in LMU.
 - **Stable API surface:** endpoints can be added, but existing ones are never renamed or reshaped without updating this file.
   - `GET /api/health`
-  - `GET /api/state`: contexts, selected context, `weights` (learned, max = 1), `preference`, `change_size`, objectives, watcher status
-  - `GET /api/stints?context=`: stints with summaries, laps (`seq`, `lap`, `time`, `complete`, `in_pits`, `off_track`, `clean`), ratings, setup changes vs the previous stint, Pareto flag
+  - `GET /api/state`: contexts, selected context, objectives, watcher status
+  - `GET /api/stints?context=`: stints with summaries, laps (`seq`, `lap`, `time`, `complete`, `in_pits`, `off_track`, `clean`), what you said (lock-ups, note), setup changes vs the previous stint, Pareto flag
   - `GET /api/live`: the session open in LMU, `{state: off|menu|live, vehicle, track, session, context}`
   - `GET /api/trackmap?context=` (or `?layout=`): outline `{length, points: [[dist, x, y]], sectors: [d1, d2], origin}` plus the car's best clean lap (`reference`)
   - `GET /api/lap?stint=&seq=`: `{lap, time, clean, setup_name, metrics, trace: {step_m, distance[], time[], speed[], throttle[], brake[], steer[], gear[], x[], y[], sectors[]}}`, on a 5 m grid in the map's frame
   - `GET /api/setup-diff?a=&b=`: setting changes going from stint b to stint a
   - `GET /api/pareto?context=`
-  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `model`, `error`)
+  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
+  - `GET /api/target?stint=`: the target, the measured balance and the feel events
+  - `POST /api/feedback {stint, button: pointier|lazier|looser|safer}` or `{stint, undo: true}` or `{stint, reset: true}`
+  - `POST /api/lock {stint}`: "This is it"
+  - `GET /api/histograms?stint=&kerbs=off|on|both&bin=`: per wheel `{edges, counts, stats}`, plus the knee
   - `POST /api/write {stint, signature}`; 409 if the proposal changed in the meantime
-  - `POST /api/locks {stint, keys, locked}`, `POST /api/context`, `POST /api/rating`, `POST /api/import`
-  - `POST /api/change-size {size}`: `small` | `medium` | `large` (default)
+  - `POST /api/locks {stint, keys, locked}`, `POST /api/context`, `POST /api/rating {file_name, lockups?, note?}`, `POST /api/import`
   - `GET /api/driver`: the Driver screen, one section per car class (§16)
-  - `GET /api/settings` / `POST /api/settings`: units, change size, folders, per-class rotation resets (§17)
+  - `GET /api/settings` / `POST /api/settings`: units, folders, fingerprints per car (§17)
+  - `POST /api/forget {car_key}`: forget a car's fingerprint
   - `POST /api/recompute`: recompute lap metrics
   - `POST /api/open-folder {which}`: `install` | `telemetry` | `settings` | `database`
   - `GET /api/about`: app version, metrics version, database path, recordings, laps
@@ -160,19 +180,17 @@ Neutral graphite, not Gruvbox yellow.
 
 ### 16. Driver
 Opens like a tab and replaces the left compartment and centre. The nav reads **Driver**, with a way back. One section per car class driven, newest first:
-- **Header:** class · laps · ratings
-- **Rotation:** entry, mid and exit. The angle you like, the usual angle, and one line ("Pointier than usual on entry").
-- **Setups you go towards:** settings moved by 5 % of range or more, from the starting setup at each car/track to the setups you kept (drove again, didn't revert) or rated 4–5. Each shows Δ % of range, how many car/tracks, and one line.
-- **Trade-off:** Pace · Drivability · Tyres (learned, shared across cars).
-- **Empty:** "No ratings yet".
+- **Header:** class · laps
+- **Plot:** Looser ↔ Safer across, Pointier ↔ Lazier up, in button steps from the class's usual balance (the centre). One point per car with a fingerprint, labelled with the car.
+- **Cars:** one line per car ("Pointy entry, stable exit, slightly more rake than usual").
+- **Empty:** "No fingerprint yet".
 
 ### 17. Settings
 Opens like a tab. Label/value rows in sections:
 - **Appearance:** theme System / Dark / Light (the nav toggle stays).
 - **Units:** speed km/h | mph, temperature °C | °F, pressure kPa | psi. Applies everywhere.
-- **Proposals:** default change size.
 - **Data:** LMU install, telemetry folder, settings folder and database file, read-only in mono, each with "Open folder". Buttons: **Import now**, **Recompute metrics**.
-- **Driver profile:** per car class, **Reset rotation learning**, behind a confirm. It ignores ratings from before the reset; the ratings themselves are kept.
+- **Driver profile:** per car with a fingerprint, **Forget fingerprint**, behind a confirm.
 
 ### 18. Keyboard shortcuts
 A pop-up listing: `1` `2` `3` switch tabs · `←` `→` move the slider 5 m (`Shift` 50 m) · `C` toggle Compare · `N` open Next setup · `Esc` close.
