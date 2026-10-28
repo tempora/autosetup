@@ -94,13 +94,9 @@ create table if not exists lap_sectors (
     time          double,
     primary key (recording_id, seq, sector)
 );
--- Keyed by file name so a rating survives re-importing a recording that grew.
+-- Keyed by file name so it survives re-importing a recording that grew.
 create table if not exists ratings (
     file_name     varchar primary key,
-    rating        integer,              -- 1..5 overall confidence, null = not rated
-    entry         integer,              -- -2 (oversteer) .. +2 (understeer)
-    mid           integer,
-    exit          integer,
     note          varchar,
     rated_at      timestamp
 );
@@ -109,16 +105,7 @@ create table if not exists settings (
     value         json
 );
 alter table recordings add column if not exists metrics_version integer;
-alter table ratings add column if not exists lockups boolean;  -- you flagged too many lock-ups
-alter table ratings add column if not exists slow integer;     -- corner-speed ratings, like the phases:
-alter table ratings add column if not exists medium integer;   -- -2 .. +2 (- oversteer, + understeer)
-alter table ratings add column if not exists fast integer;
-create table if not exists zone_ratings (
-    file_name     varchar,
-    zone          varchar,               -- corner speed × phase, e.g. 'slow_exit'
-    value         double,                -- rating points, -2 .. +2 in halves (- oversteer, + understeer)
-    primary key (file_name, zone)
-);
+alter table ratings add column if not exists lockups boolean;  -- you flagged too much brake pressure
 alter table recordings add column if not exists game_build varchar;   -- lmu/builds.py
 alter table recordings add column if not exists dam_log varchar;      -- DAM .ld file merged in, if any
 alter table recordings add column if not exists load_source varchar;  -- tyre_load (DAM) | spring
@@ -594,45 +581,16 @@ class Store:
         return row[0] if row else None
 
     # -- ratings and settings --------------------------------------------------------
-    def set_rating(self, file_name: str, rating: int | None = None, entry: int | None = None,
-                   mid: int | None = None, exit: int | None = None, note: str | None = None,
-                   lockups: bool | None = None, slow: int | None = None, medium: int | None = None,
-                   fast: int | None = None) -> None:
-        for name, v, lo, hi in (("rating", rating, 1, 5), ("entry", entry, -2, 2), ("mid", mid, -2, 2), ("exit", exit, -2, 2),
-                                ("slow", slow, -2, 2), ("medium", medium, -2, 2), ("fast", fast, -2, 2)):
-            if v is not None and not lo <= v <= hi:
-                raise ValueError(f"{name} must be {lo}..{hi}")
+    def set_rating(self, file_name: str, note: str | None = None, lockups: bool | None = None) -> None:
+        """What you said about a stint: too much brake pressure, a note."""
         self.con.execute(
-            """insert or replace into ratings (file_name, rating, entry, mid, "exit", note, rated_at, lockups,
-                                               slow, medium, fast)
-               values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            [file_name, rating, entry, mid, exit, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups,
-             slow, medium, fast],
-        )
-
-    def set_zone_rating(self, file_name: str, zone: str, value: float | None) -> None:
-        """Your rating of one zone (corner speed × phase) of a stint: rating points, -2 .. +2
-        in halves; None clears it."""
-        if value is not None and not (-2 <= value <= 2 and float(value * 2).is_integer()):
-            raise ValueError(f"{zone} must be -2 .. 2 in steps of 0.5")
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        if self.con.execute("select 1 from ratings where file_name = ?", [file_name]).fetchone():
-            self.con.execute("update ratings set rated_at = ? where file_name = ?", [now, file_name])
-        else:
-            self.con.execute("insert into ratings (file_name, rated_at) values (?, ?)", [file_name, now])
-        self.con.execute("delete from zone_ratings where file_name = ? and zone = ?", [file_name, zone])
-        if value is not None:
-            self.con.execute("insert into zone_ratings values (?, ?, ?)", [file_name, zone, float(value)])
+            """insert or replace into ratings (file_name, note, rated_at, lockups) values (?, ?, ?, ?)""",
+            [file_name, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups])
 
     def rating(self, file_name: str) -> dict | None:
-        """The stint's ratings, its zone ratings included (keyed by zone)."""
         cur = self.con.execute("select * from ratings where file_name = ?", [file_name])
         row = cur.fetchone()
-        if not row:
-            return None
-        out = dict(zip([d[0] for d in cur.description], row))
-        out |= dict(self.con.execute("select zone, value from zone_ratings where file_name = ?", [file_name]).fetchall())
-        return out
+        return dict(zip([d[0] for d in cur.description], row)) if row else None
 
     def get_setting(self, key: str, default=None):
         row = self.con.execute("select value from settings where key = ?", [key]).fetchone()

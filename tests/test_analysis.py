@@ -61,29 +61,27 @@ def test_stints_summary_and_ratings(tmp_path):
         store.import_recording(rec)
         [ctx] = analysis.contexts(store)
         assert ctx.key == "Test Team 2025 #1|Test Raceway"
-        store.set_rating(rec.name, rating=4, mid=1)
+        store.set_rating(rec.name, note="soft brakes", lockups=True)
         [st] = analysis.stints(store, ctx.car_name, ctx.layout)
         assert st.summary["clean_laps"] == 2
         assert st.summary["median"] == pytest.approx(60.0)
         assert st.summary["theoretical_best"] == pytest.approx(60.0, abs=0.1)
         assert st.summary["wear_per_lap"] > 0
-        assert st.rating["rating"] == 4 and st.rating["mid"] == 1
-        with pytest.raises(ValueError):
-            store.set_rating(rec.name, rating=6)
+        assert st.rating["lockups"] is True and st.rating["note"] == "soft brakes"
 
 
 def test_reimport_replaces_a_recording_that_grew(tmp_path):
     rec = make_recording(tmp_path / "grow.duckdb")
     with Store(tmp_path / "db.duckdb") as store:
         first = store.import_recording(rec)
-        store.set_rating(rec.name, rating=3)
+        store.set_rating(rec.name, lockups=True)
         with open(rec, "ab") as f:  # same name, new size: the game kept writing
             f.write(b"\0" * 4096)
         second = store.import_recording(rec)
         assert second is not None and second != first
         assert store.con.execute("select count(*) from recordings").fetchone()[0] == 1
         assert store.con.execute("select count(*) from laps where recording_id = ?", [first]).fetchone()[0] == 0
-        assert store.rating(rec.name)["rating"] == 3  # ratings survive
+        assert store.rating(rec.name)["lockups"] is True  # what you said survives
 
 
 def test_recompute_metrics(tmp_path):

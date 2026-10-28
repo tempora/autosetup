@@ -15,8 +15,9 @@ from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.telemetry import Lap, Session
 from autosetup.metrics.signals import GRID_HZ, WHEELBASE, Signals, load_signals, smooth
 
-METRICS_VERSION = 8  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
-#                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs
+METRICS_VERSION = 9  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
+#                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs;
+#                      9: lap model data, the per speed × phase cells left to the corner passes
 PACKER_FLAT = 0.25  # past contact, deflection gains under this share of the free spring's rate
 WHEELS = ("fl", "fr", "rl", "rr")
 SECTOR_M = 100.0  # minisector length; shorter ones bias the theoretical best low (min of noise)
@@ -31,7 +32,7 @@ OFF_MAJOR_S = 1.0
 OFF_SURFACES = (2, 3, 4)  # grass, dirt, gravel (rF2 surface codes); 5 = kerb
 CORNER_G = 0.4  # |a_lat| above this counts as cornering
 MIN_SPEED = 15.0  # m/s; below this, balance metrics are noise
-SLOW_MS, FAST_MS = 30.0, 45.0  # corner speed bands: slow < 108 km/h ≤ medium ≤ 162 km/h < fast
+SLOW_MS, FAST_MS = 30.0, 45.0  # the Setup table's slow (< 108 km/h) and fast (> 162 km/h) corners
 REVERSAL_GAP_DEG = 2.0  # steering-wheel reversal hysteresis
 
 
@@ -161,7 +162,6 @@ def _handling(s: Signals, geometry: tuple[float, float, float]) -> dict[str, flo
     exit_ = cornering & (s.brake <= 0.05) & (s.throttle >= 0.5)
     mid = cornering & (s.brake <= 0.05) & (s.throttle < 0.5)
     slow = cornering & (s.speed < SLOW_MS)
-    medium = cornering & (s.speed >= SLOW_MS) & (s.speed <= FAST_MS)
     fast = cornering & (s.speed > FAST_MS)
 
     def med(mask):
@@ -175,11 +175,8 @@ def _handling(s: Signals, geometry: tuple[float, float, float]) -> dict[str, flo
     on_brake = s.brake > 0.05
     on_power = ~on_brake & (s.throttle >= 0.5)
     min_run = GRID_HZ // 5
-    # Each corner phase within each corner speed ("oversteer on low-speed exits").
-    cells = {f"us_{sp}_{ph}": med(s_mask & p_mask)
-             for sp, s_mask in (("slow", slow), ("medium", medium), ("fast", fast))
-             for ph, p_mask in (("entry", entry), ("mid", mid), ("exit", exit_))}
-    return cells | {
+    # Per corner phase and speed band from the corner passes: metrics/balance.py.
+    return {
         "cs_entry": _runs(counter & on_brake, min_run),
         "cs_mid": _runs(counter & ~on_brake & ~on_power, min_run),
         "cs_exit": _runs(counter & on_power, min_run),
@@ -187,7 +184,6 @@ def _handling(s: Signals, geometry: tuple[float, float, float]) -> dict[str, flo
         "us_mid": med(mid),
         "us_exit": med(exit_),
         "us_slow": med(slow),
-        "us_medium": med(medium),
         "us_fast": med(fast),
         "countersteer_events": _runs(counter, GRID_HZ // 5),
         "steer_reversals_per_min": _reversals(sw_deg, s.speed) / (len(s.t) * dt / 60.0),
