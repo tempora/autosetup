@@ -64,6 +64,11 @@ rating_point_fast_exit = 0.08
 brake_pressure_pct = []
 # Corner passes (metrics/corners.py): a corner is low or high speed by its apex speed.
 band_split_kmh = 140.0
+# Car feel buttons (feel/target.py): one press moves the target this many degrees of
+# understeer angle in the cells its axis covers; a locked fingerprint is "it" within
+# ± this much (or twice its measurement noise, if more).
+feel_step_deg = 0.25
+feel_tolerance_deg = 0.15
 # Damper knee (mm/s shaft velocity) between the slow and fast damper circuits. LMU doesn't
 # expose it; a starting value to check against the histograms (and DAM logs).
 damper_knee_mm_s = 50.0
@@ -138,5 +143,7 @@ rating_point_fast_exit = 0.08
 brake_pressure_pct = [90.0, 94.0]
 full_throttle_ref = 0.49  # a guess from one track (Barcelona); your own median takes over at 3 tracks
 band_split_kmh = 150.0  # more downforce: its fast corners start higher
+feel_step_deg = 0.3  # its angles run larger
+feel_tolerance_deg = 0.2
 drag_k_typ = 9e-4
 lift_c_typ = 1.5e-4
