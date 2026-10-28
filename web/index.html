@@ -175,8 +175,7 @@ border:1px solid var(--line);transform:scale(.97) translateY(6px);transition:tra
 .lock{width:34px;height:34px;padding:0;border:none;background:none;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;transition:color 150ms ease}
 .lock:hover,.lock[aria-pressed="true"]{color:var(--text)}
 .modal-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-.feelrow{display:grid;grid-template-columns:72px auto minmax(70px,1fr);align-items:center;gap:10px;padding:8px 0}
-.feelrow .count{font:13px var(--mono);color:var(--muted)}
+.feelrow{display:grid;grid-template-columns:72px auto;align-items:center;gap:10px;padding:8px 0}
 .feel-acts{display:flex;align-items:center;gap:8px;padding:6px 0 12px;border-bottom:1px solid var(--line)}
 .gap{font-size:13.5px;padding:10px 0;border-bottom:1px solid var(--line)}
 /* ---------- analysis sheet ---------- */
@@ -326,9 +325,9 @@ table.facts td:first-child{font-family:"IBM Plex Sans",system-ui,sans-serif}
    <div id="changes"></div>
    <div id="feel">
     <div class="mini" style="margin-top:12px">Feel</div>
-    <div class="feelrow"><span class="muted">Rear</span><div class="seg" id="feel-rear" role="group" aria-label="Rear"></div><span class="count" id="count-rear"></span></div>
-    <div class="feelrow"><span class="muted">Front</span><div class="seg" id="feel-front" role="group" aria-label="Front"></div><span class="count" id="count-front"></span></div>
-    <div class="feel-acts"><button type="button" class="btn quiet" id="feel-undo">Undo</button><button type="button" class="btn" id="this-is-it">This is it</button></div>
+    <div class="feelrow"><span class="muted">Front</span><div class="seg" id="feel-front" role="group" aria-label="Front"></div></div>
+    <div class="feelrow"><span class="muted">Rear</span><div class="seg" id="feel-rear" role="group" aria-label="Rear"></div></div>
+    <div class="feel-acts"><button type="button" class="btn" id="this-is-it">This is it</button></div>
    </div>
    <div class="gap" id="gap" hidden></div>
    <div class="modal-row" id="brake-row" hidden><span class="mini">Brakes</span><div class="seg" id="brake-feel"></div></div>
@@ -1284,8 +1283,8 @@ async function setLock(keys, locked) {
  if (!st) return;
  try { await api("/api/locks", {stint: st.id, keys, locked}); await loadProposal(); } catch (e) { setStatus(e.message, true); }
 }
-// Feel (§6): the four buttons move the target, never a setting; This is it locks the balance
-// of this stint as the car's fingerprint. The proposal follows at once.
+// Feel (§6): a toggle per axis asks for a step from how this stint felt, never a setting;
+// This is it locks the balance of this stint as the car's fingerprint. The proposal follows at once.
 let feelBusy = false;
 async function feel(body) {
  const st = baseStint();
@@ -1293,7 +1292,7 @@ async function feel(body) {
  feelBusy = true;
  try {
   const r = await api(body.lock ? "/api/lock" : "/api/feedback", {stint: st.id, ...body});
-  S.feelTarget = r.target;  // shows at once; the proposal that follows brings the same counts
+  S.feelTarget = r.target;  // shows at once; the proposal that follows brings the same toggles
   renderFeel();
   await loadProposal();
   S.feelTarget = null;
@@ -1305,18 +1304,12 @@ function renderFeel() {
  const pr = S.proposal, t = S.feelTarget && pr && S.feelTarget.car_key === pr.plan?.car_key ? S.feelTarget : pr && pr.plan && pr.plan.target;
  $("feel").hidden = !(pr && pr.plan);
  if (!t) return;
- const pair = (box, count, axis, minus, plus) => {
-  const b = (label, button) => { const x = el("button", {type: "button", class: "btn"}, label); x.onclick = () => feel({button}); return x; };
-  $(box).replaceChildren(b(minus, minus.toLowerCase()), b(plus, plus.toLowerCase()));
-  const n = t[axis] || 0;
-  $(count).textContent = n ? `${n < 0 ? minus : plus} ${Math.abs(n)}` : "";
- };
- pair("feel-rear", "count-rear", "rear", "Looser", "Safer");
- pair("feel-front", "count-front", "front", "Pointier", "Lazier");
- $("feel-undo").disabled = !(t.front || t.rear);
+ const toggle = (axis, minus, plus) =>
+  seg(`feel-${axis}`, [-1, 0, 1], [minus, "As it was", plus], t[axis] || 0, v => feel({axis, value: v ?? 0}));
+ toggle("front", "Pointier", "Lazier");
+ toggle("rear", "Looser", "Safer");
  $("this-is-it").classList.toggle("on", t.anchor === "fingerprint" && !t.front && !t.rear);
 }
-$("feel-undo").onclick = () => feel({undo: true});
 $("this-is-it").onclick = () => feel({lock: true});
 function renderGap() {
  const pr = S.proposal, plan = pr && pr.plan, box = $("gap");

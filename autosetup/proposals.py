@@ -60,7 +60,9 @@ create table if not exists proposals (
 """
 NAMES = {"wing": "Rear wing", "rh_rear": "Rear ride height", "rh_front": "Front ride height",
          "arb_front": "Front anti-roll bar", "arb_rear": "Rear anti-roll bar", "diff_preload": "Diff preload",
-         "spring_front": "Front springs", "spring_rear": "Rear springs", "brake_bias": "Brake bias"}
+         "spring_front": "Front springs", "spring_rear": "Rear springs", "brake_bias": "Brake bias",
+         "toe_front": "Front toe", "toe_rear": "Rear toe", "tender_front": "Front tender springs",
+         "tender_rear": "Rear tender springs"}
 DAMPER_BAND_LOSS = 0.2
 MAX_RH_MM = 5.0  # a ride height moves at most this much in one proposal
 WHERE = {"entry": "entries", "mid": "mid-corner", "exit": "exits", "low": "low-speed", "high": "high-speed"}
@@ -137,19 +139,9 @@ class Advisor:
         return min(flagged) - 1 if flagged else None
 
     # -- feel ------------------------------------------------------------------------
-    def press(self, stint: int, button: str) -> dict:
+    def toggle(self, stint: int, axis: str, value: int) -> dict:
         key, cls = recording_car(self.store, stint)
-        feel.press(self.store, key, cls, button, stint)
-        return self.target_json(stint)
-
-    def undo(self, stint: int) -> dict:
-        key, _ = recording_car(self.store, stint)
-        feel.undo(self.store, key)
-        return self.target_json(stint)
-
-    def reset(self, stint: int) -> dict:
-        key, cls = recording_car(self.store, stint)
-        feel.reset(self.store, key, cls)
+        feel.toggle(self.store, key, cls, stint, axis, value)
         return self.target_json(stint)
 
     def lock(self, stint: int) -> dict:
@@ -213,7 +205,7 @@ class Advisor:
 
         balance = self._balance_model(rec, setup, dims + ddims, k, scales, layout, car_key, car_class)
         plan.balance_source = balance.source
-        if tgt.anchor in ("current", "pressed") and tgt.anchor_stint is not None and balance.offset:
+        if tgt.anchor in ("current", "toggled") and tgt.anchor_stint is not None and balance.offset:
             self._model_anchor(tgt, balance, dims + ddims, k)
         model = LayoutModel.build(store, rec["car_signature"], layout, k)
         amap = aero_map(store, rec["car_signature"], k) if model is not None else None
@@ -304,13 +296,16 @@ class Advisor:
         """A target anchored on a stint (not a locked fingerprint) starts from the balance
         model's estimate at that stint's setup: its own measurement pooled with every other
         setup driven here. One short outing alone is noisy; aiming at its noise would
-        chase it. Presses are put back on top; the band is the estimate's own doubt."""
+        chase it. The toggles are put back on top; the band is the estimate's own doubt,
+        narrowed where a toggle moved it."""
         s = self.store.setup_of(tgt.anchor_stint)
         x = {d.name: d.x(d.index(s)) for d in dims if all(key in s.params for key in d.keys)}
         pred = balance.predict(x)
         floor = float(k["feel_tolerance_deg"])
         tgt.cells = feel.shifted({c: m for c, (m, _) in pred.items()}, tgt.front, tgt.rear, float(k["feel_step_deg"]))
-        tgt.tolerance = {c: max(floor, 2.0 * float(np.sqrt(v))) for c, (_, v) in pred.items()}
+        step = float(k["feel_step_deg"])
+        tgt.tolerance = feel.narrowed({c: max(floor, 2.0 * float(np.sqrt(v))) for c, (_, v) in pred.items()},
+                                      tgt.front, tgt.rear, step)
         mix = {c.split("_")[1]: w for c, w in tgt.weights.items()}
         tgt.weights = {c: mix.get(c.split("_")[1], 0.5) for c in tgt.cells}
 

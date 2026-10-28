@@ -522,15 +522,9 @@ class Handler(BaseHTTPRequestHandler):
                     app.store.put_setting("context", key)
                 self._json({"context": key})
             elif self.path == "/api/feedback":
-                # {stint, button: pointier|lazier|looser|safer} | {stint, undo: true} | {stint, reset: true}
-                stint = int(body["stint"])
+                # {stint, axis: front|rear, value: -1|0|1}: the stint's toggle on that axis
                 with app.lock:
-                    if body.get("undo"):
-                        self._json(app.advisor.undo(stint))
-                    elif body.get("reset"):
-                        self._json(app.advisor.reset(stint))
-                    else:
-                        self._json(app.advisor.press(stint, str(body["button"])))
+                    self._json(app.advisor.toggle(int(body["stint"]), str(body["axis"]), int(body["value"])))
             elif self.path == "/api/lock":
                 with app.lock:
                     self._json(app.advisor.lock(int(body["stint"])))

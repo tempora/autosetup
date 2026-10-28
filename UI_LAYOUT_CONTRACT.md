@@ -4,7 +4,7 @@
 >
 > **Conflict protocol.** If a request conflicts with the contract, ask the user before deviating. Decisions the contract doesn't cover are the user's call: ask, don't guess.
 >
-> Approved by the user on 2026-10-22; amended with the user on 2026-10-23 (menu screens) and 2026-10-28 (0.3: visual Setup page, feel buttons, fingerprint, Driver plot). Any change that breaks the rules below is an unauthorized regression.
+> Approved by the user on 2026-10-22; amended with the user on 2026-10-23 (menu screens) 2026-10-28 (0.3: visual Setup page, feel buttons, fingerprint, Driver plot) and 2026-10-28 (feel toggles instead of press counts). Any change that breaks the rules below is an unauthorized regression.
 
 ## Screens
 
@@ -72,7 +72,7 @@ Dragging over the traces zooms in, and double-click resets. When Compare is on, 
 ### 6. Setup Pop-up
 Its own window over the screen, containing:
 - the change rows: name, signed delta, `from → to`, one reason line, and a lock on each row
-- **Feel**, two pairs of buttons: rear **Looser · Safer**, front **Pointier · Lazier**. Each press moves the target a step; the net presses show beside each pair (`Looser 2`), with **Undo**. Then **This is it**, which locks the balance of this stint as the car's fingerprint. Presses update the proposal at once.
+- **Feel**, two toggles, each against the last stint: front **Pointier · As it was · Lazier**, rear **Looser · As it was · Safer**. A toggle asks for one step from how the last stint felt, and a new stint starts back at *As it was*. **This is it** locks the balance of this stint as the car's fingerprint. Toggles update the proposal at once.
 - the gap line, when the band is what costs time ("0.3 s available with more rotation")
 - on prototypes (no ABS), **Too much brake pressure**: brake pressure rises a step each stint until you press it
 - **Write setup**
@@ -96,7 +96,7 @@ Minimum window 1000×640. No phone layout, no phone tabs, no phone breakpoints.
 Except the Welcome → Lap Analysis move and new stints appearing in the list. The page never navigates, scrolls itself or opens a pop-up unasked.
 
 ### 11. No Clutter, No AI Fluff
-- No trade-off sliders and no balance sliders: lap time is the objective, and how the car should feel is the four buttons and the fingerprint.
+- No trade-off sliders and no balance sliders: lap time is the objective, and how the car should feel is the two toggles and the fingerprint.
 - No helper text, tips, badges, pills, cards, callouts, avatars or explainer copy.
 - **No decorative text anywhere.** That means no sentence that explains nothing:
   - chart or table subtitles
@@ -164,7 +164,7 @@ Neutral graphite, not Gruvbox yellow.
   - `GET /api/pareto?context=`
   - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
   - `GET /api/target?stint=`: the target, the measured balance and the feel events
-  - `POST /api/feedback {stint, button: pointier|lazier|looser|safer}` or `{stint, undo: true}` or `{stint, reset: true}`
+  - `POST /api/feedback {stint, axis: front|rear, value: -1|0|1}`: the stint's toggle (−1 pointier / looser, 1 lazier / safer)
   - `POST /api/lock {stint}`: "This is it"
   - `GET /api/histograms?stint=&kerbs=off|on|both&bin=`: per wheel `{edges, counts, stats}`, plus the knee
   - `POST /api/write {stint, signature}`; 409 if the proposal changed in the meantime
@@ -181,7 +181,7 @@ Neutral graphite, not Gruvbox yellow.
 ### 16. Driver
 Opens like a tab and replaces the left compartment and centre. The nav reads **Driver**, with a way back. One section per car class driven, newest first:
 - **Header:** class · laps
-- **Plot:** Looser ↔ Safer across, Pointier ↔ Lazier up, in button steps from the class's usual balance (the centre). One point per car with a fingerprint, labelled with the car.
+- **Plot:** Looser ↔ Safer across, Pointier ↔ Lazier up, in toggle steps from the class's usual balance (the centre). One point per car with a fingerprint, labelled with the car.
 - **Cars:** one line per car ("Pointy entry, stable exit, slightly more rake than usual").
 - **Empty:** "No fingerprint yet".
 

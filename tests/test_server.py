@@ -79,7 +79,7 @@ def test_posts_validate_input(server):
     assert status == 200 and r["rating"]["lockups"] is True and r["rating"]["note"] == "long brakes"
     _, r = call(base, "/api/rating", {"file_name": name, "note": None})  # only the fields sent change
     assert r["rating"]["lockups"] is True
-    assert call(base, "/api/feedback", {"stint": 999, "button": "pointier"})[0] == 400
+    assert call(base, "/api/feedback", {"stint": 999, "axis": "front", "value": -1})[0] == 400
     assert call(base, "/api/nope", {})[0] == 404
 
 
@@ -213,12 +213,13 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
         _, t = call(base, f"/api/target?stint={stint}")
         assert t["target"]["anchor"] == "current" and t["measured"]["cells"]
         before = t["target"]["cells"]["entry_low"]
-        _, t = call(base, "/api/feedback", {"stint": stint, "button": "pointier"})
-        assert t["target"]["front"] == -1 and t["target"]["cells"]["entry_low"] < before
-        assert [e["kind"] for e in t["events"]] == ["press"]
-        _, t = call(base, "/api/feedback", {"stint": stint, "undo": True})
-        assert t["target"]["front"] == 0
-        assert call(base, "/api/feedback", {"stint": stint, "button": "faster"})[0] == 400
+        _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -1})
+        assert t["target"]["front"] == -1 and t["target"]["anchor"] == "toggled"
+        assert t["target"]["cells"]["entry_low"] < before
+        _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": 0})
+        assert t["target"]["front"] == 0 and t["target"]["anchor"] == "current"
+        assert call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -2})[0] == 400
+        assert call(base, "/api/feedback", {"stint": stint, "axis": "faster", "value": 1})[0] == 400
         _, pr = call(base, f"/api/proposal?stint={stint}")
         assert set(pr["plan"]["target"]["cells"]) and pr["plan"]["lap"] is not None
         plat = pr["plan"]["platform"]

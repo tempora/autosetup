@@ -1,11 +1,11 @@
-"""Buttons, target, lock and transfer, on recorded Interlagos stints (current build)."""
+"""Toggles, target, lock and transfer, on recorded Interlagos stints (current build)."""
 
 import pytest
 
 from autosetup.feel import fingerprint as fpm
 from autosetup.feel.cars import car_key, model_of
 from autosetup.feel.measure import CELLS, measured
-from autosetup.feel.target import AXIS_WEIGHT, press, reset, steps, target, undo
+from autosetup.feel.target import AXIS_WEIGHT, target, toggle, toggles
 from autosetup.knowledge import load_knowledge
 from autosetup.store import Store
 
@@ -34,7 +34,7 @@ def test_car_key_falls_back_to_the_livery_until_matched(store):
     assert car_key(store, "Iron Dames 2025 #85", "GT3") == "Porsche_911_GT3_R_LMGT3"
 
 
-def test_no_presses_no_lock_aims_at_what_you_drive(store):
+def test_no_toggles_no_lock_aims_at_what_you_drive(store):
     rid = store.ids["interlagos_arb_r5"]
     t = target(store, "car", "GT3", K, rid)
     m = measured(store, [rid])
@@ -43,29 +43,37 @@ def test_no_presses_no_lock_aims_at_what_you_drive(store):
     assert all(t.tolerance[c] >= K["feel_tolerance_deg"] for c in t.cells)
 
 
-def test_presses_shift_the_target_from_where_you_pressed(store):
+def test_toggles_move_the_target_a_step_from_their_stint(store):
     first, later = store.ids["interlagos_arb_r3"], store.ids["interlagos_arb_r5"]
     base = measured(store, [first]).mean()
-    press(store, "car", "GT3", "pointier", first)
-    press(store, "car", "GT3", "pointier", first)
-    press(store, "car", "GT3", "safer", later)
-    assert steps(store, "car")[:2] == (-2, 1)
-    t = target(store, "car", "GT3", K, later)  # anchored where the presses started, not the new stint
-    assert t.anchor == "pressed" and t.anchor_stint == first
+    toggle(store, "car", "GT3", first, "front", -1)
+    toggle(store, "car", "GT3", first, "rear", 1)
+    toggle(store, "car", "GT3", first, "front", -1)  # a toggle, not a count
+    assert toggles(store, first) == (-1, 1)
+    t = target(store, "car", "GT3", K, first)
+    assert t.anchor == "toggled" and t.anchor_stint == first
     for c in t.cells:
         ph = c.split("_")[0]
-        assert t.cells[c] == pytest.approx(base[c] + STEP * (-2 * AXIS_WEIGHT["front"][ph] + AXIS_WEIGHT["rear"][ph]))
-    assert t.cells["entry_low"] < base["entry_low"] and t.cells["exit_low"] > base["exit_low"]
-    assert undo(store, "car") and steps(store, "car")[:2] == (-2, 0)
-    reset(store, "car", "GT3")
-    assert steps(store, "car") == (0, 0, None)
+        assert t.cells[c] == pytest.approx(base[c] + STEP * (-AXIS_WEIGHT["front"][ph] + AXIS_WEIGHT["rear"][ph]))
+        moved = abs(t.cells[c] - base[c])
+        if moved >= STEP / 2:  # the band is narrower than the move: what you drove is outside it
+            assert t.tolerance[c] < moved
+    # A new stint starts as it was, from its own balance.
+    assert toggles(store, later) == (0, 0)
+    t = target(store, "car", "GT3", K, later)
+    assert t.anchor == "current" and t.cells == pytest.approx(measured(store, [later]).mean())
+    toggle(store, "car", "GT3", first, "front", 0)
+    assert toggles(store, first) == (0, 1)
     with pytest.raises(ValueError):
-        press(store, "car", "GT3", "faster", first)
+        toggle(store, "car", "GT3", first, "front", -2)
+    with pytest.raises(ValueError):
+        toggle(store, "car", "GT3", first, "faster", 1)
 
 
 def test_lock_freezes_the_balance_and_becomes_the_anchor(store):
     rid = store.ids["interlagos_arb_r5"]
-    press(store, "Porsche", "GT3", "looser", rid)
+    fp_key = fpm.recording_car(store, rid)[0]
+    toggle(store, fp_key, "GT3", rid, "rear", -1)
     fp = fpm.lock(store, rid, K)
     assert fp.car_key == fpm.recording_car(store, rid)[0]
     m = measured(store, [rid])
@@ -74,11 +82,14 @@ def test_lock_freezes_the_balance_and_becomes_the_anchor(store):
     assert "arb_rear" in fp.setup and fp.setup["arb_rear"]["text"] == "P5"
     t = target(store, fp.car_key, "GT3", K, store.ids["interlagos_wing_11"])
     assert t.anchor == "fingerprint" and t.fingerprint == fp.id and t.cells == pytest.approx(fp.cells)
-    assert steps(store, fp.car_key)[:2] == (0, 0)  # a lock starts over from what you drove
-    press(store, fp.car_key, "GT3", "looser", rid)
-    t = target(store, fp.car_key, "GT3", K, rid)
-    assert t.cells["exit_high"] == pytest.approx(fp.cells["exit_high"] - STEP)
-    assert t.countersteer == pytest.approx(max(0.0, fp.countersteer + 0.5))
+    assert toggles(store, rid) == (0, 0)  # the stint was it, as it was
+    # A toggle on a later stint goes from that stint, not the fingerprint.
+    later = store.ids["interlagos_wing_11"]
+    toggle(store, fp.car_key, "GT3", later, "rear", -1)
+    t = target(store, fp.car_key, "GT3", K, later)
+    m = measured(store, [later])
+    assert t.anchor == "toggled" and t.cells["exit_high"] == pytest.approx(m.mean()["exit_high"] - STEP)
+    assert t.countersteer == pytest.approx(max(0.0, m.countersteer + 0.5))
     fp2 = fpm.lock(store, store.ids["interlagos_arb_r3"], K)
     assert fpm.own(store, fp.car_key).id == fp2.id  # the newest lock is the car's
 

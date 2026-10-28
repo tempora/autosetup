@@ -118,8 +118,7 @@ def platform_of(store, rid: int, setup: CarSetup) -> dict:
 
 def lock(store, rid: int, knowledge: dict) -> Fingerprint:
     """Make the balance of this stint (and the stints before it on the same setup) the
-    car's fingerprint. Presses since the last lock are folded in: the new fingerprint is
-    what you drove, and the target starts from it."""
+    car's fingerprint: what you drove, as it was, so the stint's toggles go."""
     _schema(store)
     car_key, car_class = recording_car(store, rid)
     stints = same_setup_stints(store, rid)
@@ -141,11 +140,12 @@ def lock(store, rid: int, knowledge: dict) -> Fingerprint:
          json.dumps(tol), json.dumps(platform_of(store, rid, setup)), json.dumps(settings)]).fetchone()[0]
     store.con.execute("insert into feel_events (car_key, car_class, kind, recording_id, fingerprint, happened_at) "
                       "values (?, ?, 'lock', ?, ?, ?)", [car_key, car_class, rid, fid, now])
+    store.con.execute("delete from feel_toggles where recording_id = ?", [rid])
     return own(store, car_key)
 
 
 def forget(store, car_key: str) -> int:
-    """Forget a car's fingerprint (and the presses since it): the target goes back to what
+    """Forget a car's fingerprint: the target goes back to what
     you're driving. Returns how many were active."""
     _schema(store)
     n = store.con.execute("select count(*) from fingerprints where car_key = ? and active", [car_key]).fetchone()[0]
