@@ -34,7 +34,7 @@ FIXTURES = {
 }
 FIXED = ["GPS Time", "Ground Speed", "Steering Pos", "GPS Latitude", "GPS Longitude", "Lap Dist", "Throttle Pos",
          "Brake Pos", "RideHeights", "Susp Pos", "Path Lateral", "Track Edge"]
-EVENTS = ["SurfaceTypes", "Lap", "In Pits"]
+EVENTS = ["SurfaceTypes", "Lap", "In Pits", "Gear", "Current Sector"]
 PRIVATE = ("DriverName", "SteamID")
 
 

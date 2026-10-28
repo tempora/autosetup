@@ -155,6 +155,18 @@ npx tauri build      # → src-tauri\target\release\bundle\nsis\autosetup_0.3.0_
 
 `write` (the CLI command) takes `KEY=index`, `KEY+=steps` or `KEY-=steps`, using the key names `show` prints. It creates `autosetup_<car>_<track>_<n>.svm` in the track's Settings folder. It never overwrites a setup it didn't create.
 
+### Lap-time model (0.3)
+
+A quasi-steady-state point-mass lap (`autosetup/sim/`) over the curvature of your fastest lap at the layout. The car is your own measured envelope: lateral grip (99th percentile per 5 m/s, never falling with speed), braking (95th) and net full-throttle acceleration (median, away from gear changes), pooled over the car's stints at the layout. One driver-efficiency factor per car and layout makes the simulated laps match yours. Leave-one-out on the current build's stints it predicts a stint's best lap within 0.58 % rms (0.2–0.7 % per layout, no bias).
+
+What a setup does is measured between stints at the same layout:
+
+- **Drag:** a per-stint v² term on the full-throttle straights, with the track's slopes shared, corrected by top speeds against the other stints.
+- **Downforce:** the lateral limit per speed bin against the other stints, weighted by how close the bin is to the limit. It reads low rather than wrong.
+- **Aero balance:** high- minus low-speed understeer.
+
+The car's aero map (`aero_maps`, per car model and game build) is the slope of each against rear wing, front ride height and rake at speed, so it carries across tracks. Sector times the point mass misses are left to a residual GP per sector. `sim/sensitivity.py` gives what a click of wing and a mm of rake are worth at a layout.
+
 ## Tests
 
 ```

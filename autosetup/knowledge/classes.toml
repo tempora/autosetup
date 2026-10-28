@@ -67,6 +67,26 @@ band_split_kmh = 140.0
 # Damper knee (mm/s shaft velocity) between the slow and fast damper circuits. LMU doesn't
 # expose it; a starting value to check against the histograms (and DAM logs).
 damper_knee_mm_s = 50.0
+# Aero map priors (sim/aero.py): the direction each platform change pushes, at a size
+# that's a guess; aero_prior_sd × each one is its prior sd, so a few stints decide. Per
+# FULL range of rear wing, or per mm of front ride height / rake at speed.
+#   drag, lift: change of log(drag) / log(downforce term)
+#   balance: deg more understeer in high- than in low-speed corners
+aero_prior_sd = 1.0
+# The class's typical drag k (1/m: drag deceleration = k·v²) and downforce term c
+# (1/(m/s)²: grip × (1 + c·v²)) that the shares below are of. Rough: top speed and power
+# give k; c is how much more grip the fast corners have.
+drag_k_typ = 7e-4
+lift_c_typ = 6e-5
+aero_drag_per_wing = 0.15
+aero_drag_per_mm_rh = 0.0
+aero_drag_per_mm_rake = 0.002
+aero_lift_per_wing = 0.2
+aero_lift_per_mm_rh = -0.01
+aero_lift_per_mm_rake = 0.01
+aero_balance_per_wing = 0.5
+aero_balance_per_mm_rh = 0.02
+aero_balance_per_mm_rake = -0.02
 # How much may change in one proposal.
 max_balance_changes = 2
 max_platform_changes = 1
@@ -90,6 +110,8 @@ brake_temp = [400.0, 1000.0]
 fuel_s_per_l = 0.035
 brake_pressure_pct = [93.0, 100.0]  # depends on the car; "too much brake pressure" finds where
 full_throttle_ref = 0.48  # a guess from one partial lap (Spa); your own median takes over at 3 tracks
+drag_k_typ = 9e-4
+lift_c_typ = 1.5e-4
 
 [LMP2]
 brake_temp = [400.0, 1000.0]
@@ -116,3 +138,5 @@ rating_point_fast_exit = 0.08
 brake_pressure_pct = [90.0, 94.0]
 full_throttle_ref = 0.49  # a guess from one track (Barcelona); your own median takes over at 3 tracks
 band_split_kmh = 150.0  # more downforce: its fast corners start higher
+drag_k_typ = 9e-4
+lift_c_typ = 1.5e-4

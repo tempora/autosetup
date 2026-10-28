@@ -166,6 +166,39 @@ create table if not exists lap_suspension (
     hist          json,                  -- counts from hist_lo on
     stats         json
 );
+-- sim/extract.py: what the lap-time model takes from each recording.
+create table if not exists sim_profiles (
+    recording_id  integer,
+    seq           integer,
+    lap_time      double,
+    step          double,
+    kappa         json,                  -- 1/m per step, + right
+    speed         json,                  -- m/s per step
+    sectors       json                   -- sector boundary distances, m
+);
+create table if not exists sim_straights (
+    recording_id  integer,
+    seq           integer,
+    bin           integer,               -- 25 m of lap distance
+    n             integer,
+    v             double,
+    a_x           double
+);
+create table if not exists sim_envelope (
+    recording_id  integer,
+    kind          varchar,               -- lat | brake | drive
+    v             double,
+    n             integer,
+    value         double                 -- m/s²
+);
+create table if not exists sim_traps (
+    recording_id  integer,
+    seq           integer,
+    d             double,
+    v             double
+);
+alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed
+alter table recordings add column if not exists rh_rear_fast double;
 create table if not exists kerb_events (
     recording_id  integer,
     seq           integer,
@@ -181,7 +214,8 @@ create table if not exists kerb_events (
     yaw_dist      double
 );
 """
-OBSERVATION_TABLES = ("corner_passes", "lap_suspension", "kerb_events")
+OBSERVATION_TABLES = ("corner_passes", "lap_suspension", "kerb_events", "sim_profiles", "sim_straights",
+                      "sim_envelope", "sim_traps")
 
 
 @dataclass
@@ -223,7 +257,19 @@ def _analyse(s: Session, laps: list, setup: CarSetup) -> tuple[list, Observation
     if not laps:
         return [], Observations()
     sig = load_signals(s)
-    return compute_recording(s, laps, setup, sig), observe_recording(s, sig, laps, setup)
+    results = compute_recording(s, laps, setup, sig)
+    return results, observe_recording(s, sig, laps, setup, clean=_clean_seqs(laps, results))
+
+
+def _clean_seqs(laps: list, results: list) -> set[int]:
+    """The laps setups are compared on: analysis._mark_clean's rule (complete, outside the
+    pits, no real off, within 3 % of the median)."""
+    off = {r.seq for r in results if r.metrics.get("off_major")}
+    racing = [i for i, lap in enumerate(laps) if lap.complete and not lap.in_pits and i not in off]
+    if not racing:
+        return set()
+    limit = float(np.median([laps[i].time for i in racing])) * 1.03
+    return {i for i in racing if laps[i].time <= limit}
 
 
 def _num(x: float | None) -> float | None:
@@ -386,6 +432,22 @@ class Store:
                        e.heave_mm, e.yaw_dist) for seq, e in obs.kerbs])
         self.con.execute("update recordings set dam_log = ?, load_source = ?, kerb_source = ? where id = ?",
                          [obs.dam, obs.load_source, obs.kerb_source, rid])
+        if obs.sim is not None:
+            self._insert_sim(rid, obs.sim)
+
+    def _insert_sim(self, rid: int, sim) -> None:
+        if sim.profile is not None:
+            p = sim.profile
+            self.con.execute("insert into sim_profiles values (?, ?, ?, ?, ?, ?, ?)",
+                             [rid, p.seq, p.lap_time, 5.0, json.dumps(np.round(p.kappa, 6).tolist()),
+                              json.dumps(np.round(p.speed, 3).tolist()), json.dumps(p.sectors)])
+        self._insert("sim_straights", ("INTEGER", "INTEGER", "INTEGER", "INTEGER", "DOUBLE", "DOUBLE"),
+                     [(rid, *row) for row in sim.straights])
+        self._insert("sim_envelope", ("INTEGER", "VARCHAR", "DOUBLE", "INTEGER", "DOUBLE"),
+                     [(rid, *row) for row in sim.envelope])
+        self._insert("sim_traps", ("INTEGER", "INTEGER", "DOUBLE", "DOUBLE"), [(rid, *row) for row in sim.traps])
+        self.con.execute("update recordings set rh_front_fast = ?, rh_rear_fast = ? where id = ?",
+                         [sim.rh_front, sim.rh_rear, rid])
 
     def recompute_metrics(self, telemetry_dir: Path, force: bool = False,
                           lock: threading.RLock | None = None) -> tuple[int, list[str]]:
@@ -408,7 +470,8 @@ class Store:
                 continue  # LMU is writing it; it's re-imported when the outing ends
             try:
                 with Session.open(f) as s:
-                    results, obs = _analyse(s, s.laps(), CarSetup.from_json(s.setup_json))
+                    laps = s.laps()
+                    results, obs = _analyse(s, laps, CarSetup.from_json(s.setup_json))
                     layout = s.metadata.get("TrackLayout") or s.track
             except RecordingBusy:
                 continue

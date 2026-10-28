@@ -21,6 +21,8 @@ from autosetup.lmu.telemetry import Lap, Session
 from autosetup.metrics import balance, corners, kerbs, suspension
 from autosetup.metrics.compute import steering_geometry
 from autosetup.metrics.signals import Signals
+from autosetup.sim.extract import SimData
+from autosetup.sim.extract import extract as sim_extract
 
 SLOW_PASS = 0.9  # passes under this share of the corner's median speed are left out
 
@@ -34,6 +36,7 @@ class Observations:
     dam: str | None = None  # file name of the DAM log used
     load_source: str | None = None
     kerb_source: str | None = None
+    sim: SimData | None = None  # what the lap-time model takes from the recording
 
 
 def _slice(sig: Signals, m: np.ndarray) -> Signals:
@@ -56,9 +59,14 @@ def dam_log(s: Session) -> motec.MotecLog | None:
 
 
 def observe_recording(s: Session, sig: Signals, laps: list[Lap], setup: CarSetup,
-                      log: motec.MotecLog | None = None, use_dam: bool = True) -> Observations:
+                      log: motec.MotecLog | None = None, use_dam: bool = True,
+                      clean: set[int] | None = None) -> Observations:
+    """``clean``: seqs of the laps setups are compared on (analysis's rule); complete laps
+    outside the pits when not given."""
     if not laps:
         return Observations()
+    if clean is None:
+        clean = {i for i, lap in enumerate(laps) if lap.complete and not lap.in_pits}
     k = load_knowledge(s.car_class)
     geometry = steering_geometry(setup, s.car_class)
     wheelbase = geometry[2]
@@ -129,4 +137,5 @@ def observe_recording(s: Session, sig: Signals, laps: list[Lap], setup: CarSetup
             seq = next((n for n, lap in enumerate(laps) if lap.t_start <= ev.t0 < lap.t_end), None)
             if seq is not None and not laps[seq].in_pits:
                 out.kerbs.append((seq, ev))
+    out.sim = sim_extract(s, sig, laps, clean)
     return out
