@@ -44,3 +44,23 @@ def test_lap_events_match_lap_distance_wraps():
             assert np.all(nearest < 0.25), (rec.name, nearest)
             checked += 1
     assert checked
+
+
+def test_pipeline_on_every_current_build_recording(tmp_path):
+    """Corner passes, suspension and kerbs from each recording of the installed game build
+    with a lap at speed (older builds are never learned from)."""
+    from autosetup.lmu.builds import current_filter, note_build
+    from autosetup.store import Store
+
+    store = Store(tmp_path / "db.duckdb")
+    store.import_all(PATHS.telemetry)
+    note_build(store, PATHS)
+    cond, params = current_filter(store)
+    rows = store.con.execute(
+        f"""select r.file_name, (select count(*) from corner_passes p where p.recording_id = r.id),
+                   (select count(*) from lap_suspension s where s.recording_id = r.id)
+            from recordings r where {cond} and exists (select 1 from laps l where l.recording_id = r.id
+              and not l.in_pits and l.lap_time > 60)""", params).fetchall()
+    assert rows
+    for name, n_passes, n_susp in rows:
+        assert n_passes > 0 and n_susp > 0, name

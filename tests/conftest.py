@@ -148,3 +148,27 @@ def install(tmp_path) -> LmuPaths:
     make_recording(paths.telemetry / "Test Raceway_P_2026-01-01T10_00_00Z.duckdb")
     (paths.settings / "Testway" / "base.svm").write_bytes(SVM_TEXT.encode("latin-1"))
     return paths
+
+
+# -- recorded telemetry (tests/data, current game build only) -----------------------------
+DATA = Path(__file__).resolve().parent / "data"
+
+
+@pytest.fixture(scope="session")
+def recorded(tmp_path_factory):
+    """``recorded(name)`` → path of that fixture rebuilt as a game recording (see
+    tests/data/make_fixtures.py), under its original file name."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("make_fixtures", DATA / "make_fixtures.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    root = tmp_path_factory.mktemp("recorded")
+    built: dict[str, Path] = {}
+
+    def get(name: str) -> Path:
+        if name not in built:
+            built[name] = mod.rebuild(DATA / f"{name}.npz", root / mod.FIXTURES[name])
+        return built[name]
+
+    return get

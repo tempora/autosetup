@@ -172,6 +172,11 @@ npx tauri build      # → src-tauri\target\release\bundle\nsis\autosetup_0.3.0_
   - `Wheel Speed` is contact-patch speed, so it carries no slip or lock-up information.
   - `TyresTempLeft/Right` are car-frame sides: the inner edge is `Right` on the left-hand wheels.
   - `Lap Dist` is 10 Hz in older files, so it's unwrapped before resampling.
+- **Game builds:** recordings don't say which build they're from (`Version` is the file format). Steam's `appmanifest_2399420.acf` names the installed build and when it was installed; autosetup remembers each build it sees and learns only from the current one's recordings. Older ones still show in History.
+- **Corner passes (0.3):** each lap's pass through each corner (one map per layout, from the median lap) gives one balance observation per phase (entry / mid / exit) and speed band (low / high, by apex speed). Balance is the understeer angle, the yaw-rate error against v·δ/L in steering degrees, signed by the way the car turns, with steering and throttle rates normalised out per corner. Partial laps outside the pits count; nothing waits for a number of stints.
+- **Suspension:** `Susp Pos` (100 Hz) is spring compression; shaft velocity is its Savitzky–Golay derivative over 40 ms. Load variation uses the spring compression as a proxy (the game logs spring settings as indices, not rates).
+- **Kerbs:** `SurfaceTypes` code 5 per wheel; without it, shaft-velocity spikes at the track edge. Each event records peak load, airtime, pitch and heave transients and the yaw-rate disturbance after it.
+- **DAM (optional):** a MoTeC log from the rF2 DAM plugin (`<LMU>\LOG\*.ld`) of the same outing adds tyre load and per-wheel slip. Its session clock is whole seconds, so it's aligned by Ground Speed.
 - **Templates:** a car model is identified by its parameter ranges, which change with game updates. A saved `.svm` of the same car supplies the file header. Every setting is then overwritten from the recording.
 
 ## License

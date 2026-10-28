@@ -17,12 +17,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
+import numpy as np
 
 from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.svm import read_settings
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress, list_recordings
 from autosetup.lmu.validate import match_recordings
 from autosetup.metrics import METRICS_VERSION, compute_recording
+from autosetup.metrics.corners import Corner, remap
+from autosetup.metrics.observations import Observations, observe_recording
+from autosetup.metrics.signals import load_signals
 
 SCHEMA = """
 create sequence if not exists recording_id;
@@ -115,7 +119,69 @@ create table if not exists zone_ratings (
     value         double,                -- rating points, -2 .. +2 in halves (- oversteer, + understeer)
     primary key (file_name, zone)
 );
+alter table recordings add column if not exists game_build varchar;   -- lmu/builds.py
+alter table recordings add column if not exists dam_log varchar;      -- DAM .ld file merged in, if any
+alter table recordings add column if not exists load_source varchar;  -- tyre_load (DAM) | spring
+alter table recordings add column if not exists kerb_source varchar;  -- surface | spike
+-- One corner map per layout, so passes from every recording share corner ids.
+create table if not exists corners (
+    layout        varchar,
+    corner        integer,
+    direction     integer,               -- +1 right, -1 left
+    d_start       double,
+    d_apex        double,
+    d_end         double,
+    v_apex        double,
+    primary key (layout, corner)
+);
+-- metrics/balance.py: one row per lap, corner and phase.
+create table if not exists corner_passes (
+    recording_id  integer,
+    seq           integer,
+    corner        integer,
+    phase         varchar,               -- entry | mid | exit
+    band          varchar,               -- low | high
+    n             integer,
+    v_min         double,
+    v_mean        double,
+    a_lat         double,
+    ua            double,                -- understeer angle, deg (+ understeer)
+    ua_var        double,
+    yaw_err       double,
+    steer_rate    double,
+    throttle_rate double,
+    countersteer_s double,
+    turnin_gain   double,
+    slip_fr       double,
+    kerb          boolean
+);
+-- metrics/suspension.py: per lap, wheel, kerb / off-kerb samples.
+create table if not exists lap_suspension (
+    recording_id  integer,
+    seq           integer,
+    wheel         varchar,
+    kerb          boolean,
+    n             integer,
+    hist_lo       integer,               -- first stored bin of the fixed 5 mm/s grid
+    hist          json,                  -- counts from hist_lo on
+    stats         json
+);
+create table if not exists kerb_events (
+    recording_id  integer,
+    seq           integer,
+    t0            double,
+    t1            double,
+    dist          double,
+    wheels        varchar,
+    source        varchar,
+    peak_load     double,
+    airtime_s     double,
+    pitch_deg     double,
+    heave_mm      double,
+    yaw_dist      double
+);
 """
+OBSERVATION_TABLES = ("corner_passes", "lap_suspension", "kerb_events")
 
 
 @dataclass
@@ -128,6 +194,11 @@ class ReadRecording:
     columns: tuple  # recorded_at .. duration, in the recordings table's order
     laps: list
     results: list
+    obs: Observations | None = None
+
+    @property
+    def layout(self) -> str:
+        return self.columns[2] or self.columns[1] or ""
 
 
 def read_recording(path: Path) -> ReadRecording | None:
@@ -139,12 +210,24 @@ def read_recording(path: Path) -> ReadRecording | None:
             return None
         setup = CarSetup.from_json(s.setup_json)
         laps = s.laps()
-        results = compute_recording(s, laps, setup)
+        results, obs = _analyse(s, laps, setup)
         md = s.metadata
         columns = (md.get("RecordingTime"), s.track, md.get("TrackLayout"), s.car_name, s.car_class, s.session_type,
                    md.get("WeatherConditions"), setup.signature if setup.params else None, json.dumps(s.setup_json),
                    s.t_start, s.duration)
-    return ReadRecording(path, st.st_size, st.st_mtime, columns, laps, results)
+    return ReadRecording(path, st.st_size, st.st_mtime, columns, laps, results, obs)
+
+
+def _analyse(s: Session, laps: list, setup: CarSetup) -> tuple[list, Observations]:
+    """Lap metrics and the models' observations, from one load of the signals."""
+    if not laps:
+        return [], Observations()
+    sig = load_signals(s)
+    return compute_recording(s, laps, setup, sig), observe_recording(s, sig, laps, setup)
+
+
+def _num(x: float | None) -> float | None:
+    return None if x is None or not np.isfinite(x) else float(x)
 
 
 def default_db_path() -> Path:
@@ -192,7 +275,7 @@ class Store:
         return row is not None
 
     def _delete_recording(self, rid: int) -> None:
-        for table in ("lap_sectors", "lap_metrics", "laps"):
+        for table in ("lap_sectors", "lap_metrics", "laps", *OBSERVATION_TABLES):
             self.con.execute(f"delete from {table} where recording_id = ?", [rid])
         self.con.execute("delete from recordings where id = ?", [rid])
 
@@ -236,6 +319,8 @@ class Store:
                      for i, lap in enumerate(laps)],
                 )
             self._insert_metrics(rid, rec.results)
+            if rec.obs is not None:
+                self._insert_observations(rid, rec.layout, rec.obs)
             self.con.execute("commit")
         except Exception:
             self.con.execute("rollback")
@@ -256,6 +341,51 @@ class Store:
             self.con.execute(
                 "insert into lap_sectors select $1, unnest($2::INTEGER[]), unnest($3::INTEGER[]), "
                 "unnest($4::DOUBLE[])", [rid, seqs, sectors, times])
+
+    def _insert(self, table: str, types: tuple[str, ...], rows: list[tuple]) -> None:
+        """Many rows in one statement (executemany is row by row)."""
+        if not rows:
+            return
+        cols = ", ".join(f"unnest(${i + 1}::{t}[])" for i, t in enumerate(types))
+        self.con.execute(f"insert into {table} select {cols}", [list(c) for c in zip(*rows)])
+
+    def corner_map(self, layout: str) -> list[Corner]:
+        rows = self.con.execute(
+            "select corner, direction, d_start, d_apex, d_end, v_apex from corners where layout = ? order by corner",
+            [layout]).fetchall()
+        return [Corner(*r) for r in rows]
+
+    def canonical_corners(self, layout: str, found: list[Corner]) -> dict[int, int]:
+        """This map's corner ids in the layout's map (the first recording's, if it's new)."""
+        known = self.corner_map(layout)
+        if not known:
+            self._insert("corners", ("VARCHAR", "INTEGER", "INTEGER", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE"),
+                         [(layout, c.id, c.direction, c.d_start, c.d_apex, c.d_end, c.v_apex) for c in found])
+            return {c.id: c.id for c in found}
+        return remap(found, known)
+
+    def _insert_observations(self, rid: int, layout: str, obs: Observations) -> None:
+        ids = self.canonical_corners(layout, obs.corners)
+        self._insert("corner_passes", ("INTEGER", "INTEGER", "INTEGER", "VARCHAR", "VARCHAR", "INTEGER", "DOUBLE",
+                                       "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE",
+                                       "DOUBLE", "DOUBLE", "BOOLEAN"),
+                     [(rid, seq, ids[o.corner], o.phase, o.band, o.n, o.v_min, o.v_mean, o.a_lat, o.ua, o.ua_var,
+                       _num(o.yaw_err), o.steer_rate, o.throttle_rate, o.countersteer_s, o.turnin_gain, o.slip_fr,
+                       o.kerb) for seq, o in obs.passes if o.corner in ids])
+        rows = []
+        for ls in obs.suspension:
+            nz = np.flatnonzero(ls.hist)
+            lo, hi = (int(nz[0]), int(nz[-1]) + 1) if len(nz) else (0, 0)
+            rows.append((rid, ls.seq, ls.wheel, ls.kerb, ls.n, lo, json.dumps(ls.hist[lo:hi].tolist()),
+                         json.dumps(ls.stats)))
+        self._insert("lap_suspension", ("INTEGER", "INTEGER", "VARCHAR", "BOOLEAN", "INTEGER", "INTEGER", "JSON",
+                                        "JSON"), rows)
+        self._insert("kerb_events", ("INTEGER", "INTEGER", "DOUBLE", "DOUBLE", "DOUBLE", "VARCHAR", "VARCHAR",
+                                     "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE"),
+                     [(rid, seq, e.t0, e.t1, e.dist, e.wheels, e.source, e.peak_load, e.airtime_s, e.pitch_deg,
+                       e.heave_mm, e.yaw_dist) for seq, e in obs.kerbs])
+        self.con.execute("update recordings set dam_log = ?, load_source = ?, kerb_source = ? where id = ?",
+                         [obs.dam, obs.load_source, obs.kerb_source, rid])
 
     def recompute_metrics(self, telemetry_dir: Path, force: bool = False,
                           lock: threading.RLock | None = None) -> tuple[int, list[str]]:
@@ -278,15 +408,17 @@ class Store:
                 continue  # LMU is writing it; it's re-imported when the outing ends
             try:
                 with Session.open(f) as s:
-                    results = compute_recording(s)
+                    results, obs = _analyse(s, s.laps(), CarSetup.from_json(s.setup_json))
+                    layout = s.metadata.get("TrackLayout") or s.track
             except RecordingBusy:
                 continue
             with lock:
                 self.con.execute("begin")
                 try:
-                    self.con.execute("delete from lap_metrics where recording_id = ?", [rid])
-                    self.con.execute("delete from lap_sectors where recording_id = ?", [rid])
+                    for table in ("lap_metrics", "lap_sectors", *OBSERVATION_TABLES):
+                        self.con.execute(f"delete from {table} where recording_id = ?", [rid])
                     self._insert_metrics(rid, results)
+                    self._insert_observations(rid, layout, obs)
                     self.con.execute("update recordings set metrics_version = ? where id = ?", [METRICS_VERSION, rid])
                     self.con.execute("commit")
                 except Exception:

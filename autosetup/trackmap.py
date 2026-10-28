@@ -95,7 +95,7 @@ def lap_trace(s: Session, lap: Lap, origin: tuple[float, float] | None, length: 
               sectors: list[float] | None = None) -> dict:
     """One lap resampled every TRACE_STEP_M metres of lap distance. Without a map
     ``origin`` (no GPS on this layout yet) the driven line is left out."""
-    from autosetup.metrics.compute import _steering_geometry
+    from autosetup.metrics.compute import steering_geometry
 
     t0, t1 = lap.t_start, lap.t_end
     tc = s.clock
@@ -116,7 +116,7 @@ def lap_trace(s: Session, lap: Lap, origin: tuple[float, float] | None, length: 
         return [round(float(x), 3) for x in np.interp(t_at, tt, v) * scale]
 
     setup = CarSetup.from_json(s.setup_json)
-    half_lock, _, _ = _steering_geometry(setup, s.car_class)
+    half_lock, _, _ = steering_geometry(setup, s.car_class)
     tt, steer = s.channel("Steering Pos") if "Steering Pos" in s.frequencies else (None, None)
     if steer is not None:
         if s.units.get("Steering Pos") == "%" or np.nanmax(np.abs(steer), initial=0) > 1.5:

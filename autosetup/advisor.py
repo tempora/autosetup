@@ -23,33 +23,24 @@ from __future__ import annotations
 
 import hashlib
 import math
-import tomllib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from autosetup import units
 from autosetup.analysis import pretty_name
+from autosetup.knowledge import KNOWLEDGE, load_knowledge  # noqa: F401 (re-exported)
 from autosetup.lmu.setup_space import CarSetup
 from autosetup.opt.balance import CS_MARGIN, Target, zone_ratings
 from autosetup.opt.balance import learn as learn_balance
 from autosetup.opt.dataset import zone_parts
 from autosetup.scales import CarScales
 
-KNOWLEDGE = Path(__file__).resolve().parent / "knowledge" / "classes.toml"
 MIN_RACING_LAPS = 2
 PHASES = ("entry", "mid", "exit")
 SPEEDS = ("slow", "medium", "fast")  # corner speed bands
 ZONES = tuple(f"{sp}_{ph}" for sp in SPEEDS for ph in PHASES)  # = opt.dataset.ZONES
 DISABLING = {"detached", "off", "n/a", "disabled"}  # balance moves never switch something off
 
-
-def load_knowledge(car_class: str, path: Path = KNOWLEDGE) -> dict:
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
-    out = dict(data.get("default", {}))
-    for section, values in data.items():
-        if section != "default" and car_class.lower().startswith(section.lower()):
-            out.update(values)
-    return out
 
 
 @dataclass

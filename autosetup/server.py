@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from autosetup import __version__, analysis, driver, screens, trackmap, units
 from autosetup.live import LiveFeed
+from autosetup.lmu.builds import note_build
 from autosetup.lmu.paths import LmuPaths, game_running
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress
 from autosetup.metrics import METRICS_VERSION
@@ -74,6 +75,7 @@ class App:
         self._stop = threading.Event()
         with self.lock:
             units.set_current(units.Units.from_json(store.get_setting("units")))
+            note_build(store, paths)
 
     # -- watcher ---------------------------------------------------------------------
     def start_watcher(self, interval: float = 1.0) -> threading.Thread:
@@ -161,6 +163,7 @@ class App:
             if n and self.paths:
                 with self.lock:
                     self.store.learn_links(self.paths.telemetry, self.paths.settings, only=new)
+                    note_build(self.store, self.paths)
             if n:
                 log(f"imported {n} recording{'s' if n != 1 else ''} in {time.perf_counter() - t0:.1f} s")
         finally:

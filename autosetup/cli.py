@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from autosetup.lmu.builds import note_build
 from autosetup.lmu.paths import find_install
 from autosetup.store import Store
 
@@ -29,6 +30,7 @@ def cmd_info(args, store: Store) -> int:
 def cmd_import(args, store: Store) -> int:
     paths = find_install()
     added, errors, busy = store.import_all(paths.telemetry)
+    note_build(store, paths)
     print(f"Imported {len(added)} new recording(s).")
     for f in busy:
         print(f"  waiting for {f.name}: LMU is still writing it; it's imported once the stint ends")

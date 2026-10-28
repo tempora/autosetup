@@ -15,8 +15,8 @@ from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.telemetry import Lap, Session
 from autosetup.metrics.signals import GRID_HZ, WHEELBASE, Signals, load_signals, smooth
 
-METRICS_VERSION = 7  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
-#                      6: understeer in mid-speed corners; 7: per corner speed × phase
+METRICS_VERSION = 8  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
+#                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs
 PACKER_FLAT = 0.25  # past contact, deflection gains under this share of the free spring's rate
 WHEELS = ("fl", "fr", "rl", "rr")
 SECTOR_M = 100.0  # minisector length; shorter ones bias the theoretical best low (min of noise)
@@ -42,13 +42,14 @@ class LapResult:
     sectors: np.ndarray = field(default_factory=lambda: np.zeros(0))  # minisector times, s
 
 
-def compute_recording(s: Session, laps: list[Lap] | None = None, setup: CarSetup | None = None) -> list[LapResult]:
+def compute_recording(s: Session, laps: list[Lap] | None = None, setup: CarSetup | None = None,
+                      sig: Signals | None = None) -> list[LapResult]:
     laps = laps if laps is not None else s.laps()
     if not laps:
         return []
-    sig = load_signals(s)
+    sig = sig if sig is not None else load_signals(s)
     setup = setup or CarSetup.from_json(s.setup_json)
-    geometry = _steering_geometry(setup, s.car_class)
+    geometry = steering_geometry(setup, s.car_class)
     lap_len = float(np.nanmax(sig.dist)) if np.isfinite(sig.dist).any() else 0.0
     contact = _third_contacts(sig, setup)
     out = []
@@ -74,7 +75,7 @@ def _slice(sig: Signals, m: np.ndarray) -> Signals:
     return Signals(**{k: v[m] for k, v in vars(sig).items()})
 
 
-def _steering_geometry(setup: CarSetup, car_class: str) -> tuple[float, float, float]:
+def steering_geometry(setup: CarSetup, car_class: str) -> tuple[float, float, float]:
     """(steering-wheel degrees at full lock one way, steering ratio, wheelbase m)."""
     lock_total, ratio = 540.0, 15.0
     p = setup.params.get("VM_STEER_LOCK")
