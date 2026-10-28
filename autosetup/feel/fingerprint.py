@@ -144,6 +144,22 @@ def lock(store, rid: int, knowledge: dict) -> Fingerprint:
     return own(store, car_key)
 
 
+def forget(store, car_key: str) -> int:
+    """Forget a car's fingerprint (and the presses since it): the target goes back to what
+    you're driving. Returns how many were active."""
+    _schema(store)
+    n = store.con.execute("select count(*) from fingerprints where car_key = ? and active", [car_key]).fetchone()[0]
+    store.con.execute("update fingerprints set active = false where car_key = ?", [car_key])
+    car_class = store.con.execute("select any_value(car_class) from fingerprints where car_key = ?", [car_key]).fetchone()[0]
+    store.con.execute("insert into feel_events (car_key, car_class, kind, happened_at) values (?, ?, 'reset', ?)",
+                      [car_key, car_class, datetime.now(timezone.utc).replace(tzinfo=None)])
+    return int(n)
+
+
+def active(store) -> list[Fingerprint]:
+    return _row(store, "active", [])
+
+
 def _row(store, where: str, params: list) -> list[Fingerprint]:
     _schema(store)
     cur = store.con.execute(f"select * from fingerprints where {where} order by id", params)

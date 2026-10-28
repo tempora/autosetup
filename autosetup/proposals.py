@@ -88,13 +88,15 @@ class Plan:
     wing: dict | None = None
     balance_source: str = "none"
     dampers: dict | None = None
+    platform: dict | None = None  # current / proposed: ride heights at speed and rake (mm), wing
     notes: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return {"stint": self.stint, "car_key": self.car_key, "car_class": self.car_class, "layout": self.layout,
                 "target": self.target.to_json(), "measured": self.measured, "predicted": self.predicted,
                 "lap": self.lap, "gap": self.gap, "reason": self.reason, "feasible": self.feasible,
-                "wing": self.wing, "balance_source": self.balance_source, "dampers": self.dampers}
+                "wing": self.wing, "balance_source": self.balance_source, "dampers": self.dampers,
+                "platform": self.platform}
 
 
 class Advisor:
@@ -241,9 +243,12 @@ class Advisor:
         extra = []
         if dmodel is not None:
             extra.append(lambda idx: dmodel.kerb_ok(with_dampers(idx), with_dampers(base)))
+        # On a track the car hasn't been driven at, the fingerprint's own setup is a candidate
+        # however far it is (the first proposal should already be close); once there are
+        # stints here, the trust region and the ride-height reach hold.
         candidates = []
         fp = fpm.own(store, car_key)
-        if fp is not None and fp.setup:
+        if fp is not None and fp.setup and balance.source != "layout":
             candidates.append({n: v["index"] for n, v in fp.setup.items() if n in base})
         reach = {d.name: max(1, round(MAX_RH_MM / abs(platform.mm_per_click.get(d.name, 1.0))))
                  for d in dims if d.name.startswith("rh_")}
@@ -266,6 +271,9 @@ class Advisor:
         for name, (a, b) in choice.moves.items():
             d = next(x for x in dims if x.name == name)
             pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, choice, d, a, b)))
+        if ref_platform is not None:
+            plan.platform = self._platforms(ref_platform, base, choice.best.indices, platform.mm_per_click, setup,
+                                            scales, dims)
 
         # Dampers, around the main choice, inside the same band: a damper move may not cut
         # the chance of being in the band by more than DAMPER_BAND_LOSS.
@@ -353,6 +361,21 @@ class Advisor:
             data.append(sm)
         return dampers.DamperModel.fit(dims, data) if data else None
 
+    def _platforms(self, ref: Platform, base: dict[str, int], best: dict[str, int], mm: dict[str, float], setup,
+                   scales, dims: list[Dim]) -> dict:
+        """Ride heights at speed and rake (mm) and the wing, now and with the proposal."""
+        def at(idx):
+            f = ref.rh_front + (idx.get("rh_front", base.get("rh_front", 0)) - base.get("rh_front", 0)) * mm.get("rh_front", 1.0)
+            r = ref.rh_rear + (idx.get("rh_rear", base.get("rh_rear", 0)) - base.get("rh_rear", 0)) * mm.get("rh_rear", 1.0)
+            wing = next((d for d in dims if d.name == "wing"), None)
+            text = None
+            if wing is not None:
+                text = scales.label(wing.keys[0], idx["wing"])[0] or setup[wing.keys[0]].text.strip()
+            elif "VM_REAR_WING" in setup.params:
+                text = setup["VM_REAR_WING"].text.strip()
+            return {"rh_front": round(f, 1), "rh_rear": round(r, 1), "rake": round(r - f, 1), "wing": text}
+        return {"current": at(base), "proposed": at(best)}
+
     def _sector_delta(self, model, amap, dims, base, best, ref_platform, mm) -> list[float]:
         def plat(idx):
             def rh(name, ref_mm):
@@ -372,7 +395,7 @@ class Advisor:
         pred1 = prob.balance.predict(bo.x_of(prob.dims, alone))
         parts = []
         if abs(lap1 - lap0) >= 0.01 and prob.lap(prob.base)[1] < UNKNOWN_SD:
-            parts.append(f"{lap1 - lap0:+.2f} s")
+            parts.append(f"{lap1 - lap0:+.2f} s".replace("-", "−"))
         moved = sorted(((pred1[c][0] - pred0[c][0], c) for c in pred1 if c in pred0), key=lambda t: -abs(t[0]))
         if moved and abs(moved[0][0]) >= 0.05:
             delta, cell = moved[0]

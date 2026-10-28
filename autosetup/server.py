@@ -27,6 +27,7 @@ from autosetup.lmu.builds import note_build
 from autosetup.lmu.paths import LmuPaths, game_running
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress
 from autosetup.metrics import METRICS_VERSION
+from autosetup.feel import fingerprint as fpm
 from autosetup.knowledge import load_knowledge
 from autosetup.opt.dampers import histograms
 from autosetup.proposals import Advisor, ProposalConflict
@@ -227,10 +228,13 @@ class App:
                    where r.car_class is not null and exists (
                        select 1 from laps l where l.recording_id = r.id and l.complete and not l.in_pits)
                    group by r.car_class order by max(r.file_mtime) desc""").fetchall()
+            fps = fpm.active(self.store)
         return {
             "units": units.current.to_json(), "unit_choices": {k: list(v) for k, v in units.CHOICES.items()},
             "folders": [{"which": k, "path": str(v) if v else None} for k, v in self.folders().items()],
             "classes": [{"car_class": c} for c, _ in classes],
+            "fingerprints": [{"car_key": f.car_key, "car_class": f.car_class, "layout": f.layout,
+                              "created_at": f.created_at} for f in fps],
             "recomputing": self.status["recomputing"], "recomputed": self.status["recomputed"],
         }
 
@@ -500,6 +504,9 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/lock":
                 with app.lock:
                     self._json(app.advisor.lock(int(body["stint"])))
+            elif self.path == "/api/forget":
+                with app.lock:
+                    self._json({"forgotten": fpm.forget(app.store, str(body["car_key"]))})
             elif self.path == "/api/rating":
                 # {file_name, lockups?, note?}: only the fields in the request change.
                 name = str(body["file_name"])

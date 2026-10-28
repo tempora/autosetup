@@ -42,8 +42,11 @@ def test_health_and_page(server):
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
         for id_ in (b"screen-welcome", b"screen-analysis", b"screen-setup", b"screen-history", b'id="map"',
-                    b'id="slider"', b'id="traces"', b'id="modal"', b"rate-details"):
+                    b'id="slider"', b'id="traces"', b'id="modal"', b'id="vis"', b'id="advanced"', b'id="feel-rear"',
+                    b'id="feel-front"', b'id="this-is-it"', b'id="gap"'):
             assert id_ in page, id_
+        for gone in (b"rate-details", b"change-size", b"/api/feel", b"car-feel-row"):
+            assert gone not in page, gone
 
 
 def test_import_state_stints_pareto(server):
@@ -193,12 +196,20 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
         assert call(base, "/api/feedback", {"stint": stint, "button": "faster"})[0] == 400
         _, pr = call(base, f"/api/proposal?stint={stint}")
         assert set(pr["plan"]["target"]["cells"]) and pr["plan"]["lap"] is not None
+        plat = pr["plan"]["platform"]
+        assert set(plat) == {"current", "proposed"} and plat["current"]["rake"] is not None
         _, lk = call(base, "/api/lock", {"stint": stint})
         assert lk["fingerprint"]["stint"] == stint and lk["target"]["anchor"] == "fingerprint"
         _, d = call(base, "/api/driver")
         [cls] = d["classes"]
         [car] = cls["cars"]
         assert car["line"] and abs(car["rear"]) < 10 and abs(car["front"]) < 10
+        _, s = call(base, "/api/settings")
+        assert [f["car_key"] for f in s["fingerprints"]] == [car["car_key"]]
+        assert call(base, "/api/forget", {"car_key": car["car_key"]}) == (200, {"forgotten": 1})
+        assert call(base, "/api/settings")[1]["fingerprints"] == []
+        assert call(base, "/api/driver")[1]["classes"][0]["cars"] == []
+        assert call(base, f"/api/target?stint={stint}")[1]["target"]["anchor"] == "current"
         _, h = call(base, f"/api/histograms?stint={stint}&kerbs=off&bin=25")
         assert set(h["wheels"]) == {"fl", "fr", "rl", "rr"} and h["knee"] > 0
         fl = h["wheels"]["fl"]

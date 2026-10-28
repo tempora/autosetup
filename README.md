@@ -36,9 +36,16 @@ The page follows [UI_LAYOUT_CONTRACT.md](UI_LAYOUT_CONTRACT.md). It's desktop on
   - **Left:** session, the lap's time, sectors and key stats, and the session's stints. Expand a stint to pick a lap.
   - **Centre:** the track map. Under it are a slider that moves the car marker along the lap, a readout at that point, and thin traces. Drag over the traces to zoom; double-click or "Whole lap" resets.
   - **Compare** (off by default) adds a lap B: a second line, B and Δ in the stats, and a delta trace.
-- **Setup:** one large table of the session with a Stints / Laps switch. **Next setup** opens the pop-up with the change rows, locks and **Write setup**. (The visual Setup page, buttons and Driver plot follow once the UI contract is amended.)
+- **Setup:** the stint the next setup is built from, as pictures:
+  - a balance map (Low / High speed × Entry / Mid / Exit, against your target band);
+  - side and top views of the car (ride heights and rake; what the proposal changes);
+  - the predicted lap Δ with sectors;
+  - a shaft-velocity histogram per wheel (bin width, kerbs on/off, against the previous stint).
+
+  **Advanced** shows the full table instead. **Next setup** opens the pop-up: the change rows with locks, the four feel buttons with Undo, **This is it**, the gap line, and **Write setup**.
 - **History:** past sessions (one car at one track in one sitting). Picking one opens it in Lap Analysis and Setup until you go back to live.
-- **Chart icon:** the analysis sheet (Pareto, laps, balance, tyres, platform, driving, model).
+- **Chart icon:** the analysis sheet (laps, balance, tyres, platform, driving).
+- **Menu → Driver:** per car class, where your fingerprints sit on Looser ↔ Safer × Pointier ↔ Lazier, with one line per car. **Settings** can forget a car's fingerprint.
 
 
 ### Next setup (0.3)
