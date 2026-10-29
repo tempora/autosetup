@@ -221,6 +221,7 @@ class App:
             self.status["waiting"] = waiting
             self.status["last_error"] = errors[-1] if errors else None
         if n:
+            self.advisor.invalidate()
             self.status["last_import"] = time.time()
             self.status["imported"] += n
         return n
@@ -257,6 +258,7 @@ class App:
                     self.paths.telemetry, force=force, lock=self.lock,
                     workers=1 if self._game_running() else IMPORT_WORKERS)
                 self.status["recomputed"] = done
+                self.advisor.invalidate()
                 if done:
                     log(f"recomputed metrics of {done} recording{'s' if done != 1 else ''} in {time.perf_counter() - t0:.0f} s")
             except Exception as e:
