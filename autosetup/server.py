@@ -50,6 +50,9 @@ IMPORT_BATCH = 8
 # Recordings read at once. Reading is mostly numpy holding the GIL, so threads give about
 # 2x and more of them don't help; one while the game runs, to leave the CPU to it.
 IMPORT_WORKERS = min(4, os.cpu_count() or 1)
+# A setup saved in the garage after its stint was imported: the newest recordings without
+# a matched setup are matched again (not all of them: old unmatched ones are many and stay so).
+RELINK_RECENT = 20
 
 
 def log(message: str) -> None:
@@ -79,6 +82,7 @@ class App:
         self._unusable: dict[str, tuple[int, float]] = {}  # name -> (size, mtime) that gave nothing or failed
         self._driving: set[str] = set()  # recordings seen with a .wal (outing running)
         self._running: tuple[bool, float] | None = None  # game_running answer and when
+        self._svms: tuple[int, float] | None = None  # saved setups: (count, newest mtime)
         self.game_running = game_running  # injectable for tests
         self._stop = threading.Event()
         with self.lock:
@@ -133,8 +137,26 @@ class App:
         if not ready:
             self.status["waiting"] = []
             self.status["last_error"] = None
+            self.relink_if_saved()
             return 0
         return self.import_files(ready[:IMPORT_BATCH])
+
+    def relink_if_saved(self) -> int:
+        """When a setup is saved in the garage, match it to the recent stints that have
+        none yet, so the next setup can be written without an import. Returns the matches."""
+        files = list(self.paths.settings.glob("*/*.svm"))
+        stamp = (len(files), max((f.stat().st_mtime for f in files), default=0.0))
+        before, self._svms = self._svms, stamp
+        if before is None or before == stamp:  # the first look only takes the stamp
+            return 0
+        with self.lock:
+            names = [r[0] for r in self.store.con.execute(
+                """select file_name from recordings where file_name not in (select file_name from recording_setups)
+                   order by file_mtime desc limit ?""", [RELINK_RECENT]).fetchall()]
+            n = self.store.learn_links(self.paths.telemetry, self.paths.settings, only=names) if names else 0
+        if n:
+            self.status["last_import"] = time.time()
+        return n
 
     def import_files(self, files: list[Path]) -> int:
         """Import finished stints. Files LMU is still writing (locked, or the car hasn't

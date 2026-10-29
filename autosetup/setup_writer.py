@@ -23,6 +23,10 @@ class WriteError(Exception):
     pass
 
 
+# No template or no folder: both come from a setup saved in the garage.
+SAVE_FIRST = "Save a setup before driving"
+
+
 @dataclass
 class WriteResult:
     path: Path
@@ -64,12 +68,9 @@ def write_setup(
         if new != p.value:
             applied[key] = (p.value, new)
 
-    template = template or store.template_for(rec["car_signature"], rec["car_name"], paths.settings)
+    template = template or store.template_for(rec["car_signature"], rec["car_name"], paths.settings, setup)
     if template is None:
-        raise WriteError(
-            "No saved setup for this car yet. Save any setup for it in the garage once, "
-            "then run `autosetup import` so autosetup can use it as a template."
-        )
+        raise WriteError(SAVE_FIRST)
     svm = SvmFile.read(template)
 
     values = setup.values()
@@ -88,7 +89,7 @@ def write_setup(
     folder_name = store.folder_for(rec["track"])
     folder = paths.settings / folder_name if folder_name else guess_folder(rec["track"], paths.settings)
     if folder is None:
-        raise WriteError(f"Don't know the Settings folder for {rec['track']!r}; save a setup there once")
+        raise WriteError(SAVE_FIRST)
     stem = f"{_short(rec['car_name'])}_{folder.name}"
     target = next_free_name(folder, stem)
     if not dry_run:

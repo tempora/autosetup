@@ -21,7 +21,7 @@ import duckdb
 import numpy as np
 
 from autosetup.lmu.setup_space import CarSetup
-from autosetup.lmu.svm import read_settings
+from autosetup.lmu.svm import best_match, read_settings
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress, list_recordings
 from autosetup.lmu.validate import match_recordings
 from autosetup.metrics import METRICS_VERSION, compute_recording
@@ -566,28 +566,32 @@ class Store:
         self.con.execute(f"insert or replace into {table} select {cols}", [list(c) for c in zip(*rows)])
 
     def template_for(self, car_signature: str, car_name: str | None = None,
-                     settings_dir: Path | None = None) -> Path | None:
+                     settings_dir: Path | None = None, setup: CarSetup | None = None) -> Path | None:
         """A saved .svm to take the file header from.
 
         Prefer one matched to this exact car model. Game updates change the parameter
         ranges and so the signature; then fall back to the newest saved setup of the
         vehicle class this livery was last seen with (every setting is overwritten from
-        the recording anyway, and the writer range-checks each one).
+        the recording anyway, and the writer range-checks each one). Last, a setup saved
+        since the last import: the saved file that matches the recorded ``setup`` (the
+        one you saved and then drove), so saving in the garage is enough.
         """
         row = self.con.execute(
             "select svm_path from car_templates where car_signature = ?", [car_signature]
         ).fetchone()
         if row and Path(row[0]).is_file():
             return Path(row[0])
-        if not (car_name and settings_dir):
+        if not settings_dir:
             return None
-        row = self.con.execute("select vehicle_class from car_classes where car_name = ?", [car_name]).fetchone()
-        if not row:
-            return None
-        from autosetup.lmu.svm import SvmFile
-
-        same_class = [f for f in settings_dir.glob("*/*.svm") if SvmFile.read(f).vehicle_class == row[0]]
-        return max(same_class, key=lambda f: f.stat().st_mtime, default=None)
+        row = car_name and self.con.execute(
+            "select vehicle_class from car_classes where car_name = ?", [car_name]).fetchone()
+        if row:
+            same_class = [f for f, svm in read_settings(settings_dir).items() if svm.vehicle_class == row[0]]
+            if same_class:
+                return max(same_class, key=lambda f: f.stat().st_mtime)
+        if setup is not None and setup.params:
+            return best_match(setup, read_settings(settings_dir), 0.85)[1]
+        return None
 
     def folder_for(self, track: str) -> str | None:
         row = self.con.execute("select folder from track_folders where track = ?", [track]).fetchone()

@@ -36,6 +36,24 @@ def test_template_falls_back_to_vehicle_class(store, install):
     assert store.template_for("unknown-signature", "Nobody #0", install.settings) is None
 
 
+def test_template_from_a_setup_saved_since_the_last_import(tmp_path, install):
+    # Saved in the garage, never matched by an import: the recorded setup finds it.
+    with Store(tmp_path / "fresh.duckdb") as s:
+        s.import_all(install.telemetry)
+        rec = s.recording(1)
+        assert s.template_for(rec["car_signature"], rec["car_name"], install.settings) is None
+        t = s.template_for(rec["car_signature"], rec["car_name"], install.settings, s.setup_of(1))
+        assert t is not None and t.name == "base.svm"
+
+
+def test_write_without_a_saved_setup_says_so(tmp_path, install):
+    (install.settings / "Testway" / "base.svm").unlink()
+    with Store(tmp_path / "fresh.duckdb") as s:
+        s.import_all(install.telemetry)
+        with pytest.raises(WriteError, match="Save a setup before driving"):
+            write_setup(s, install, 1, {"VM_REAR_ANTISWAY": 2}, dry_run=True)
+
+
 def test_write_applies_changes_and_keeps_everything_else(store, install):
     setup = store.setup_of(1)
     changes = dict(parse_change(s, setup) for s in ["VM_REAR_ANTISWAY-=1", "WM_CAMBER-W_FL+=2"])
