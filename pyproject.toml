@@ -1,6 +1,6 @@
 [project]
 name = "autosetup"
-version = "0.3.0"
+version = "0.3.1"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 description = "Telemetry-driven, driver-adaptive setup optimiser for Le Mans Ultimate"
