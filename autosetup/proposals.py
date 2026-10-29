@@ -65,7 +65,9 @@ NAMES = {"wing": "Rear wing", "rh_rear": "Rear ride height", "rh_front": "Front 
          "tender_rear": "Rear tender springs"}
 DAMPER_BAND_LOSS = 0.2
 MAX_RH_MM = 5.0  # a ride height moves at most this much in one proposal
-WHERE = {"entry": "entries", "mid": "mid-corner", "exit": "exits", "low": "low-speed", "high": "high-speed"}
+PHASE = {"entry": "at turn-in", "mid": "at the apex", "exit": "on exit"}
+BAND = {"low": "slow", "high": "fast"}
+SMALL_ALONE = "small on its own · works with the other changes"
 
 
 class ProposalConflict(Exception):
@@ -107,6 +109,8 @@ class Advisor:
         self.paths = paths
         self.store.con.execute(SCHEMA)
         self._scales: dict[tuple[str, int, int], CarScales] = {}
+        self._models: dict[tuple, tuple] = {}  # (car, layout, data stamp) -> (lap model, aero map)
+        self._laps: dict[tuple, tuple] = {}  # (stint, settings searched) -> (lap model, lap function)
 
     # -- caches ----------------------------------------------------------------------
     def scales(self, car_signature: str) -> CarScales:
@@ -117,6 +121,28 @@ class Advisor:
             self._scales = {k: v for k, v in self._scales.items() if k[0] != car_signature}
             self._scales[key] = build_scales(self.store, car_signature, self.paths.settings if self.paths else None, svms)
         return self._scales[key]
+
+    def invalidate(self) -> None:
+        """New or recomputed stints: drop what was built from them."""
+        self._models.clear()
+        self._laps.clear()
+
+    def layout_model(self, signature: str, layout: str, k: dict) -> tuple:
+        """(lap model with trap drag, aero map), or (None, None). Fitting it is most of a
+        proposal's time and it doesn't depend on the feel or the locks, so it is kept
+        until this car's stints change."""
+        stamp = self.store.con.execute(
+            "select count(*), max(id), max(metrics_version) from recordings where car_signature = ?",
+            [signature]).fetchone()
+        key = (signature, layout, *stamp)
+        if key not in self._models:
+            model = LayoutModel.build(self.store, signature, layout, k)
+            amap = aero_map(self.store, signature, k) if model is not None else None
+            if model is not None:
+                model = with_trap_drag(model)
+            self._models = {kk: v for kk, v in self._models.items() if kk[:2] != (signature, layout)}
+            self._models[key] = (model, amap)
+        return self._models[key]
 
     # -- locks -----------------------------------------------------------------------
     def locks(self, context: str) -> set[str]:
@@ -207,15 +233,20 @@ class Advisor:
         plan.balance_source = balance.source
         if tgt.anchor in ("current", "toggled") and tgt.anchor_stint is not None and balance.offset:
             self._model_anchor(tgt, balance, dims + ddims, k)
-        model = LayoutModel.build(store, rec["car_signature"], layout, k)
-        amap = aero_map(store, rec["car_signature"], k) if model is not None else None
-        if model is not None:
-            model = with_trap_drag(model)
+        model, amap = self.layout_model(rec["car_signature"], layout, k)
         platform = platform_of(summary, dims, k, scales)
         ref_platform = None
         if model is not None:
             ref_platform = next((s.platform for s in model.stints if s.rid == stint_id and s.platform), model.platform)
-        lap, _ = lap_function(store, model, amap, dims, base, ref_platform, platform.mm_per_click)
+        # The lap function remembers every setup it simulated; feel toggles search the same
+        # setups again, so it is kept per stint and searched settings (locks change those).
+        lkey = (stint_id, tuple(d.name for d in dims))
+        held = self._laps.get(lkey)
+        if held is None or held[0] is not model:  # rebuilt model: new data
+            self._laps = {kk: v for kk, v in self._laps.items() if kk[0] != stint_id}
+            held = self._laps[lkey] = (model, lap_function(store, model, amap, dims, base, ref_platform,
+                                                           platform.mm_per_click)[0])
+        lap = held[1]
 
         dmodel = self._damper_model(rec, setup, ddims + [d for d in dims if d.name.startswith("spring")], k, layout,
                                     stint_id)
@@ -262,7 +293,7 @@ class Advisor:
                     plan.wing = {**(plan.wing or {}), "s_per_click": s.wing_s_per_click, "rake_s_per_mm": s.rake_s_per_mm}
         for name, (a, b) in choice.moves.items():
             d = next(x for x in dims if x.name == name)
-            pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, choice, d, a, b)))
+            pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, d, b)))
         if ref_platform is not None:
             plan.platform = self._platforms(ref_platform, base, choice.best.indices, platform.mm_per_click, setup,
                                             scales, dims)
@@ -284,10 +315,8 @@ class Advisor:
                             "exploring": dc.exploring, "stints": dmodel.stints}
             for name, (a, b) in dc.moves.items():
                 d = next(x for x in ddims if x.name == name)
-                pr.changes.append(self._change(d, setup, scales, a, b, f"Dampers: {dc.reason}", group="dampers",
+                pr.changes.append(self._change(d, setup, scales, a, b, dc.reason, group="dampers",
                                                source="learning" if dc.exploring else "model"))
-        if not choice.feasible:
-            plan.notes.append("No setup in reach meets the target; this one comes closest")
         pr.notes += plan.notes
         pr.model = plan.to_json()
         return pr, plan
@@ -382,22 +411,22 @@ class Advisor:
         b = model.simulate(model.car_at(amap, plat(best))).sectors
         return [y - x for x, y in zip(a, b)]
 
-    def _reason(self, prob: bo.Problem, choice: bo.Choice, d: Dim, a: int, b: int) -> str:
-        """One line: what this move is for, from what it does alone."""
+    def _reason(self, prob: bo.Problem, d: Dim, b: int) -> str:
+        """One line: what this move does alone. The time is a prediction with its doubt,
+        not a promise: "predicted −0.16 ± 0.10 s · more rotation at turn-in in slow corners"."""
         alone = {**prob.base, d.name: b}
-        lap0, lap1 = prob.lap(prob.base)[0], prob.lap(alone)[0]
+        (lap0, sd0), (lap1, sd1) = prob.lap(prob.base), prob.lap(alone)
         pred0 = prob.balance.predict(bo.x_of(prob.dims, prob.base))
         pred1 = prob.balance.predict(bo.x_of(prob.dims, alone))
         parts = []
-        if abs(lap1 - lap0) >= 0.01 and prob.lap(prob.base)[1] < UNKNOWN_SD:
-            parts.append(f"{lap1 - lap0:+.2f} s".replace("-", "−"))
+        if abs(lap1 - lap0) >= 0.01 and sd0 < UNKNOWN_SD:
+            parts.append(f"predicted {lap1 - lap0:+.2f} ± {sd1:.2f} s".replace("-", "−"))
         moved = sorted(((pred1[c][0] - pred0[c][0], c) for c in pred1 if c in pred0), key=lambda t: -abs(t[0]))
         if moved and abs(moved[0][0]) >= 0.05:
             delta, cell = moved[0]
             ph, band = cell.split("_")
-            parts.append(f"{'more rotation' if delta < 0 else 'more stability'} on {WHERE[band]} {WHERE[ph]}")
-        why = ", ".join(parts) if parts else ("towards the target" if choice.reason == "balance" else "lap model")
-        return f"{NAMES.get(d.name, d.name)}: {why}"
+            parts.append(f"{'more rotation' if delta < 0 else 'more stability'} {PHASE[ph]} in {BAND[band]} corners")
+        return " · ".join(parts) or SMALL_ALONE
 
     def _change(self, d: Dim, setup, scales, a: int, b: int, reason: str, group: str = "balance",
                 source: str = "model") -> Change:
@@ -425,12 +454,19 @@ class Advisor:
         stints = [st for st in analysis.stints(self.store, car, layout)]
         order = [st.id for st in stints]
         radius = bo.RADIUS_DEFAULT
+        setups: dict[int, CarSetup] = {}
+
+        def setup_of(rid: int) -> CarSetup:
+            if rid not in setups:
+                setups[rid] = self.store.setup_of(rid)
+            return setups[rid]
+
         for rid, changes in rows:
             if rid not in order:
                 continue
             values = {key: v for c in json.loads(changes) for key, v in c["after"].items()}
             nxt = next((st for st in stints[order.index(rid) + 1:]
-                        if all(key in self.store.setup_of(st.id).params and self.store.setup_of(st.id)[key].value == v
+                        if all(key in setup_of(st.id).params and setup_of(st.id)[key].value == v
                                for key, v in values.items())), None)
             prev = stints[order.index(rid)]
             if nxt is None or prev.summary.get("median") is None or nxt.summary.get("median") is None:

@@ -156,6 +156,22 @@ def test_a_broken_recording_is_tried_once_not_every_poll(tmp_path, install, monk
         assert calls.count("broken.duckdb") == 2  # changed: tried again
 
 
+def test_a_setup_saved_after_its_stint_is_matched_without_an_import(tmp_path, install):
+    saved = install.settings / "Testway" / "base.svm"
+    text = saved.read_bytes()
+    saved.unlink()
+    with Store(tmp_path / "db.duckdb") as store:
+        app = App(store, install)
+        assert app.import_now() == 1
+        assert store.folder_for("Test Raceway") is None
+        app.poll()  # takes the stamp of the saved setups
+        app.status["last_import"] = None
+        saved.write_bytes(text)  # saved in the garage
+        app.poll()
+        assert store.folder_for("Test Raceway") == "Testway"
+        assert app.status["last_import"] is not None  # the page reloads stints and proposal
+
+
 def test_proposal_write_and_locks(server, install):
     app, base = server
     rec = install.telemetry / "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
@@ -263,8 +279,10 @@ def test_menu_screens(server, install):
     app, base = server
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
-        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="keys"', b'id="about"'):
+        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="about"', b"page-close"):
             assert id_ in page, id_
+        for gone in (b'id="keys"', b'id="sheet"', b"theme-toggle"):  # no shortcuts, Analysis sheet or nav toggle
+            assert gone not in page, gone
     call(base, "/api/import", {})
     _, d = call(base, "/api/driver")
     [c] = d["classes"]

@@ -7,7 +7,7 @@
 **Setup optimiser for Le Mans Ultimate.**<br>
 Drive a few laps, say how the car should feel, and it writes the next setup into your garage.
 
-![version](https://img.shields.io/badge/version-0.3.0-e08a3c?style=flat-square)
+![version](https://img.shields.io/badge/version-0.3.1-e08a3c?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-4a90d9?style=flat-square)
 ![game](https://img.shields.io/badge/game-Le%20Mans%20Ultimate-121314?style=flat-square)
 ![license](https://img.shields.io/badge/license-Apache%202.0-555?style=flat-square)
