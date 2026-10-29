@@ -71,12 +71,34 @@ def test_gt3_without_third_spring_is_unchanged():
 
 def test_third_element_dampers_and_packers_are_the_damper_blocks():
     """Third-element dampers and packers are optimised with the dampers (in clicks); the
-    third spring itself stays where it is (the platform rules and you set it)."""
+    third spring is a main setting (balance and platform)."""
     setup = _setup(THIRD)
     dampers = {d.name: d for d in damper_dims(setup)}
     assert {"third_packers_front", "third_packers_rear", "third_slow_bump_rear"} <= set(dampers)
     assert dampers["third_packers_front"].keys == ("VM_FRONT_3RD_PACKERS",)
     assert (dampers["third_packers_front"].lo, dampers["third_packers_front"].hi) == (0, 20)
     names = {d.name for d in main_dims(setup)} | set(dampers)
-    assert not any("3RD_SPRING" in k for d in main_dims(setup) + damper_dims(setup) for k in d.keys)
+    assert [d.keys for d in main_dims(setup) if d.name == "third_spring_front"] == [("VM_FRONT_3RD_SPRING",)]
+    assert not any("3RD_SPRING" in k for d in damper_dims(setup) for k in d.keys)
     assert "rh_front" in names
+
+
+def test_a_third_spring_does_not_soften_on_a_car_that_bottoms():
+    from autosetup.opt.platform import Platform
+    base = {"third_spring_front": 2, "rh_front": 10}
+    fine = Platform({"front": 20.0, "rear": 30.0}, 0.0, 2.0, 0.2, {})
+    assert fine.ok(base, {**base, "third_spring_front": 1})
+    bottoms = Platform({"front": 20.0, "rear": 30.0}, 0.5, 2.0, 0.2, {})
+    assert not bottoms.ok(base, {**base, "third_spring_front": 1})
+    assert bottoms.ok(base, {**base, "third_spring_front": 3})
+
+
+def test_third_dampers_on_one_setting_get_a_learning_move():
+    from autosetup.opt import dampers as dm
+    dims = [d for d in damper_dims(_setup(THIRD)) if d.name == "third_slow_bump_rear"]
+    data = [dm.StintMetrics(i, {"third_slow_bump_rear": 0.25}, {"cv_rear": (0.2, 0.003 ** 2),
+                                                                "cv_front": (0.2, 0.003 ** 2)}) for i in range(6)]
+    model = dm.DamperModel.fit(dims, data)
+    assert model.settings == 1
+    choice = dm.choose(model, dims, {"third_slow_bump_rear": 3}, {}, lambda idx: 1.0)
+    assert choice.moves and choice.exploring

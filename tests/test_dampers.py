@@ -84,3 +84,25 @@ def test_metrics_and_histograms_of_a_recorded_stint(recorded, tmp_path):
     assert both == on + off and on > 0
     edges = h["wheels"]["fl"]["edges"]
     assert edges[1] - edges[0] == pytest.approx(50.0) and edges[0] < 0 < edges[-1]
+
+
+def test_many_stints_on_one_setting_still_explore():
+    """Ten stints all on the same dampers teach nothing about a click: still a learning move."""
+    same = [dampers.StintMetrics(i, {"slow_bump_front": 0.5, "fast_bump_front": 0.5}, s.values)
+            for i, s in enumerate(_data(n=10))]
+    model = dampers.DamperModel.fit(DIMS, same)
+    assert model.stints == 10 and model.settings == 1
+    choice = dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0)
+    assert choice.moves and choice.exploring
+
+
+def test_enough_settings_with_no_effect_give_no_move():
+    """Four different settings and nothing changes with them: no move, not even to learn."""
+    rng = np.random.default_rng(1)
+    flat = [dampers.StintMetrics(i, {"slow_bump_front": x, "fast_bump_front": 1 - x},
+                                 {"cv_front": (0.2 + rng.normal(0, 0.001), 0.002 ** 2),
+                                  "cv_rear": (0.18 + rng.normal(0, 0.001), 0.002 ** 2)})
+            for i, x in enumerate((0.2, 0.4, 0.6, 0.8))]
+    model = dampers.DamperModel.fit(DIMS, flat)
+    assert model.settings == 4
+    assert dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0).moves == {}

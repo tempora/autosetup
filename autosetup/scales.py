@@ -79,12 +79,19 @@ class Scale:
 
 
 def _value_of(key: str, label: str) -> float | None:
-    """Numeric value of a label. Brake balance labels read 'front:rear'; we use front %."""
+    """Numeric value of a label. Brake balance labels read 'front:rear'; we use front %.
+    Diff ramps read 'FF6-30 deg': the ramp angle, the number before 'deg'."""
+    ramp = re.search(r"(\d+(?:\.\d+)?)\s*deg\b", label) if "DIFF" in key else None
+    if ramp:
+        return float(ramp.group(1))
     return parse_number(label)
 
 
 def _format_like(key: str, template: str, value: float) -> str:
     """Render ``value`` in the style of a known label: same decimals and unit suffix."""
+    ramp = re.search(r"(\d+(?:\.\d+)?)(\s*deg\b)", template) if "DIFF" in key else None
+    if ramp:  # 'FF6-30 deg': the angle changes, the plates stay
+        return f"{template[:ramp.start(1)]}{value:g}{template[ramp.end(1):]}"
     m = re.match(r"\s*([-+]?\d+(?:\.(\d+))?)(.*)$", template)
     if not m:
         return f"{value:g}"

@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
+from autosetup import templates
 from autosetup.lmu.paths import LmuPaths
 from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.svm import SvmFile, next_free_name
@@ -32,6 +34,7 @@ class WriteResult:
     path: Path
     changes: dict[str, tuple[int, int]]  # key -> (from, to)
     template: Path
+    notes: str = ""
 
 
 def parse_change(spec: str, setup: CarSetup) -> tuple[str, int]:
@@ -53,7 +56,11 @@ def write_setup(
     changes: dict[str, int] | None = None,
     template: Path | None = None,
     dry_run: bool = False,
+    names: tuple[str, str] | None = None,
+    fields: dict | None = None,
 ) -> WriteResult:
+    """``names``: (file name template, description template), templates.py; ``fields``:
+    their values, the Settings folder's track name added here."""
     rec = store.recording(recording_id)
     setup = store.setup_of(recording_id)
     changes = changes or {}
@@ -83,18 +90,25 @@ def write_setup(
     symmetric = setup.symmetric and _still_symmetric(values)
     if svm.get("GENERAL", "Symmetric"):
         svm.set("GENERAL", "Symmetric", int(symmetric))
-    summary = ", ".join(f"{k} {a}->{b}" for k, (a, b) in applied.items()) or "no changes"
-    svm.set_notes(f"autosetup from {rec['file_name']}: {summary}")
-
     folder_name = store.folder_for(rec["track"])
     folder = paths.settings / folder_name if folder_name else guess_folder(rec["track"], paths.settings)
     if folder is None:
         raise WriteError(SAVE_FIRST)
-    stem = f"{_short(rec['car_name'])}_{folder.name}"
-    target = next_free_name(folder, stem)
+    name_t, notes_t = names or (templates.NAME, templates.NOTES)
+    fields = {**base_fields(store, rec), "track": folder.name, **(fields or {})}
+    if "changes" not in fields:  # without the proposal's labels and reasons: names and steps
+        from autosetup.analysis import pretty_name
+        fields["changes"] = "; ".join(f"{pretty_name(k)} {setup[k].text.strip()} {b - a:+d}" for k, (a, b) in applied.items())
+    notes = templates.render(notes_t, {**fields, "lap": fields.get("lap_notes", fields.get("lap", ""))})
+    svm.set_notes(notes)
+
+    def name_at(n: int) -> str:
+        name = templates.file_safe(templates.render(name_t, {**fields, "n": n}))
+        return name if "{n}" in name_t or n == 1 else f"{name} {n}"
+    target = next_free_name(folder, name_at)
     if not dry_run:
         svm.write(target)
-    return WriteResult(target, applied, template)
+    return WriteResult(target, applied, template, notes)
 
 
 def _still_symmetric(values: dict[str, int]) -> bool:
@@ -106,7 +120,12 @@ def _still_symmetric(values: dict[str, int]) -> bool:
     return True
 
 
-def _short(car_name: str) -> str:
-    """'Iron Lynx 2024 #60' → 'IronLynx60'."""
-    words = re.sub(r"\b(19|20)\d\d\b", "", car_name)
-    return re.sub(r"[^A-Za-z0-9]", "", words)[:24] or "car"
+def base_fields(store: Store, rec: dict) -> dict:
+    """The template fields every setup has: the car model (never the team), class, date, time."""
+    from autosetup.feel.cars import model_of
+
+    row = store.con.execute("select vehicle_class from car_classes where car_name = ?", [rec["car_name"]]).fetchone()
+    model = model_of(row[0], rec["car_class"] or "") if row and row[0] else None
+    now = datetime.now()
+    return {"car": templates.car_name(model), "class": rec["car_class"] or "", "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H-%M")}

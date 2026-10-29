@@ -30,13 +30,13 @@ import numpy as np
 from autosetup.feel.target import shifted
 from autosetup.opt.balance_model import BalanceModel
 from autosetup.opt.platform import Platform
-from autosetup.opt.space import Dim
+from autosetup.opt.space import Dim, aero_wing
 
 P_EXTRA = 0.5  # chance the other constraints (platform, kerbs) need to hold
 BAND_COST_S = 0.2  # of two setups in the band, the surer one, at this much per unit of doubt
 MIN_WEIGHT = 0.1  # cells of a speed band with less of the layout than this don't constrain
 MIN_GAIN_S = 0.03  # predicted gain worth changing the car for
-CHANGE_COST_S = 0.01  # per setting changed: of two equal setups, the one closer to yours
+CHANGE_COST_S = 0.01  # per setting changed, unless Problem.cost says otherwise: of two equal setups, the one closer to yours
 TIE_S = 0.02  # within this, contact patch decides
 GAP_MIN_S = 0.05
 MAX_CHANGES = 4
@@ -67,6 +67,9 @@ class Problem:
     candidates: list[dict[str, int]] = field(default_factory=list)
     seed: int = 0
     reach: dict[str, int] = field(default_factory=dict)  # clicks a dim may move at most (e.g. ride heights)
+    cost: dict[str, float] = field(default_factory=dict)  # s per move of a dim, instead of CHANGE_COST_S
+    penalty: Callable[[dict[str, int]], float] | None = None  # s a setup pays for where it is (e.g. rear toe-out)
+    avoid: dict[str, tuple[int, int]] = field(default_factory=dict)  # dim → (direction, clicks) not to go again
 
 
 @dataclass
@@ -78,6 +81,7 @@ class Evaluated:
     changes: int
     off: float = 0.0  # predicted distance outside the band, deg (weighted)
     p_extra: float = 1.0  # platform and extra constraints alone
+    change_s: float = 0.0  # what changing the car this way costs, s (CHANGE_COST_S, per-dim costs, penalty)
 
     @property
     def feasible(self) -> bool:
@@ -150,13 +154,22 @@ class _Scorer:
                 p *= f(idx)
             if prob.platform is not None and not prob.platform.ok(prob.base, idx):
                 p = 0.0
-            ev = Evaluated(dict(idx), prob.lap(idx), pred, p,
-                           sum(1 for k, v in idx.items() if v != prob.base[k]))
+            moved = [k for k, v in idx.items() if v != prob.base[k]]
+            ev = Evaluated(dict(idx), prob.lap(idx), pred, p, len(moved), change_s=change_cost(prob, idx, moved))
             self.cache[key] = ev  # p_ok here: platform and extra constraints, without the band
         out = Evaluated(ev.indices, ev.lap, ev.balance, ev.p_ok * p_in_band(ev.balance, target), ev.changes,
-                        p_extra=ev.p_ok)
+                        p_extra=ev.p_ok, change_s=ev.change_s)
         out.off = violation(out, target)
         return out
+
+
+def change_cost(prob: Problem, idx: dict[str, int], moved: list[str] | None = None) -> float:
+    """Seconds a setup is charged for being a change: each setting moved at its own cost
+    (CHANGE_COST_S if it has none), and the penalty for where it ends up (rear toe-out)."""
+    if moved is None:
+        moved = [k for k, v in idx.items() if v != prob.base[k]]
+    s = sum(prob.cost.get(k, CHANGE_COST_S) for k in moved)
+    return s + (prob.penalty(idx) if prob.penalty is not None else 0.0)
 
 
 def _region(prob: Problem, d: Dim) -> int:
@@ -166,10 +179,11 @@ def _region(prob: Problem, d: Dim) -> int:
 
 def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> list[dict[str, int]]:
     dims = {d.name: d for d in prob.dims}
+    drag = aero_wing(prob.dims)
     out = [dict(start)]
     for d in free:
         r = _region(prob, d)
-        for step in sorted({1, 2, r, -1, -2, -r}):
+        for step in sorted({s for s in (1, 2, r, -1, -2, -r) if abs(s) <= r}):
             v = start[d.name] + step
             if d.lo <= v <= d.hi and v != start[d.name]:
                 out.append({**start, d.name: v})
@@ -184,15 +198,25 @@ def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> l
         out.append(cand)
     for c in prob.candidates:  # e.g. the fingerprint's setup: allowed past the region, a jump you asked for
         out.append({**start, **{k: (dims[k].clamp(v) if k in dims else v) for k, v in c.items()
-                                if k in start and k != "wing"}})
-    return out
+                                if k in start and (drag is None or k != drag.name)}})
+    return [c for c in out if not avoided(prob, c)]
+
+
+def avoided(prob: Problem, idx: dict[str, int]) -> bool:
+    """A setup that moves a setting the way an undrivable stint did, as far or further."""
+    for name, (direction, clicks) in prob.avoid.items():
+        if name in idx:
+            step = (idx[name] - prob.base[name]) * direction
+            if step >= clicks > 0:
+                return True
+    return False
 
 
 def _cost(ev: Evaluated) -> float:
     """Predicted lap time, made to answer for its doubt (RISK sd: a gain the models aren't
     sure of doesn't send you out on a guess), plus a little per setting changed, plus the
     doubt about the band (with little to go on about lap time, the surest in the band)."""
-    return ev.lap[0] + RISK * ev.lap[1] + CHANGE_COST_S * ev.changes + BAND_COST_S * (1.0 - ev.p_ok)
+    return ev.lap[0] + RISK * ev.lap[1] + ev.change_s + BAND_COST_S * (1.0 - ev.p_ok)
 
 
 def solve(prob: Problem) -> Choice:
@@ -202,19 +226,22 @@ def solve(prob: Problem) -> Choice:
     dims = {d.name: d for d in prob.dims}
     start = dict(prob.base)
     wing_info = None
-    # The drag level first: the rear wing where the lap is fastest within the region.
-    if "wing" in dims:
-        d = dims["wing"]
-        r = _region(prob, d)
-        laps = {w: prob.lap({**start, "wing": w})[0] for w in range(d.clamp(start["wing"] - r), d.clamp(start["wing"] + r) + 1)}
-        best_w = min(laps, key=lambda w: (laps[w] + CHANGE_COST_S * (w != start["wing"]), abs(w - start["wing"])))
-        start["wing"] = best_w
+    # The drag level first: the aero wing (rear, or front on a car without a rear one) where
+    # the lap is fastest within the region.
+    drag = aero_wing(prob.dims)
+    w0 = drag.name if drag is not None else None
+    if drag is not None:
+        r = _region(prob, drag)
+        laps = {w: prob.lap({**start, w0: w})[0] for w in range(drag.clamp(start[w0] - r), drag.clamp(start[w0] + r) + 1)
+                if not avoided(prob, {**start, w0: w})}
+        best_w = min(laps, key=lambda w: (laps[w] + change_cost(prob, {**start, w0: w}), abs(w - start[w0])))
+        start[w0] = best_w
         wing_info = {"index": best_w, "by_index": laps}
-    free = [d for d in prob.dims if d.name != "wing"]
+    free = [d for d in prob.dims if d.name != w0]
     pool = [score(c) for c in _candidates(prob, start, free, rng)]
     # Without a feasible point at the chosen wing, look back towards the wing you had.
-    if "wing" in dims and start["wing"] != prob.base["wing"] and not any(e.feasible for e in pool):
-        start = {**start, "wing": prob.base["wing"]}
+    if drag is not None and start[w0] != prob.base[w0] and not any(e.feasible for e in pool):
+        start = {**start, w0: prob.base[w0]}
         pool += [score(c) for c in _candidates(prob, start, free, rng)]
     choice = _pick(pool, base, prob)
     choice.wing = wing_info
@@ -240,7 +267,7 @@ def _pick(pool: list[Evaluated], base: Evaluated, prob: Problem) -> Choice:
     if not feasible:
         # Nothing in reach is in the band: the closest to it, among the safe ones.
         safe = [e for e in pool if e.p_extra >= P_EXTRA] or pool
-        best = min(safe, key=lambda e: (e.off + 0.01 * e.changes, e.lap[0]))
+        best = min(safe, key=lambda e: (e.off + e.change_s, e.lap[0]))
         return Choice(best, base, "balance" if best.changes else "stay", feasible=False)
     best = min(feasible, key=_cost)
     if prob.contact is not None:

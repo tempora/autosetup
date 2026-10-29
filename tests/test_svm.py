@@ -53,23 +53,16 @@ def test_write_never_replaces_users_files(tmp_path):
     theirs.write_text("x")
     with pytest.raises(FileExistsError):
         svm.write(theirs)
-    with pytest.raises(PermissionError):
-        svm.write(theirs, overwrite=True)
     assert theirs.read_text() == "x"
 
 
-def test_setups_written_under_the_old_name_are_still_ours(tmp_path):
-    old = tmp_path / "AutoSetup_Team_1_Track_1.svm"  # older builds' capitalisation
-    old.write_text("x")
-    SvmFile.parse(SVM_TEXT).write(old, overwrite=True)
-    assert old.read_text() != "x"
-
-
 def test_next_free_name(tmp_path):
-    first = next_free_name(tmp_path, "Team #1_Track")
-    assert first.name == "autosetup_Team_1_Track_1.svm"
+    def name_at(n):
+        return f"Lusail Aston Martin Vantage 2026-10-29 {n}"
+    first = next_free_name(tmp_path, name_at)
+    assert first.name == "Lusail Aston Martin Vantage 2026-10-29 1.svm"
     first.write_text("")
-    assert next_free_name(tmp_path, "Team #1_Track").name == "autosetup_Team_1_Track_2.svm"
+    assert next_free_name(tmp_path, name_at).name == "Lusail Aston Martin Vantage 2026-10-29 2.svm"
 
 
 def test_match_score():
