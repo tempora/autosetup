@@ -279,8 +279,10 @@ def test_menu_screens(server, install):
     app, base = server
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
-        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="keys"', b'id="about"'):
+        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="about"', b"page-close"):
             assert id_ in page, id_
+        for gone in (b'id="keys"', b'id="sheet"', b"theme-toggle"):  # no shortcuts, Analysis sheet or nav toggle
+            assert gone not in page, gone
     call(base, "/api/import", {})
     _, d = call(base, "/api/driver")
     [c] = d["classes"]
