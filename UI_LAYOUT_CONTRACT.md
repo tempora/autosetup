@@ -16,7 +16,7 @@ The burger opens a menu under the icon (fade about 150 ms; Esc or a click outsid
 
 ### 2. Welcome (no session open in LMU)
 - A minimal centred screen: "Welcome back" and one fun fact from the user's own data (e.g. "You've done 312 laps at Sebring; your best got 1.4 s quicker over the last 3 stints").
-- Under it, one muted line: **"Launch a session in LMU to set up"**; while LMU is in its menus, **"Waiting for a session"**. Nothing else.
+- Under it, one muted line: **"Launch a session in LMU"**. Nothing else.
 - When a session opens in LMU, the app moves to Lap Analysis for that car and track by itself.
 - Welcome only shows when the app starts with no session open. When a session ends, the screen stays on it.
 
@@ -117,7 +117,7 @@ Except the Welcome → Lap Analysis move and new stints appearing in the list. T
   - the fun fact on Welcome
   - one line per car on the Driver screen
   - the gap line in the pop-up ("0.3 s available with more rotation")
-  - "Launch a session in LMU to set up" / "Waiting for a session" on Welcome
+  - "Launch a session in LMU" on Welcome
   - "Laps load when you're back in the garage" in Lap Analysis
   - "Working out changes…" in the pop-up
   - real errors
