@@ -65,7 +65,9 @@ NAMES = {"wing": "Rear wing", "rh_rear": "Rear ride height", "rh_front": "Front 
          "tender_rear": "Rear tender springs"}
 DAMPER_BAND_LOSS = 0.2
 MAX_RH_MM = 5.0  # a ride height moves at most this much in one proposal
-WHERE = {"entry": "entries", "mid": "mid-corner", "exit": "exits", "low": "low-speed", "high": "high-speed"}
+PHASE = {"entry": "at turn-in", "mid": "at the apex", "exit": "on exit"}
+BAND = {"low": "slow", "high": "fast"}
+SMALL_ALONE = "small on its own · works with the other changes"
 
 
 class ProposalConflict(Exception):
@@ -262,7 +264,7 @@ class Advisor:
                     plan.wing = {**(plan.wing or {}), "s_per_click": s.wing_s_per_click, "rake_s_per_mm": s.rake_s_per_mm}
         for name, (a, b) in choice.moves.items():
             d = next(x for x in dims if x.name == name)
-            pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, choice, d, a, b)))
+            pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, d, b)))
         if ref_platform is not None:
             plan.platform = self._platforms(ref_platform, base, choice.best.indices, platform.mm_per_click, setup,
                                             scales, dims)
@@ -284,10 +286,8 @@ class Advisor:
                             "exploring": dc.exploring, "stints": dmodel.stints}
             for name, (a, b) in dc.moves.items():
                 d = next(x for x in ddims if x.name == name)
-                pr.changes.append(self._change(d, setup, scales, a, b, f"Dampers: {dc.reason}", group="dampers",
+                pr.changes.append(self._change(d, setup, scales, a, b, dc.reason, group="dampers",
                                                source="learning" if dc.exploring else "model"))
-        if not choice.feasible:
-            plan.notes.append("No setup in reach meets the target; this one comes closest")
         pr.notes += plan.notes
         pr.model = plan.to_json()
         return pr, plan
@@ -382,22 +382,22 @@ class Advisor:
         b = model.simulate(model.car_at(amap, plat(best))).sectors
         return [y - x for x, y in zip(a, b)]
 
-    def _reason(self, prob: bo.Problem, choice: bo.Choice, d: Dim, a: int, b: int) -> str:
-        """One line: what this move is for, from what it does alone."""
+    def _reason(self, prob: bo.Problem, d: Dim, b: int) -> str:
+        """One line: what this move does alone. The time is a prediction with its doubt,
+        not a promise: "predicted −0.16 ± 0.10 s · more rotation at turn-in in slow corners"."""
         alone = {**prob.base, d.name: b}
-        lap0, lap1 = prob.lap(prob.base)[0], prob.lap(alone)[0]
+        (lap0, sd0), (lap1, sd1) = prob.lap(prob.base), prob.lap(alone)
         pred0 = prob.balance.predict(bo.x_of(prob.dims, prob.base))
         pred1 = prob.balance.predict(bo.x_of(prob.dims, alone))
         parts = []
-        if abs(lap1 - lap0) >= 0.01 and prob.lap(prob.base)[1] < UNKNOWN_SD:
-            parts.append(f"{lap1 - lap0:+.2f} s".replace("-", "−"))
+        if abs(lap1 - lap0) >= 0.01 and sd0 < UNKNOWN_SD:
+            parts.append(f"predicted {lap1 - lap0:+.2f} ± {sd1:.2f} s".replace("-", "−"))
         moved = sorted(((pred1[c][0] - pred0[c][0], c) for c in pred1 if c in pred0), key=lambda t: -abs(t[0]))
         if moved and abs(moved[0][0]) >= 0.05:
             delta, cell = moved[0]
             ph, band = cell.split("_")
-            parts.append(f"{'more rotation' if delta < 0 else 'more stability'} on {WHERE[band]} {WHERE[ph]}")
-        why = ", ".join(parts) if parts else ("towards the target" if choice.reason == "balance" else "lap model")
-        return f"{NAMES.get(d.name, d.name)}: {why}"
+            parts.append(f"{'more rotation' if delta < 0 else 'more stability'} {PHASE[ph]} in {BAND[band]} corners")
+        return " · ".join(parts) or SMALL_ALONE
 
     def _change(self, d: Dim, setup, scales, a: int, b: int, reason: str, group: str = "balance",
                 source: str = "model") -> Change:

@@ -111,14 +111,14 @@ ROWS = [
     ("Pace", "Clean laps", "clean_laps", "", 0, 1),
     ("Pace", "Top speed", "speed_max", "km/h", 1, 1),
     ("Pace", "Min speed", "speed_min", "km/h", 1, 1),
-    ("Balance", "Understeer entry", "us_entry", "°", 2, 1),
-    ("Balance", "Understeer mid", "us_mid", "°", 2, 1),
+    ("Balance", "Understeer turn-in", "us_entry", "°", 2, 1),
+    ("Balance", "Understeer apex", "us_mid", "°", 2, 1),
     ("Balance", "Understeer exit", "us_exit", "°", 2, 1),
     ("Balance", "Understeer slow corners", "us_slow", "°", 2, 1),
     ("Balance", "Understeer fast corners", "us_fast", "°", 2, 1),
     ("Balance", "Countersteer", "countersteer_events", "/lap", 1, 1),
-    ("Balance", "Countersteer entry", "cs_entry", "/lap", 1, 1),
-    ("Balance", "Countersteer mid", "cs_mid", "/lap", 1, 1),
+    ("Balance", "Countersteer turn-in", "cs_entry", "/lap", 1, 1),
+    ("Balance", "Countersteer apex", "cs_mid", "/lap", 1, 1),
     ("Balance", "Countersteer exit", "cs_exit", "/lap", 1, 1),
     ("Balance", "Steering reversals", "steer_reversals_per_min", "/min", 1, 1),
     ("Tyres", "Inner {W}", "t_inner_{w}", "°C", 1, 1),
@@ -154,6 +154,36 @@ ROWS = [
 ]
 
 
+# Hover text per row key ("{w}" rows share one); one or two plain sentences, which way is good.
+HELP = {
+    "consistency": "How far your clean laps spread. Lower is steadier.",
+    "theoretical_best": "Your best sectors added up.",
+    "us_entry": "Understeer angle at turn-in, in degrees of steering. + pushes, − rotates.",
+    "us_mid": "Understeer angle at the apex, in degrees of steering. + pushes, − rotates.",
+    "us_exit": "Understeer angle on exit, in degrees of steering. + pushes, − rotates.",
+    "us_slow": "Understeer angle in slow corners. + pushes, − rotates.",
+    "us_fast": "Understeer angle in fast corners. + pushes, − rotates.",
+    "countersteer_events": "Times per lap you caught a slide with opposite lock. Fewer is calmer.",
+    "steer_reversals_per_min": "Steering corrections per minute. Fewer is calmer.",
+    "t_spread_{w}": "Inner minus outer tyre temperature. Mostly a camber sign.",
+    "t_crown_{w}": "Centre minus the edges' average. + over-inflated, − under-inflated.",
+    "t_carcass_{w}": "Temperature inside the tyre, slower to change than the surface.",
+    "wear_{w}": "Tread worn per lap.",
+    "overheating_s": "Time per lap a tyre was above its window. Lower is better.",
+    "rh_min_{w}": "Lowest ride height at that corner over the lap.",
+    "bottoming_s": "Time per lap the floor touched the ground. Zero is the aim.",
+    "rake_fast": "Rear minus front ride height at speed.",
+    "kerb_s": "Time per lap on kerbs.",
+    "third_packers_f": "Share of the lap the front third spring sits on its packers.",
+    "third_packers_r": "Share of the lap the rear third spring sits on its packers.",
+    "coast_frac": "Share of the lap on neither pedal.",
+    "trail_brake_frac": "Share of braking done while already turning.",
+    "throttle_apply_rate": "How fast you open the throttle out of corners.",
+    "brake_g_p98": "Deceleration under your hardest braking.",
+    "lat_g_p98": "Sideways grip at its peak.",
+}
+
+
 # What a row's number is, for the display units (units.py): temperature differences
 # convert without the offset.
 QUANTITY = {"km/h": "speed", "°C": "temp", "kPa": "pressure"}
@@ -168,10 +198,11 @@ def _quantity(key: str, unit: str) -> str | None:
 def _rows() -> list[tuple]:
     out = []
     for group, label, key, unit, dec, scale in ROWS:
+        tip = HELP.get(key)
         if "{w}" in key:
-            out += [(group, label.replace("{W}", w.upper()), key.replace("{w}", w), unit, dec, scale) for w in WHEELS]
+            out += [(group, label.replace("{W}", w.upper()), key.replace("{w}", w), unit, dec, scale, tip) for w in WHEELS]
         else:
-            out.append((group, label, key, unit, dec, scale))
+            out.append((group, label, key, unit, dec, scale, tip))
     return out
 
 
@@ -211,12 +242,14 @@ def setup_table(store: Store, stint_ids: list[int], by: str = "stint") -> dict:
             values.append({**metrics.get(lap["seq"], {}), **sectors.get(lap["seq"], {}), "time": lap["time"]})
             setups.append(setup)
     groups: list[dict] = []
-    for group, label, key, unit, dec, scale in _rows():
+    for group, label, key, unit, dec, scale, tip in _rows():
         vals = [v.get(key) for v in values]
         if all(x is None for x in vals):
             continue
         row = {"label": label, "unit": unit, "dec": dec, "quantity": _quantity(key, unit),
                "values": [None if x is None else float(x) * scale for x in vals]}
+        if tip:
+            row["help"] = tip
         if not groups or groups[-1]["name"] != group:
             groups.append({"name": group, "rows": []})
         groups[-1]["rows"].append(row)
