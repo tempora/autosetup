@@ -18,7 +18,7 @@ from collections.abc import Callable
 import numpy as np
 
 from autosetup.opt.bo import x_of
-from autosetup.opt.space import Dim
+from autosetup.opt.space import Dim, aero_wing
 from autosetup.sim.aero import AeroMap, Platform
 from autosetup.sim.model import LayoutModel
 from autosetup.sim.residual import PRIOR_SPREAD, SectorResidual, residual_data
@@ -42,10 +42,10 @@ def lap_function(store, model: LayoutModel | None, aero: AeroMap | None, dims: l
         residual, n = SectorResidual.fit(X, res, var), len(rids)
     mean_res = float(res.sum(1).mean()) if len(rids) else 0.0
     cache: dict[tuple, float] = {}
-    wing = next((d for d in dims if d.name == "wing"), None)
+    wing = aero_wing(dims)
 
     def platform(idx: dict[str, int]) -> Platform:
-        w = wing.x(idx["wing"]) if wing is not None else ref_platform.wing
+        w = wing.x(idx[wing.name]) if wing is not None else ref_platform.wing
         f = ref_platform.rh_front + (idx.get("rh_front", ref.get("rh_front", 0)) - ref.get("rh_front", 0)) * mm_per_click.get("rh_front", 1.0)
         r = ref_platform.rh_rear + (idx.get("rh_rear", ref.get("rh_rear", 0)) - ref.get("rh_rear", 0)) * mm_per_click.get("rh_rear", 1.0)
         return Platform(w, f, r)

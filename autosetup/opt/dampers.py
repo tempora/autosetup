@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from autosetup.metrics.suspension import BIN_MM_S, EDGES
-from autosetup.opt.space import Dim
+from autosetup.opt.space import DAMPERS, Dim
 
 CONTACT = ("cv_front", "cv_rear", "sym_front", "sym_rear", "knee_front", "knee_rear", "shape")
 KERB = ("peak_load", "airtime_s", "pitch_deg", "heave_mm", "yaw_dist")
@@ -44,6 +44,8 @@ MAX_CLICKS = 3  # per damper move
 MAX_PACKER_CLICKS = 2
 MIN_GAIN = 0.1  # contact score units a move must be expected to win
 EXPLORE = 0.3  # weight of what a move would teach, while the model knows little
+EXPLORE_SETTINGS = 4  # distinct damper settings driven before the model counts as knowing
+DAMPER_NAMES = {name for name, _ in DAMPERS}
 SHAPE_BIN = 20.0  # mm/s, histograms are compared at this width
 WHEELS = {"front": ("fl", "fr"), "rear": ("rl", "rr")}
 
@@ -160,6 +162,7 @@ class DamperModel:
     dims: list[Dim]
     models: dict[str, Linear] = field(default_factory=dict)
     stints: int = 0
+    settings: int = 0  # distinct damper settings among the stints (the springs aside)
 
     @classmethod
     def fit(cls, dims: list[Dim], data: list[StintMetrics]) -> "DamperModel":
@@ -180,7 +183,9 @@ class DamperModel:
             A = np.diag(1 / s0 ** 2) + Phi.T @ (Phi / var[:, None])
             cov = np.linalg.inv(A)
             models[metric] = Linear(cov @ (m0 / s0 ** 2 + Phi.T @ (y / var)), cov, names)
-        return cls(dims, models, len(data))
+        damper = [n for n in names if n in DAMPER_NAMES]
+        settings = len({tuple(round(s.x.get(n, 0.0), 6) for n in damper) for s in data})
+        return cls(dims, models, len(data), settings)
 
     def contact(self, x: dict[str, float]) -> tuple[float, float]:
         """Contact score (sum of the contact metrics in SCALE units): mean, variance."""
@@ -235,7 +240,7 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
 
     def value(idx):
         m, v = model.contact(x_of(idx))
-        bonus = EXPLORE * math.sqrt(v) if model.stints < 4 else 0.0
+        bonus = EXPLORE * math.sqrt(v) if model.settings < EXPLORE_SETTINGS else 0.0
         return m - bonus, m, v
 
     b_val, b_m, b_v = value(base)
@@ -263,9 +268,9 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
         return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
     moves = {k: (base[k], best[k]) for k in best if best[k] != base[k]}
     # A better contact patch is claimed only when the gain clears its own doubt; else the
-    # move is for learning (only while the model has few stints).
+    # move is for learning (only until EXPLORE_SETTINGS different settings were driven).
     exploring = (b_m - m) - 0.5 * math.sqrt(v) < MIN_GAIN
-    if exploring and model.stints >= 4:
+    if exploring and model.settings >= EXPLORE_SETTINGS:
         return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
     return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring,
                         "learning what it does to the contact patch" if exploring else "steadier tyre load")

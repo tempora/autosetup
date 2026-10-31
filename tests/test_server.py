@@ -1,3 +1,4 @@
+import datetime
 import json
 import threading
 import urllib.error
@@ -182,14 +183,16 @@ def test_proposal_write_and_locks(server, install):
     _, pr = call(base, f"/api/proposal?stint={stint}")
     assert pr["brake_pressure_by_feel"] is False  # not a prototype: no button
     [c] = pr["changes"]  # no corner passes on the synthetic stint: only the rules speak
+    assert pr["why"] is None  # there are changes
     assert c["keys"] == ["WM_CAMBER-W_FL", "WM_CAMBER-W_FR"] and "less negative camber" in c["reason"]
     assert pr["plan"]["target"]["cells"] == {} and pr["notes"] == ["No corner passes yet"]
-    assert pr["target"] == {"file": "autosetup_TestTeam1_Testway_1.svm", "folder": "Testway"}
+    assert pr["target"]["file"] == f"Testway Test Car {datetime.date.today():%Y-%m-%d} 1.svm" and pr["target"]["folder"] == "Testway"
+    assert pr["target"]["notes"].startswith("From stint 1 (1:00.00), As it was. Camber FL/FR -2.2 deg")
 
     # A stale signature is refused; the right one writes into the track's folder.
     assert call(base, "/api/write", {"stint": stint, "signature": "stale"})[0] == 409
     status, w = call(base, "/api/write", {"stint": stint, "signature": pr["signature"]})
-    assert status == 200 and w["file"] == "autosetup_TestTeam1_Testway_1.svm"
+    assert status == 200 and w["file"] == pr["target"]["file"], w
     assert (install.settings / "Testway" / w["file"]).is_file()
     assert app.advisor.written(stint)[0]["file"] == w["file"]
 
@@ -199,6 +202,7 @@ def test_proposal_write_and_locks(server, install):
     assert status == 200 and lk["locks"] == camber
     _, pr = call(base, f"/api/proposal?stint={stint}")
     assert pr["changes"] == [] and [x["key"] for x in pr["locks"]] == camber
+    assert pr["why"]["text"].startswith("No corners measured") and "locked: 2" in pr["why"]["facts"]
     call(base, "/api/locks", {"stint": stint, "keys": camber, "locked": False})
     assert call(base, f"/api/proposal?stint={stint}")[1]["locks"] == []
     assert call(base, "/api/locks", {"stint": stint, "keys": "VM_X"})[0] == 400

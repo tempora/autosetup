@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from autosetup.lmu.svm import SvmFile
@@ -59,7 +61,9 @@ def test_write_applies_changes_and_keeps_everything_else(store, install):
     changes = dict(parse_change(s, setup) for s in ["VM_REAR_ANTISWAY-=1", "WM_CAMBER-W_FL+=2"])
     res = write_setup(store, install, 1, changes)
     assert res.path.parent.name == "Testway"
-    assert res.path.name == "autosetup_TestTeam1_Testway_1.svm"
+    assert res.path.name == f"Testway Test Car {date.today():%Y-%m-%d} 1.svm"  # the model, not the team
+    notes = SvmFile.read(res.path).get("GENERAL", "Notes").raw
+    assert "VM_" not in notes and "Rear anti-roll bar P4 -1" in notes
     assert res.changes == {"VM_REAR_ANTISWAY": (3, 2), "WM_CAMBER-W_FL": (28, 30)}
 
     out = SvmFile.read(res.path)
@@ -73,7 +77,7 @@ def test_write_applies_changes_and_keeps_everything_else(store, install):
     assert out.vm_labels()["VM_FRONT_ANTISWAY"] == "P6"
     # The user's file is untouched and the next write gets a new name.
     assert (install.settings / "Testway" / "base.svm").read_bytes().count(b"RearAntiSwaySetting=3") == 1
-    assert write_setup(store, install, 1, changes).path.name.endswith("_2.svm")
+    assert write_setup(store, install, 1, changes).path.name.endswith(" 2.svm")
 
 
 def test_dry_run_writes_nothing(store, install):

@@ -32,6 +32,10 @@ class Platform:
                 return False
             if delta < 0 and self.rh_min[axle] + delta < self.min_mm:
                 return False
+        # A softer third spring lets the car down at speed: not on a car that already bottoms.
+        for name in ("third_spring_front", "third_spring_rear"):
+            if name in cand and cand[name] < base[name] and self.bottoming_s > self.bottoming_limit_s:
+                return False
         return True
 
 

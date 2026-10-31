@@ -79,7 +79,9 @@ While LMU is live and no stint of this session has been imported yet, the centre
 
 ### 6. Setup Pop-up
 Its own window over the screen, containing:
+- when the last stint had no complete lap, one row above the changes: **"Stint N had no full lap"** with **Undrivable · It was fine**. Until you answer, and on Undrivable, the proposal starts from the last stint with a full lap (its toggles, its setup) and the title reads "Next setup from Stint M"; It was fine builds from the short stint
 - the change rows: name, signed delta, `from → to`, one reason line, and a lock on each row
+- when there are no changes, one muted line on why ("Your setup already sits where you asked, and nothing within reach is predicted faster"); hovering it shows what the solver decided from (its result, where the balance came from, whether there's a lap model, settings searched, locks, the rules' notes)
 - **Feel**, two toggles, each against the last stint: front **Pointier · As it was · Lazier**, rear **Looser · As it was · Safer**. A toggle asks for one step from how the last stint felt, and a new stint starts back at *As it was*. **This is it** locks the balance of this stint as the car's fingerprint. Toggles update the proposal at once.
 - the gap line, when the band is what costs time ("0.3 s available with more rotation")
 - on prototypes (no ABS), **Too much brake pressure**: brake pressure rises a step each stint until you press it
@@ -117,6 +119,7 @@ Except the Welcome → Lap Analysis move and new stints appearing in the list. T
   - the fun fact on Welcome
   - one line per car on the Driver screen
   - the gap line in the pop-up ("0.3 s available with more rotation")
+  - "Stint N had no full lap" in the pop-up
   - "Launch a session in LMU" on Welcome
   - "Laps load when you're back in the garage" in Lap Analysis
   - "Working out changes…" in the pop-up
@@ -172,7 +175,7 @@ Neutral graphite, not Gruvbox yellow.
   - `GET /api/lap?stint=&seq=`: `{lap, time, clean, setup_name, metrics, trace: {step_m, distance[], time[], speed[], throttle[], brake[], steer[], gear[], x[], y[], sectors[]}}`, on a 5 m grid in the map's frame
   - `GET /api/setup-diff?a=&b=`: setting changes going from stint b to stint a
   - `GET /api/pareto?context=`
-  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
+  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`, `why`: {`text`, `facts`} when there are no changes). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
   - `GET /api/target?stint=`: the target, the measured balance and the feel events
   - `POST /api/feedback {stint, axis: front|rear, value: -1|0|1}`: the stint's toggle (−1 pointier / looser, 1 lazier / safer)
   - `POST /api/lock {stint}`: "This is it"
@@ -199,6 +202,7 @@ Opens like a tab and replaces the left compartment and centre. A **Close** butto
 Opens like a tab, closed the same way as Driver. Label/value rows in sections:
 - **Appearance:** theme System / Dark / Light (the only theme control).
 - **Units:** speed km/h | mph, temperature °C | °F, pressure kPa | psi. Applies everywhere.
+- **Setup files:** two text fields, **Name** (default `{track} {car} {date} {n}`) and **Description** (default `From stint {stint} ({lap}), {feel}. {changes}`), each with a one-line preview of the next setup's name or description under it. Fields: {track} {car} {class} {date} {time} {n} {stint} {lap} {feel} {changes}. Set here only; nothing to type when writing.
 - **Data:** LMU install, telemetry folder, settings folder and database file, read-only in mono, each with "Open folder". Buttons: **Import now**, **Recompute metrics**.
 - **Driver profile:** per car with a fingerprint, **Forget fingerprint**, behind a confirm.
 

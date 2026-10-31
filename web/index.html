@@ -193,6 +193,7 @@ border:1px solid var(--line);transform:scale(.97) translateY(6px);transition:tra
 .feelrow{display:grid;grid-template-columns:72px auto;align-items:center;gap:10px;padding:8px 0}
 .feel-acts{display:flex;align-items:center;gap:8px;padding:6px 0 12px;border-bottom:1px solid var(--line)}
 .gap{font-size:13.5px;padding:10px 0;border-bottom:1px solid var(--line)}
+.why{font-size:13.5px;padding:10px 0;color:var(--muted)}
 .tip{position:fixed;z-index:200;pointer-events:none;background:var(--surface);border:1px solid var(--line);
 padding:6px 9px;font:12px/1.45 var(--mono);color:var(--muted);display:none;max-width:260px}
 .tip b{color:var(--text);font-weight:600}
@@ -223,6 +224,9 @@ table.facts td:first-child{font-family:"IBM Plex Sans",system-ui,sans-serif}
 .srow>span:first-child{font-size:14px;color:var(--muted)}
 .srow .path{font:13px var(--mono);overflow-wrap:anywhere}
 .srow .acts{display:flex;align-items:center;gap:8px}
+.srow .tpl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.srow .tpl input{font:13px var(--mono);color:var(--text);background:none;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.srow .tpl .muted{font:12px var(--mono);overflow-wrap:anywhere}
 .menu-screen.screen{display:flex;flex-direction:column}
 .menu-screen .page{flex:1;min-height:0}
 .page-foot{display:flex;justify-content:flex-end;padding:12px 24px 16px;border-top:1px solid var(--line)}
@@ -312,11 +316,13 @@ table.facts td:first-child{font-family:"IBM Plex Sans",system-ui,sans-serif}
 <div class="modal-back" id="modal">
  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-file">
   <div class="modal-head">
-   <div><div class="mini">Next setup</div><div class="modal-file" id="modal-file"></div></div>
+   <div><div class="mini" id="modal-from">Next setup</div><div class="modal-file" id="modal-file"></div></div>
    <button type="button" class="icon-btn" id="modal-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <div class="modal-body">
+   <div class="modal-row" id="short-row" hidden><span id="short-text"></span><div class="seg" id="short-feel" role="group"></div></div>
    <div id="changes"></div>
+   <div class="why" id="why" hidden></div>
    <div id="feel">
     <div class="mini" style="margin-top:12px">Feel</div>
     <div class="feelrow"><span class="muted">Front</span><div class="seg" id="feel-front" role="group" aria-label="Front"></div></div>
@@ -1517,6 +1523,8 @@ function renderModal() {
    box.append(row);
   }
  }
+ renderWhy();
+ renderShort();
  renderFeel();
  renderGap();
  renderBrakes();
@@ -1558,6 +1566,13 @@ function renderFeel() {
  $("this-is-it").classList.toggle("on", t.anchor === "fingerprint" && !t.front && !t.rear);
 }
 $("this-is-it").onclick = () => feel({lock: true});
+// No changes (§6): one line on why; hovering it shows what the solver decided from.
+function renderWhy() {
+ const pr = S.proposal, w = pr && !pr.changes.length ? pr.why : null, box = $("why");
+ box.hidden = !w;
+ box.textContent = w ? w.text : "";
+ if (w && w.facts.length) box.setAttribute("data-tip", w.facts.join(" · ")); else box.removeAttribute("data-tip");
+}
 function renderGap() {
  const pr = S.proposal, plan = pr && pr.plan, box = $("gap");
  const lines = [];
@@ -1567,6 +1582,22 @@ function renderGap() {
  }
  box.hidden = !lines.length;
  box.textContent = lines.join(" · ");
+}
+function renderShort() {
+ // A stint without a full lap: until you say it was fine, the proposal starts from the last one with a lap.
+ const pr = S.proposal, q = pr && pr.plan && pr.plan.short, from = pr && stintById(pr.stint_id);
+ $("modal-from").textContent = q && from && from.id !== q.stint ? `Next setup from Stint ${stintNo(from)}` : "Next setup";
+ $("short-row").hidden = !q;
+ if (!q) return;
+ const st = stintById(q.stint);
+ $("short-text").textContent = `Stint ${stintNo(st) || "?"} had no full lap`;
+ seg("short-feel", [true, false], ["Undrivable", "It was fine"], q.undrivable, async v => {
+  if (!st) return;
+  q.undrivable = v;
+  renderShort();
+  try { st.rating = (await api("/api/rating", {file_name: st.file_name, undrivable: v})).rating; await loadProposal(); }
+  catch (e) { setStatus(e.message, true); }
+ });
 }
 function renderBrakes() {
  // Prototypes (no ABS): brake pressure rises each stint until you say it's too much.
@@ -1809,7 +1840,18 @@ function renderSettings() {
    prof.append(srow(carName(f.car_key), info, b));
   }
  }
- box.replaceChildren(appearance, unitsSec, data, prof);
+ const files = el("section");
+ files.append(el("h2", {}, "Setup files"));
+ const t = st.templates || {}, target = S.proposal && S.proposal.target;
+ const tpl = (key, label, preview) => {
+  const input = el("input", {type: "text", value: t[key] || t["default_" + key], spellcheck: "false", "aria-label": label});
+  input.onchange = async () => { await putSettings({templates: {[key]: input.value || t["default_" + key]}}); await loadProposal(); renderSettings(); };
+  const col = el("div", {class: "tpl"});
+  col.append(input, el("span", {class: "muted"}, preview || ""));
+  return srow(label, col, el("span"));
+ };
+ files.append(tpl("name", "Name", target && target.file), tpl("notes", "Description", target && target.notes));
+ box.replaceChildren(appearance, unitsSec, files, data, prof);
 }
 const fmtStamp = s => { const m = String(s).match(/(\d{4})-(\d\d)-(\d\d)/); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s); };
 async function pollRecompute() {

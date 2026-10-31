@@ -75,8 +75,23 @@ damper_knee_mm_s = 50.0
 # Share of off-kerb shaft-velocity samples under the knee the damper module aims for (a
 # starting value: most road motion is slow, kerbs and bumps are the fast part).
 damper_ls_target = 0.85
-# Priors (opt/priors.py): how far a setting's whole range moves the cells it acts on,
-# understeer-angle degrees at weight 1.
+# Priors (opt/priors.py): what one real step of a setting does to the balance in the cells
+# it acts on most, understeer-angle degrees. A step is a click, or for settings whose
+# labels have a unit: 1 mm of ride height, 0.1° of toe, 10 Nm of preload, 1 % of brake
+# bias. Starting values: tune them.
+step_deg_arb = 0.1          # anti-roll bar click
+step_deg_spring = 0.1       # spring click
+step_deg_third_spring = 0.08
+step_deg_tender = 0.05      # tender spring on / off
+step_deg_wing = 0.1         # wing click
+step_deg_ride_height = 0.05 # per mm: 2 mm of rake ≈ 0.1° in fast corners
+step_deg_toe = 0.05         # per 0.1°
+step_deg_preload = 0.05     # per 10 Nm
+step_deg_brake_bias = 0.08  # per 1 %, at turn-in
+step_deg_damper = 0.03      # slow damper click
+step_deg_diff_ramp = 0.08   # diff ramp step
+# A setting without a step size above, or with a unit its labels don't show: its whole
+# range moves the cells this much at weight 1.
 prior_full_range_deg = 0.6
 # Aero map priors (sim/aero.py): the direction each platform change pushes, at a size
 # that's a guess; aero_prior_sd × each one is its prior sd, so a few stints decide. Per

@@ -51,8 +51,13 @@ class StintData:
 
 
 def wing_share(setup: CarSetup) -> float:
-    p = setup.params.get("VM_REAR_WING")
-    return p.fraction if p is not None and p.adjustable else 0.0
+    """The aero wing's share of its range: the rear wing, or the front wing on a car whose
+    rear wing can't be adjusted."""
+    for key in ("VM_REAR_WING", "VM_FRONT_WING"):
+        p = setup.params.get(key)
+        if p is not None and p.adjustable:
+            return p.fraction
+    return 0.0
 
 
 def stints_of(store, signature: str, layout: str | None = None) -> list[StintData]:

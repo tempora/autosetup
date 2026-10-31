@@ -3,8 +3,9 @@
 Recordings don't say: their ``Version`` metadata is the file format and the channel list
 is the same across updates. Steam's app manifest names the installed build and when it
 was installed, so every build seen is remembered (``game_builds``) and a recording belongs
-to the newest build installed before it was recorded. Only the current build's recordings
-are learned from: an update can change the physics, the tyres and the setup ranges.
+to the newest build installed before it was recorded. Only the lap-time model learns from
+the current build alone (sim/model.py): an update can change the tyre and brake physics it
+predicts from. Balance and feel use every build's stints, older ones with more doubt.
 """
 
 from __future__ import annotations

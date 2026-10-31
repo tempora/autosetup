@@ -20,7 +20,6 @@ from autosetup.lmu.mapping import DO_NOT_WRITE, SVM_TO_VM, VM_TO_SVM
 from autosetup.lmu.setup_space import CarSetup
 
 ENCODING = "latin-1"
-OUR_PREFIX = "autosetup_"
 _SECTION = re.compile(r"^\[([^\]]+)\]\s*$")
 _SETTING = re.compile(r"^(?P<key>[A-Za-z0-9_]+)=(?P<value>[^/\r\n]*)(?://(?P<comment>[^\r\n]*))?(?P<eol>\r?\n?)$")
 
@@ -149,19 +148,20 @@ class SvmFile:
         if e is None:
             return
         safe = notes.replace('"', "'").replace("\r", " ").replace("\n", " ")
+        # The file is Latin-1: arrows and math signs in plain characters, anything else '?'.
+        # A '/' would start a // comment in the file: none in the notes.
+        for ch, plain in (("→", "->"), ("≈", "~"), ("−", "-"), ("–", "-"), ("—", "-"), ("·", "-"), ("/", "-")):
+            safe = safe.replace(ch, plain)
+        safe = safe.encode(ENCODING, "replace").decode(ENCODING)
         eol = "\r\n" if self.lines[e.line].endswith("\r\n") else "\n"
         self.lines[e.line] = f'Notes="{safe}"{eol}'
         self._reindex()
 
-    def write(self, path: str | Path, overwrite: bool = False) -> Path:
-        """Write to ``path``. Refuses to replace an existing file unless ``overwrite`` is
-        set, and never replaces a file that autosetup didn't create."""
+    def write(self, path: str | Path) -> Path:
+        """Write to ``path``. Never replaces an existing file."""
         path = Path(path)
         if path.exists():
-            if not overwrite:
-                raise FileExistsError(path)
-            if not path.name.lower().startswith(OUR_PREFIX):  # older builds wrote "AutoSetup_"
-                raise PermissionError(f"refusing to overwrite a setup autosetup didn't write: {path}")
+            raise FileExistsError(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(self.text().encode(ENCODING))
         return path
@@ -241,10 +241,10 @@ def read_settings(settings_dir: Path) -> dict[Path, SvmFile]:
     return out
 
 
-def next_free_name(folder: Path, stem: str) -> Path:
-    """``autosetup_<stem>_<n>.svm`` with the lowest unused n."""
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem).strip("_")
+def next_free_name(folder: Path, name_at) -> Path:
+    """``<name>.svm`` with the lowest revision n not yet used: ``name_at(n)`` is the name at
+    revision n. A write never replaces a file, so a taken name gets the next one."""
     n = 1
-    while (folder / f"{OUR_PREFIX}{safe}_{n}.svm").exists():
+    while (folder / f"{name_at(n)}.svm").exists():
         n += 1
-    return folder / f"{OUR_PREFIX}{safe}_{n}.svm"
+    return folder / f"{name_at(n)}.svm"
