@@ -1,3 +1,3 @@
 """LMU autosetup: telemetry-driven, driver-adaptive setup optimiser for Le Mans Ultimate."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

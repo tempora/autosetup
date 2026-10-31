@@ -1,11 +1,11 @@
-autosetup 0.3.1
+autosetup 0.3.2
 ===============
 
 Setup optimiser for Le Mans Ultimate: the fastest setup you can actually drive, from a
 few laps per run. You say how the car should feel; it finds the settings.
 
 Install
-  1. Run autosetup_0.3.1_x64-setup.exe. It installs for your Windows user only (no
+  1. Run autosetup_0.3.2_x64-setup.exe. It installs for your Windows user only (no
      admin rights). Windows SmartScreen may warn because the build isn't signed:
      "More info" -> "Run anyway".
   2. Start autosetup from the Start menu.
