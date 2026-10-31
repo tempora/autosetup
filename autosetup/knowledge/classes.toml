@@ -33,6 +33,11 @@ third_packers_lo = 0.05
 # exit p90 = 2), and seconds of traction control (p90 ~4.3). Your rating always wins.
 countersteer_per_lap = 2.0
 tc_s_per_lap = 5.0
+# TC events (proposals._traction): an average event longer than this is TC not catching the
+# slip quickly (per-lap averages run 0.05-0.15 s, p90 0.15); fewer countersteer moments on
+# exit than this per lap count as none.
+tc_event_long_s = 0.15
+countersteer_none_per_lap = 0.5
 # Balance per cell: corner speed (slow < 108 km/h <= medium <= 162 km/h < fast) × corner
 # phase (entry on the brakes, mid, exit on the power). understeer_<cell>: the understeer
 # angle (deg) above which a stint counts as understeering there when you haven't rated it,

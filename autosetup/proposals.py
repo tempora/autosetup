@@ -164,37 +164,59 @@ def why_nothing(pr: Proposal, plan: Plan, locked: int) -> dict | None:
     return {"text": text, "facts": facts}
 
 
+TC_NAMES = {"VM_TRACTIONCONTROLMAP": "TC map", "VM_TRACTIONCONTROLPOWERCUTMAP": "TC power cut",
+            "VM_TRACTIONCONTROLSLIPANGLEMAP": "TC slip angle"}
+
+
 def _traction(setup, scales: CarScales, summary: dict, tgt: feel.Target, m_now, k: dict,
-              locks: set[str]) -> Change | None:
-    """TC a step a stint, map, cut and slip together: down while it works more than
-    tc_s_per_lap with exits in the band or understeering, up when the exits oversteer past
-    the band or the rear needs catching on exit. The rear feel moves the band, so it's in
-    here through the band."""
-    keys = [key for key in TC_KEYS if key in setup.params and setup[key].adjustable and key not in locks
-            and setup[key].text.strip().lower() != "linked"]  # a linked slip map follows the TC map
-    if not keys:
-        return None
+              locks: set[str]) -> list[Change]:
+    """TC, each setting a step a stint on its own signal (higher index = more TC):
+      map    up when the exits oversteer past the band; down when TC is on more than
+             tc_s_per_lap with stable exits (in the band or understeering)
+      cut    up when its events are long (TC not catching the slip quickly, average over
+             tc_event_long_s); down when TC is on a lot in short events with stable exits
+      slip   up when you countersteer on exit (over countersteer_per_lap); down when you
+             don't (under countersteer_none_per_lap) and TC is still on a lot
+    The rear feel moves the band, so it's in here through the band. A linked slip map
+    follows the TC map and isn't moved; locked settings aren't either."""
     exits = [c for c in tgt.cells if c.startswith("exit_") and c in m_now.cells
              and tgt.weights.get(c, 0.5) >= bo.MIN_WEIGHT]
-    over = [c for c in exits if m_now.cells[c].mean < tgt.cells[c] - tgt.tolerance[c]]
-    cs, tc_s = summary.get("cs_exit"), summary.get("tc_s")
-    if over or (cs is not None and cs > float(k["countersteer_per_lap"])):
-        step, reason = 1, "oversteer on exit"
-    elif exits and tc_s is not None and tc_s > float(k["tc_s_per_lap"]):
-        step, reason = -1, f"TC working {tc_s:.1f} s a lap with stable exits"
-    else:
-        return None
-    before = {key: setup[key].value for key in keys}
-    after = {key: setup[key].clamp(before[key] + step * _index_dir(key, scales, numeric_up=True)) for key in keys}
-    moved = [key for key in keys if after[key] != before[key]]
-    if not moved:
-        return None
+    over = any(m_now.cells[c].mean < tgt.cells[c] - tgt.tolerance[c] for c in exits)
+    stable = bool(exits) and not over
+    cs, tc_s, events = summary.get("cs_exit"), summary.get("tc_s"), summary.get("tc_events")
+    busy = tc_s is not None and tc_s > float(k["tc_s_per_lap"])
+    avg = tc_s / events if tc_s is not None and events else None
+    long_s = float(k["tc_event_long_s"])
 
-    def text(key, i):
-        return (scales.label(key, i)[0] or str(i)) if i != before[key] else setup[key].text.strip()
-    return Change("aids", moved, {key: before[key] for key in moved}, {key: after[key] for key in moved}, reason,
-                  "TC", " / ".join(setup[key].text.strip() for key in moved),
-                  " / ".join(text(key, after[key]) for key in moved), source="telemetry")
+    want: dict[str, tuple[int, str]] = {}
+    m, cut, slip = TC_KEYS
+    if over:
+        want[m] = (1, "exits oversteer past your target")
+    elif stable and busy:
+        want[m] = (-1, f"TC on {tc_s:.1f} s a lap with stable exits")
+    if avg is not None and avg > long_s:
+        want[cut] = (1, f"TC events last {avg:.2f} s on average: cutting harder catches the slip sooner")
+    elif avg is not None and stable and busy:
+        want[cut] = (-1, f"{events:.0f} short TC events a lap with stable exits: cutting less keeps the drive")
+    if cs is not None and cs > float(k["countersteer_per_lap"]):
+        want[slip] = (1, f"countersteering on exit {cs:.1f} times a lap")
+    elif cs is not None and cs < float(k["countersteer_none_per_lap"]) and busy:
+        want[slip] = (-1, f"no countersteer on exit and TC on {tc_s:.1f} s a lap")
+
+    out = []
+    for key, (step, reason) in want.items():
+        if key not in setup.params or not setup[key].adjustable or key in locks:
+            continue
+        if setup[key].text.strip().lower() == "linked":  # follows the TC map
+            continue
+        before = setup[key].value
+        after = setup[key].clamp(before + step * _index_dir(key, scales, numeric_up=True))
+        if after == before:
+            continue
+        label = scales.label(key, after)[0] or str(after)
+        out.append(Change("aids", [key], {key: before}, {key: after}, reason, TC_NAMES[key],
+                          setup[key].text.strip(), label, source="telemetry"))
+    return out
 
 
 def toe_deg(d: Dim, setup, scales: CarScales, index: int) -> float | None:
@@ -406,8 +428,7 @@ class Advisor:
         plan.balance_source = balance.source
         if tgt.anchor in ("current", "toggled") and tgt.anchor_stint is not None and balance.offset:
             self._model_anchor(tgt, balance, dims + kept, k)
-        tc = _traction(setup, scales, summary, tgt, m_now, k, locks)
-        if tc is not None:
+        for tc in _traction(setup, scales, summary, tgt, m_now, k, locks):
             pr.changes.append(tc)
             taken |= set(tc.keys)
         model, amap = self.layout_model(rec["car_signature"], layout, k)

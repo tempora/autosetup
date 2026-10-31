@@ -1,4 +1,5 @@
-"""TC a step a stint, map, cut and slip together, from how much it works and the exits."""
+"""TC a step a stint, each setting on its own signal: map from the exits, cut from how long
+its events last, slip from countersteer on exit."""
 
 from autosetup.feel.measure import Measured
 from autosetup.feel.target import Target
@@ -25,37 +26,64 @@ def _feel(exit_measured: float, target: float = 0.4, tol: float = 0.15):
     return tgt, Measured({c: Cell(exit_measured, 0.03, 20) for c in cells})
 
 
-def test_lots_of_tc_with_stable_exits_steps_all_three_down():
+MAP, CUT, SLIP = TC_KEYS
+
+
+def _moves(changes):
+    return {c.keys[0]: c.after[c.keys[0]] for c in changes}
+
+
+def test_lots_of_short_tc_with_stable_exits_steps_map_and_cut_down():
     setup, scales = _car()
     tgt, m = _feel(0.45)
-    tc = _traction(setup, scales, {"tc_s": 8.0, "cs_exit": 0.5}, tgt, m, K, set())
-    assert tc.group == "aids" and tc.name == "TC"
-    assert tc.after == {TC_KEYS[0]: 4, TC_KEYS[1]: 4, TC_KEYS[2]: 6}
-    assert "8.0 s a lap" in tc.reason
+    tc = _traction(setup, scales, {"tc_s": 8.0, "tc_events": 100, "cs_exit": 1.0}, tgt, m, K, set())
+    assert _moves(tc) == {MAP: 4, CUT: 4}  # some countersteer: slip stays
+    assert all(c.group == "aids" and len(c.keys) == 1 for c in tc)
+    assert "8.0 s a lap" in next(c for c in tc if c.keys == [MAP]).reason
+    # And no countersteer on exit at all: slip comes down too.
+    tc = _traction(setup, scales, {"tc_s": 8.0, "tc_events": 100, "cs_exit": 0.0}, tgt, m, K, set())
+    assert _moves(tc) == {MAP: 4, CUT: 4, SLIP: 6}
 
 
-def test_exit_oversteer_steps_all_three_up():
+def test_exit_oversteer_steps_the_map_up():
     setup, scales = _car()
     tgt, m = _feel(0.1)  # 0.3° under the target, band ±0.15
-    tc = _traction(setup, scales, {"tc_s": 8.0, "cs_exit": 0.5}, tgt, m, K, set())
-    assert tc.after == {TC_KEYS[0]: 6, TC_KEYS[1]: 6, TC_KEYS[2]: 8} and tc.reason == "oversteer on exit"
-    tgt, m = _feel(0.45)  # in the band, but catching the rear on exit
-    tc = _traction(setup, scales, {"tc_s": 1.0, "cs_exit": 3.0}, tgt, m, K, set())
-    assert tc.delta == 1
+    tc = _traction(setup, scales, {"tc_s": 8.0, "tc_events": 100, "cs_exit": 1.0}, tgt, m, K, set())
+    assert _moves(tc) == {MAP: 6}  # short events, oversteering exits: cut not lowered
+
+
+def test_long_tc_events_step_the_cut_up():
+    setup, scales = _car()
+    tgt, m = _feel(0.45)
+    tc = _traction(setup, scales, {"tc_s": 3.0, "tc_events": 10, "cs_exit": 1.0}, tgt, m, K, set())
+    assert _moves(tc) == {CUT: 6} and "0.30 s" in tc[0].reason
+
+
+def test_countersteer_on_exit_steps_the_slip_up():
+    setup, scales = _car()
+    tgt, m = _feel(0.45)
+    tc = _traction(setup, scales, {"tc_s": 1.0, "tc_events": 20, "cs_exit": 3.0}, tgt, m, K, set())
+    assert _moves(tc) == {SLIP: 8}
+
+
+def test_settings_can_move_opposite_ways_in_one_stint():
+    setup, scales = _car()
+    tgt, m = _feel(0.45)
+    tc = _traction(setup, scales, {"tc_s": 8.0, "tc_events": 100, "cs_exit": 3.0}, tgt, m, K, set())
+    assert _moves(tc) == {MAP: 4, CUT: 4, SLIP: 8}
 
 
 def test_otherwise_and_when_locked_no_change():
     setup, scales = _car()
     tgt, m = _feel(0.45)
-    assert _traction(setup, scales, {"tc_s": 1.0, "cs_exit": 0.5}, tgt, m, K, set()) is None
-    assert _traction(setup, scales, {"tc_s": 8.0, "cs_exit": 0.5}, tgt, m, K, set(TC_KEYS)) is None
-    # One key locked: the other two still move.
-    tc = _traction(setup, scales, {"tc_s": 8.0, "cs_exit": 0.5}, tgt, m, K, {TC_KEYS[2]})
-    assert set(tc.keys) == set(TC_KEYS[:2])
+    assert _traction(setup, scales, {"tc_s": 1.0, "tc_events": 20, "cs_exit": 1.0}, tgt, m, K, set()) == []
+    busy = {"tc_s": 8.0, "tc_events": 100, "cs_exit": 0.0}
+    assert _traction(setup, scales, busy, tgt, m, K, set(TC_KEYS)) == []
+    assert _moves(_traction(setup, scales, busy, tgt, m, K, {CUT})) == {MAP: 4, SLIP: 6}
 
 
 def test_a_linked_slip_map_follows_tc_and_is_not_moved():
     setup, scales = _car(slip_text="Linked")
     tgt, m = _feel(0.45)
-    tc = _traction(setup, scales, {"tc_s": 8.0, "cs_exit": 0.5}, tgt, m, K, set())
-    assert set(tc.keys) == set(TC_KEYS[:2])
+    tc = _traction(setup, scales, {"tc_s": 8.0, "tc_events": 100, "cs_exit": 0.0}, tgt, m, K, set())
+    assert _moves(tc) == {MAP: 4, CUT: 4}
