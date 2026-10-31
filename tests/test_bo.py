@@ -266,6 +266,22 @@ def test_ride_height_and_toe_steps_follow_their_labels():
     assert abs(max(abs(v) for v in bare["toe_rear"].values()) - 0.7 * k["prior_full_range_deg"]) < 1e-9
 
 
+def test_preload_in_bare_clicks_or_on_the_front_axle_is_sized_by_its_unit():
+    """A preload labelled '3' is a click, not 3 Nm: the whole-range size. A front preload in
+    Nm is per 10 Nm like the rear one, not a diff ramp step a click."""
+    from autosetup.knowledge import load_knowledge
+    from autosetup.opt.space import Dim
+    from autosetup.scales import CarScales, Scale
+    k = load_knowledge("Hyper")
+    rear = Dim("diff_preload", ("VM_DIFF_PRELOAD",), 0, 45)
+    front = Dim("front_diff_preload", ("VM_FRONT_DIFF_PRELOAD",), 0, 255)
+    scales = CarScales({"VM_DIFF_PRELOAD": Scale("VM_DIFF_PRELOAD", {0: "0 (lowest)", 3: "3", 30: "30"}),
+                        "VM_FRONT_DIFF_PRELOAD": Scale("VM_FRONT_DIFF_PRELOAD", {0: "0 Nm", 10: "10 Nm"})})
+    s = sensitivities([rear, front], k, scales)
+    assert abs(max(abs(v) for v in s["diff_preload"].values()) - 0.8 * k["prior_full_range_deg"]) < 1e-9
+    assert abs(max(abs(v) for v in s["front_diff_preload"].values()) / 255 - 0.1 * k["step_deg_preload"]) < 1e-9
+
+
 def test_rake_before_a_bar_and_a_bar_a_click_at_a_time():
     """A ride-height move and a bar click do the same to the balance: the ride height is
     chosen. Asking for more never takes the bar more than a click."""

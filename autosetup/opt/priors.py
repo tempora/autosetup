@@ -105,34 +105,40 @@ def index_direction(intent: str, dim: Dim, scales=None) -> int:
     return up  # 'up' / 'front', and a locking % (the higher, the more it locks)
 
 
-# Step kind per setting, and the label units in one step (None: a click).
-KINDS: dict[str, tuple[str, float | None]] = {
-    "arb_front": ("arb", None), "arb_rear": ("arb", None),
-    "spring_front": ("spring", None), "spring_rear": ("spring", None),
-    "third_spring_front": ("third_spring", None), "third_spring_rear": ("third_spring", None),
-    "tender_front": ("tender", None), "tender_rear": ("tender", None),
-    "wing": ("wing", None), "front_wing": ("wing", None),
-    "rh_front": ("ride_height", 0.1), "rh_rear": ("ride_height", 0.1),  # labels in cm: 1 mm
-    "toe_front": ("toe", 0.1), "toe_rear": ("toe", 0.1),  # deg
-    "diff_preload": ("preload", 10.0),  # Nm
-    "brake_bias": ("brake_bias", 1.0),  # front %
-    "slow_bump_front": ("damper", None), "slow_rebound_front": ("damper", None),
-    "slow_bump_rear": ("damper", None), "slow_rebound_rear": ("damper", None),
-    "diff_power": ("diff_ramp", None), "diff_coast": ("diff_ramp", None),
-    "front_diff_power": ("diff_ramp", None), "front_diff_coast": ("diff_ramp", None),
-    "front_diff_preload": ("diff_ramp", None),
+# Step kind per setting, and the label units in one step with the text that marks the unit
+# in a label (None: a click).
+KINDS: dict[str, tuple[str, float | None, str | None]] = {
+    "arb_front": ("arb", None, None), "arb_rear": ("arb", None, None),
+    "spring_front": ("spring", None, None), "spring_rear": ("spring", None, None),
+    "third_spring_front": ("third_spring", None, None), "third_spring_rear": ("third_spring", None, None),
+    "tender_front": ("tender", None, None), "tender_rear": ("tender", None, None),
+    "wing": ("wing", None, None), "front_wing": ("wing", None, None),
+    "rh_front": ("ride_height", 0.1, "cm"), "rh_rear": ("ride_height", 0.1, "cm"),  # 1 mm
+    "toe_front": ("toe", 0.1, "deg"), "toe_rear": ("toe", 0.1, "deg"),
+    "diff_preload": ("preload", 10.0, "Nm"), "front_diff_preload": ("preload", 10.0, "Nm"),
+    "brake_bias": ("brake_bias", 1.0, ":"),  # front %, labels 'front:rear'
+    "slow_bump_front": ("damper", None, None), "slow_rebound_front": ("damper", None, None),
+    "slow_bump_rear": ("damper", None, None), "slow_rebound_rear": ("damper", None, None),
+    "diff_power": ("diff_ramp", None, None), "diff_coast": ("diff_ramp", None, None),
+    "front_diff_power": ("diff_ramp", None, None), "front_diff_coast": ("diff_ramp", None, None),
 }
 
 
 def steps_per_click(d: Dim, scales=None) -> float | None:
-    """Real steps in one click of ``d``; None when its labels don't tell the unit."""
+    """Real steps in one click of ``d``; None when its labels don't tell the unit (a preload
+    labelled '3' is a click, not 3 Nm)."""
     kind = KINDS.get(d.name)
     if kind is None:
         return None
-    if kind[1] is None:
+    _, size, unit = kind
+    if size is None:
         return 1.0
-    step = scales[d.keys[0]].per_step if scales is not None else None
-    return abs(step) / kind[1] if step else None
+    if scales is None:
+        return None
+    sc = scales[d.keys[0]]
+    if not any(unit in label for label in sc.points.values()):
+        return None
+    return abs(sc.per_step) / size if sc.per_step else None
 
 
 def sensitivities(dims: list[Dim], knowledge: dict, scales=None) -> dict[str, dict[str, float]]:
