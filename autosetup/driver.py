@@ -1,7 +1,7 @@
 """The Driver screen: where your locked fingerprints sit, per car class.
 
 Each car with a fingerprint is a point on two axes, in button steps against the class's
-usual balance (the median of every current-build stint of the class): Looser ↔ Safer
+usual balance (the median of every stint of the class): Looser ↔ Safer
 (mid-corner and exits) and Pointier ↔ Lazier (entries), with one line about it
 ("Pointy entry, stable exit, slightly more rake than usual").
 """
@@ -12,14 +12,11 @@ import numpy as np
 
 from autosetup.feel import fingerprint as fpm
 from autosetup.knowledge import load_knowledge
-from autosetup.lmu.builds import current_filter
-
 
 def _usual_rake(store, car_class: str) -> float | None:
-    cond, params = current_filter(store)
     vals = [r for (r,) in store.con.execute(
-        f"""select rh_rear_fast - rh_front_fast from recordings r where car_class = ? and {cond}
-            and rh_front_fast is not null and rh_rear_fast is not null""", [car_class, *params]).fetchall()]
+        """select rh_rear_fast - rh_front_fast from recordings r where car_class = ?
+           and rh_front_fast is not null and rh_rear_fast is not null""", [car_class]).fetchall()]
     return float(np.median(vals)) if vals else None
 
 

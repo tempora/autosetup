@@ -210,11 +210,7 @@ def anchor_for(store, car_key: str, car_class: str, knowledge: dict) -> Fingerpr
 # -- the driver profile -----------------------------------------------------------------
 def usual(store, car_class: str) -> dict[str, float]:
     """The class's usual balance per cell: the median over every stint of the class."""
-    from autosetup.lmu.builds import current_filter
-
-    cond, params = current_filter(store)
-    rids = [r for (r,) in store.con.execute(
-        f"select id from recordings r where car_class = ? and {cond}", [car_class, *params]).fetchall()]
+    rids = [r for (r,) in store.con.execute("select id from recordings r where car_class = ?", [car_class]).fetchall()]
     per_cell: dict[str, list[float]] = {}
     for rid in rids:
         for c, v in measured(store, [rid]).cells.items():

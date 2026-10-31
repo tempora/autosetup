@@ -28,7 +28,7 @@ from autosetup.feel import target as feel
 from autosetup.feel.cars import recording_car
 from autosetup.feel.measure import measured, same_setup_stints
 from autosetup.knowledge import load_knowledge
-from autosetup.lmu.builds import current_filter
+from autosetup.lmu.builds import current_build
 from autosetup.lmu.paths import LmuPaths
 from autosetup.lmu.setup_space import parse_number
 from autosetup.lmu.svm import read_settings
@@ -118,6 +118,7 @@ class Plan:
     platform: dict | None = None  # current / proposed: ride heights at speed and rake (mm), wing
     short: dict | None = None  # {"stint", "undrivable"}: the last stint had no full lap
     notes: list[str] = field(default_factory=list)
+    searched: int | None = None  # settings the solver could move (not locked, adjustable)
 
     def to_json(self) -> dict:
         return {"stint": self.stint, "car_key": self.car_key, "car_class": self.car_class, "layout": self.layout,
@@ -125,6 +126,42 @@ class Plan:
                 "lap": self.lap, "gap": self.gap, "reason": self.reason, "feasible": self.feasible,
                 "wing": self.wing, "balance_source": self.balance_source, "dampers": self.dampers,
                 "platform": self.platform, "short": self.short}
+
+
+NO_CORNERS = "No corner passes yet"
+SOURCE_TEXT = {"layout": "stints here", "other layouts": "other tracks", "fingerprint": "the fingerprint",
+               "none": "nothing"}
+
+
+def why_nothing(pr: Proposal, plan: Plan, locked: int) -> dict | None:
+    """Why a proposal has no changes: one plain line, and the facts behind it (for the
+    hover, and for debugging). None when there are changes."""
+    if pr.changes:
+        return None
+    asked = bool(plan.target.front or plan.target.rear)
+    facts = [f"solver: {plan.reason}", f"balance from: {SOURCE_TEXT.get(plan.balance_source, plan.balance_source)}",
+             f"lap model: {'yes' if plan.lap else 'none here yet'}"]
+    if plan.searched is not None:
+        facts.append(f"settings searched: {plan.searched}")
+    if locked:
+        facts.append(f"locked: {locked}")
+    facts += [n for n in pr.notes if n not in plan.notes]  # the rules' own ("… is already at its limit")
+    if NO_CORNERS in plan.notes:
+        text = "No corners measured on this setup yet, so there's no balance to work from"
+    elif plan.searched == 0:
+        text = "Every setting is locked or fixed on this car"
+    elif plan.balance_source == "none":
+        text = "No balance measured for this car yet, so the feel buttons have nothing to work from"
+    elif not plan.feasible:
+        text = "Nothing within reach moves the balance towards what you asked" + (
+            "; unlocking settings widens the search" if locked else "")
+    elif asked:
+        text = "Your setup already sits where you asked, and nothing within reach is predicted faster"
+    elif not plan.lap:
+        text = "The balance is on target, and there's no lap-time model here yet to find time with"
+    else:
+        text = f"The balance is on target, and nothing within reach is predicted at least {bo.MIN_GAIN_S:.2f} s faster"
+    return {"text": text, "facts": facts}
 
 
 def _traction(setup, scales: CarScales, summary: dict, tgt: feel.Target, m_now, k: dict,
@@ -292,14 +329,14 @@ class Advisor:
         return {"target": t.to_json(), "measured": m.to_json(), "events": feel.events_json(self.store, t.car_key)}
 
     def _mix(self, stint: int) -> dict[str, float]:
-        """Cornering time per speed band at this layout, over the car's current-build stints there."""
+        """Cornering time per speed band at this layout, over the car's stints there."""
         return measured(self.store, self._layout_stints(stint)).mix
 
     def _layout_stints(self, stint: int, any_car: bool = False) -> list[int]:
+        """Every build's: only the lap-time model is limited to the installed build (sim/model.py)."""
         rec = self.store.recording(stint)
-        cond, params = current_filter(self.store)
-        sql = f"select id from recordings r where coalesce(track_layout, track) = ? and {cond}"
-        args = [rec["track_layout"] or rec["track"], *params]
+        sql = "select id from recordings r where coalesce(track_layout, track) = ?"
+        args = [rec["track_layout"] or rec["track"]]
         if not any_car:
             sql += " and car_signature = ?"
             args.append(rec["car_signature"])
@@ -351,7 +388,7 @@ class Advisor:
         m_now = measured(store, same_setup_stints(store, stint_id))
         plan = Plan(stint_id, car_key, car_class, layout, tgt, m_now.to_json())
         if not m_now.cells:
-            plan.notes.append("No corner passes yet")
+            plan.notes.append(NO_CORNERS)
             pr.notes += plan.notes
             return pr, plan
         taken = set(locks) | {key for c in pr.changes for key in c.keys}
@@ -362,6 +399,7 @@ class Advisor:
         dims = _front_toe_limit(main_dims(setup, taken), setup, scales) + slow
         kept = [d for d in ddims if d.name not in SLOW_BALANCE]  # dampers the main block keeps where they are
         base = {d.name: d.index(setup) for d in dims}
+        plan.searched = len(dims)
         dbase = {d.name: d.index(setup) for d in ddims}
 
         balance = self._balance_model(rec, setup, dims + kept, k, scales, layout, car_key, car_class)
@@ -509,31 +547,35 @@ class Advisor:
 
     def _balance_model(self, rec, setup, dims: list[Dim], k, scales, layout, car_key, car_class) -> BalanceModel:
         slopes = sensitivities(dims, k, scales)
-        cond, params = current_filter(self.store)
+        # Every build's stints: an update (BoP, physics) shifts the balance a little, so older
+        # builds' count with more doubt (OLDER_BUILD_SD), but what a setup did then still says
+        # where to start from.
+        build = current_build(self.store)
         rows = self.store.con.execute(
-            f"""select id, coalesce(track_layout, track), setup_json from recordings r
-                where car_signature = ? and {cond}
-                and file_name not in (select file_name from ratings where undrivable) order by file_mtime""",
-            [rec["car_signature"], *params]).fetchall()
+            """select id, coalesce(track_layout, track), setup_json, game_build from recordings r
+               where car_signature = ?
+               and file_name not in (select file_name from ratings where undrivable) order by file_mtime""",
+            [rec["car_signature"]]).fetchall()
         from autosetup.lmu.setup_space import CarSetup
 
         # One piece of evidence per setup driven at a layout (its stints pooled), as the
         # target pools them: the setup you're on is then measured the same way by both.
         groups: dict[tuple, list[int]] = {}
         setups = {}
-        for rid, lay, sj in rows:
+        for rid, lay, sj, gb in rows:
             s = CarSetup.from_json(json.loads(sj))
-            key = (lay, setup_fingerprint(s))
+            key = (lay, setup_fingerprint(s), build is not None and gb != build)
             groups.setdefault(key, []).append(rid)
             setups[key] = s
         evidence = []
-        for (lay, fp_key), rids in groups.items():
+        for (lay, fp_key, older), rids in groups.items():
             m = measured(self.store, rids)
             if not m.cells:
                 continue
-            s = setups[(lay, fp_key)]
+            s = setups[(lay, fp_key, older)]
             x = {d.name: d.x(d.index(s)) for d in dims if all(key in s.params for key in d.keys)}
-            evidence.append(Evidence(lay, x, {c: (v.mean, v.se) for c, v in m.cells.items()}, rec["id"] in rids))
+            evidence.append(Evidence(lay, x, {c: (v.mean, v.se) for c, v in m.cells.items()}, rec["id"] in rids,
+                                     older_build=older))
         fp = fpm.anchor_for(self.store, car_key, car_class, k)
         fp_pair = None
         if fp is not None and fp.setup:
@@ -665,6 +707,7 @@ class Advisor:
         out["plan"] = plan.to_json()
         out["target"] = None
         out["error"] = None
+        out["why"] = why_nothing(pr, plan, len(out["locks"]))
         if pr.changes and self.paths is not None:
             try:
                 res = write_setup(self.store, self.paths, stint_id, pr.values, dry_run=True, names=self.templates(),

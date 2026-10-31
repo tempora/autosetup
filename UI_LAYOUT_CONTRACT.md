@@ -81,6 +81,7 @@ While LMU is live and no stint of this session has been imported yet, the centre
 Its own window over the screen, containing:
 - when the last stint had no complete lap, one row above the changes: **"Stint N had no full lap"** with **Undrivable · It was fine**. Until you answer, and on Undrivable, the proposal starts from the last stint with a full lap (its toggles, its setup) and the title reads "Next setup from Stint M"; It was fine builds from the short stint
 - the change rows: name, signed delta, `from → to`, one reason line, and a lock on each row
+- when there are no changes, one muted line on why ("Your setup already sits where you asked, and nothing within reach is predicted faster"); hovering it shows what the solver decided from (its result, where the balance came from, whether there's a lap model, settings searched, locks, the rules' notes)
 - **Feel**, two toggles, each against the last stint: front **Pointier · As it was · Lazier**, rear **Looser · As it was · Safer**. A toggle asks for one step from how the last stint felt, and a new stint starts back at *As it was*. **This is it** locks the balance of this stint as the car's fingerprint. Toggles update the proposal at once.
 - the gap line, when the band is what costs time ("0.3 s available with more rotation")
 - on prototypes (no ABS), **Too much brake pressure**: brake pressure rises a step each stint until you press it
@@ -174,7 +175,7 @@ Neutral graphite, not Gruvbox yellow.
   - `GET /api/lap?stint=&seq=`: `{lap, time, clean, setup_name, metrics, trace: {step_m, distance[], time[], speed[], throttle[], brake[], steer[], gear[], x[], y[], sectors[]}}`, on a 5 m grid in the map's frame
   - `GET /api/setup-diff?a=&b=`: setting changes going from stint b to stint a
   - `GET /api/pareto?context=`
-  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
+  - `GET /api/proposal?stint=` / `POST /api/propose {stint}`: the next-setup proposal (`changes`, `notes`, `signature`, `target`, `locks`, `plan`, `error`, `why`: {`text`, `facts`} when there are no changes). `plan`: the balance target, measured and predicted cells, lap Δ with sectors, gap, wing sensitivity, platform current / proposed, dampers
   - `GET /api/target?stint=`: the target, the measured balance and the feel events
   - `POST /api/feedback {stint, axis: front|rear, value: -1|0|1}`: the stint's toggle (−1 pointier / looser, 1 lazier / safer)
   - `POST /api/lock {stint}`: "This is it"

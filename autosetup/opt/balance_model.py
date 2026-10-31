@@ -6,7 +6,9 @@ effect of each change (priors.py).
 The offset is measured: each stint at the layout gives measured cell − Σ s·x, and they're
 pooled by precision; the stint you're on counts as it is, the others with BETWEEN_SD more
 doubt (the slopes are only the known direction at a typical size), so the model starts
-from what you just drove. At a layout without stints the offset comes from the car's other
+from what you just drove. Stints from an older game build count with OLDER_BUILD_SD more
+doubt still (a BoP or physics update shifts the balance a little, not the slopes' direction),
+so a setup brought over from before an update starts from what it did then. At a layout without stints the offset comes from the car's other
 layouts (a track changes where a car sits, so with TRACK_SD more doubt), or from the
 fingerprint: it assumes the fingerprint's setup gives the fingerprint's balance here.
 The slopes carry SLOPE_REL_SD of doubt in their size (their direction is fixed), so a
@@ -26,6 +28,7 @@ TRACK_SD = 0.3  # deg: how differently a car sits at another track
 BETWEEN_SD = 0.15  # deg: what the slopes don't explain between two stints at one layout
 SLOPE_REL_SD = 0.5
 MODEL_SD = 0.08  # deg: misfit of the linear model, always there
+OLDER_BUILD_SD = 0.1  # deg: how much a game update (BoP, physics) may shift a stint's balance
 
 
 @dataclass
@@ -36,6 +39,7 @@ class Evidence:
     x: dict[str, float]  # dim name → share of range
     cells: dict[str, tuple[float, float]]  # cell → (mean, se)
     current: bool = False  # the stint the proposal starts from
+    older_build: bool = False  # driven on an older game build than the installed one
 
 
 @dataclass
@@ -64,7 +68,8 @@ class BalanceModel:
             out = {}
             for c in CELLS:
                 rows = [(e.cells[c][0] - sum(slopes.get(d, {}).get(c, 0.0) * v for d, v in e.x.items()),
-                         e.cells[c][1] ** 2 + MODEL_SD ** 2 + (0.0 if e.current else BETWEEN_SD ** 2))
+                         e.cells[c][1] ** 2 + MODEL_SD ** 2 + (0.0 if e.current else BETWEEN_SD ** 2
+                          + (OLDER_BUILD_SD ** 2 if e.older_build else 0.0)))
                         for e in ev if c in e.cells]
                 if rows:
                     w = np.array([1 / v for _, v in rows])

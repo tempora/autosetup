@@ -347,3 +347,22 @@ def test_the_front_wing_is_a_lever_and_the_aero_wing_on_cars_without_a_rear_one(
     choice = bo.solve(bo.Problem(fw, {"front_wing": 2, "rh_rear": 15}, lambda idx: (100.0 + 0.3 * idx["front_wing"], 0.02),
                                  BalanceModel({}, {}), None, radius=0.5))
     assert choice.wing["index"] < 2 and choice.best.indices["front_wing"] < 2
+
+
+def test_an_older_build_stint_still_counts_with_more_doubt():
+    """A setup brought over from before a game update: its stints still say where the car
+    sits, with more doubt than the same stints on the installed build, so the new build's
+    stints outweigh them once there are any."""
+    def ev(level, older):
+        return Evidence("L", bo.x_of(DIMS, MID), {c: (level, 0.05) for c in CELLS}, False, older_build=older)
+
+    old_only = BalanceModel.fit(SLOPES, "L", [ev(0.6, True)])
+    assert old_only.source == "layout"
+    new_only = BalanceModel.fit(SLOPES, "L", [ev(0.6, False)])
+    c = CELLS[0]
+    assert old_only.offset[c][0] == new_only.offset[c][0]
+    assert old_only.offset[c][1] > new_only.offset[c][1]
+    both = BalanceModel.fit(SLOPES, "L", [ev(0.6, True), ev(1.0, False)])
+    newer = BalanceModel.fit(SLOPES, "L", [ev(1.0, False)])
+    pooled, o, n = both.offset[c][0], old_only.offset[c][0], newer.offset[c][0]
+    assert o < pooled < n and n - pooled < pooled - o
