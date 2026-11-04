@@ -23,6 +23,11 @@ _ALIASES = {
     "paulricard": "paulricard",
     "circuitoftheamericas": "circuitoftheamericas",
     "spafrancorchamps": "spa",
+    "longbeach": "longbeach",
+    "monza": "monza",
+    "lagunaseca": "lagunaseca",
+    "roadatlanta": "roadatlanta",
+    "daytona": "daytonarc",
 }
 
 
