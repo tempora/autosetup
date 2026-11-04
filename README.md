@@ -18,10 +18,6 @@ Drive a few laps and say how the car should feel.
 <td><img src="docs/screenshots/setup.png" alt="Setup"></td>
 <td><img src="docs/screenshots/lap-analysis.png" alt="Lap Analysis"></td>
 </tr>
-<tr>
-<td align="center"><sub>Setup</sub></td>
-<td align="center"><sub>Lap Analysis</sub></td>
-</tr>
 </table>
 
 </div>
