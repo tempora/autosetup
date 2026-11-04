@@ -37,7 +37,7 @@ from autosetup.opt.balance_model import BalanceModel, Evidence
 from autosetup.opt.laptime import UNKNOWN_SD, lap_function
 from autosetup.opt.platform import platform_of
 from autosetup.opt.priors import sensitivities
-from autosetup.opt.space import Dim, aero_wing, damper_dims, main_dims, setup_fingerprint
+from autosetup.opt.space import DAMPERS, MAIN, Dim, aero_wing, damper_dims, main_dims, setup_fingerprint
 from autosetup.rules import Change, Proposal, _index_dir, manages_brake_pressure, propose
 from autosetup.scales import CarScales, build_scales
 from autosetup.setup_writer import WriteError, write_setup
@@ -119,6 +119,7 @@ class Plan:
     short: dict | None = None  # {"stint", "undrivable"}: the last stint had no full lap
     notes: list[str] = field(default_factory=list)
     searched: int | None = None  # settings the solver could move (not locked, adjustable)
+    settings: dict | None = None  # the car's balance and damper settings: {"total", "fixed" (by the game), "locked"}
 
     def to_json(self) -> dict:
         return {"stint": self.stint, "car_key": self.car_key, "car_class": self.car_class, "layout": self.layout,
@@ -143,13 +144,20 @@ def why_nothing(pr: Proposal, plan: Plan, locked: int) -> dict | None:
              f"lap model: {'yes' if plan.lap else 'none here yet'}"]
     if plan.searched is not None:
         facts.append(f"settings searched: {plan.searched}")
+    st = plan.settings
+    if st is not None:
+        facts.append(f"fixed by the game: {st['fixed']} of {st['total']}")
     if locked:
         facts.append(f"locked: {locked}")
     facts += [n for n in pr.notes if n not in plan.notes]  # the rules' own ("… is already at its limit")
     if NO_CORNERS in plan.notes:
         text = "No corners measured on this setup yet, so there's no balance to work from"
+    elif plan.searched == 0 and st is not None and st["total"] and st["fixed"] == st["total"]:
+        text = "The game reports every setting as fixed in this session (a fixed-setup server or event?)"
+    elif plan.searched == 0 and st is not None and st["locked"]:
+        text = "Every setting the game lets you change is locked here; unlock some to get changes"
     elif plan.searched == 0:
-        text = "Every setting is locked or fixed on this car"
+        text = "This car has no balance settings the game lets you change"
     elif plan.balance_source == "none":
         text = "No balance measured for this car yet, so the feel buttons have nothing to work from"
     elif not plan.feasible:
@@ -166,6 +174,22 @@ def why_nothing(pr: Proposal, plan: Plan, locked: int) -> dict | None:
 
 TC_NAMES = {"VM_TRACTIONCONTROLMAP": "TC map", "VM_TRACTIONCONTROLPOWERCUTMAP": "TC power cut",
             "VM_TRACTIONCONTROLSLIPANGLEMAP": "TC slip angle"}
+
+
+def _settings_state(setup, locks: set[str]) -> dict:
+    """How many of the balance and damper settings the car has are fixed by the game (not
+    available, or a single step) and how many of the rest are locked here."""
+    total = fixed = locked = 0
+    for _, keys in MAIN + DAMPERS:
+        ps = [setup.params.get(k) for k in keys]
+        if any(p is None for p in ps):
+            continue
+        total += 1
+        if not all(p.adjustable for p in ps):
+            fixed += 1
+        elif any(k in locks for k in keys):
+            locked += 1
+    return {"total": total, "fixed": fixed, "locked": locked}
 
 
 def _traction(setup, scales: CarScales, summary: dict, tgt: feel.Target, m_now, k: dict,
@@ -422,6 +446,7 @@ class Advisor:
         kept = [d for d in ddims if d.name not in SLOW_BALANCE]  # dampers the main block keeps where they are
         base = {d.name: d.index(setup) for d in dims}
         plan.searched = len(dims)
+        plan.settings = _settings_state(setup, locks)
         dbase = {d.name: d.index(setup) for d in ddims}
 
         balance = self._balance_model(rec, setup, dims + kept, k, scales, layout, car_key, car_class)

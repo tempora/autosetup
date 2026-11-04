@@ -107,6 +107,8 @@ def test_parse_change_rejects_bad_specs(store, spec):
     ("Lusail International Circuit", ["Qatar"], "Qatar"),
     ("Circuit de Spa-Francorchamps", ["Spa"], "Spa"),
     ("Sebring International Raceway", ["Sebring", "Spa"], "Sebring"),
+    ("Grand Prix of Long Beach", ["Longbeach", "Spa"], "Longbeach"),
+    ("Autodromo Nazionale Monza", ["Monza", "Spa"], "Monza"),
     ("Nowhere Ring", ["Spa"], None),
 ])
 def test_guess_folder(tmp_path, track, folders, expected):
