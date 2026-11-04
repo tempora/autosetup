@@ -11,6 +11,7 @@ a = Analysis(
     pathex=[str(root)],
     datas=[
         (str(root / "web" / "index.html"), "web"),  # server.WEB_DIR: <bundle>/web
+        (str(root / "web" / "i18n"), "web/i18n"),  # UI strings, one JSON file per language
         (str(root / "autosetup" / "knowledge" / "classes.toml"), "autosetup/knowledge"),
     ],
     excludes=["tkinter", "_tkinter", "pytest", "IPython", "matplotlib", "PIL"],

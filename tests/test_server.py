@@ -42,12 +42,17 @@ def test_health_and_page(server):
     assert call(base, "/api/health") == (200, {"ok": True})
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
-        for id_ in (b"screen-welcome", b"screen-analysis", b"screen-setup", b"screen-history", b'id="map"',
-                    b'id="slider"', b'id="traces"', b'id="modal"', b'id="vis"', b'id="advanced"', b'id="feel-rear"',
-                    b'id="feel-front"', b'id="this-is-it"', b'id="gap"'):
+        for id_ in (b"screen-home", b"screen-analysis", b"screen-setup", b"screen-history", b"screen-driver",
+                    b"screen-settings", b'id="map"', b'id="traces"', b'id="dock"', b'id="scrub"', b'id="tiles"',
+                    b'id="panel"', b'id="about"'):
             assert id_ in page, id_
         for gone in (b"rate-details", b"change-size", b"/api/feel", b"car-feel-row"):
             assert gone not in page, gone
+    # every visible text comes from the strings file
+    status, strings = call(base, "/i18n/en.json")
+    assert status == 200 and strings["tab.analysis"] == "Lap Analysis"
+    assert call(base, "/i18n/languages.json")[1]["en"] == "English"
+    assert call(base, "/i18n/..%2Fserver.py")[0] == 404
 
 
 def test_import_state_stints_pareto(server):
@@ -283,7 +288,7 @@ def test_menu_screens(server, install):
     app, base = server
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
-        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="about"', b"page-close"):
+        for id_ in (b'id="menu-btn"', b"screen-driver", b"screen-settings", b'id="about"', b'data-go="home"'):
             assert id_ in page, id_
         for gone in (b'id="keys"', b'id="sheet"', b"theme-toggle"):  # no shortcuts, Analysis sheet or nav toggle
             assert gone not in page, gone
