@@ -1,4 +1,4 @@
-"""The damper block: contact patch inside the band, kerbs no worse, whole clicks."""
+"""The damper block: contact patch and kerbs inside the band, whole clicks."""
 
 import numpy as np
 import pytest
@@ -106,3 +106,33 @@ def test_enough_settings_with_no_effect_give_no_move():
     model = dampers.DamperModel.fit(DIMS, flat)
     assert model.settings == 4
     assert dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0).moves == {}
+
+
+def test_softens_fast_bump_for_the_kerbs():
+    """The kerbs count for themselves: a fast bump that takes them better is proposed even
+    when the contact patch off them doesn't move."""
+    rng = np.random.default_rng(2)
+    data = []
+    for i in range(6):
+        x = {"slow_bump_front": rng.uniform(0.2, 0.8), "fast_bump_front": rng.uniform(0.2, 0.8)}
+        kerb = 1.0 + 0.6 * x["fast_bump_front"]
+        data.append(dampers.StintMetrics(i, x, {
+            "cv_front": (0.20 + rng.normal(0, 0.001), 0.002 ** 2), "cv_rear": (0.18 + rng.normal(0, 0.001), 0.002 ** 2),
+            **{m: (kerb + rng.normal(0, 0.005), 0.01 ** 2) for m in ("peak_load", "pitch_deg", "heave_mm")}}))
+    model = dampers.DamperModel.fit(DIMS, data)
+    choice = dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0)
+    assert choice.moves["fast_bump_front"][1] < 10 and not choice.exploring
+    assert choice.reason == "takes the kerbs better" and choice.kerbs < 0
+
+
+def test_a_setting_never_moved_explores_after_the_others_are_known():
+    """Slow bump driven at many values, fast bump never moved: fast bump still gets its turn."""
+    rng = np.random.default_rng(3)
+    data = [dampers.StintMetrics(i, {"slow_bump_front": x, "fast_bump_front": 0.5},
+                                 {"cv_front": (0.2 + rng.normal(0, 0.001), 0.002 ** 2),
+                                  "peak_load": (1.3 + rng.normal(0, 0.005), 0.01 ** 2)})
+            for i, x in enumerate((0.2, 0.35, 0.5, 0.65, 0.8))]
+    model = dampers.DamperModel.fit(DIMS, data)
+    assert model.settings == 5 and model.tried["fast_bump_front"] == 1
+    choice = dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0)
+    assert "fast_bump_front" in choice.moves and choice.exploring
