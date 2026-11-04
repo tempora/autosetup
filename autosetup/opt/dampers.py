@@ -18,8 +18,15 @@ balance effects, priors.py). Springs are inputs too (they move the same numbers)
 main block can use the contact score as its tiebreaker and the kerb numbers as a
 constraint.
 
+A move is scored on what it changes: the contact score, plus the kerb numbers at
+KERB_WEIGHT (a fast damper that takes the kerbs better is worth proposing even if the
+contact patch off them barely moves). The kerbs stay a constraint as well: no kerb number
+may get worse by more than KERB_MARGIN.
+
 Moves are whole clicks, at most MAX_MOVES settings per proposal; the balance band must
-still hold with them (a damper change that moves balance out of it is turned down).
+still hold with them (a damper change that moves balance out of it is turned down). Each
+setting is explored on its own: until it has been driven at EXPLORE_VALUES different
+values, what a move of it would teach counts too.
 """
 
 from __future__ import annotations
@@ -42,9 +49,10 @@ KERB_MARGIN = 0.5  # in SCALE units: how much worse than the stint you drove a k
 MAX_MOVES = 2
 MAX_CLICKS = 3  # per damper move
 MAX_PACKER_CLICKS = 2
-MIN_GAIN = 0.1  # contact score units a move must be expected to win
-EXPLORE = 0.3  # weight of what a move would teach, while the model knows little
-EXPLORE_SETTINGS = 4  # distinct damper settings driven before the model counts as knowing
+MIN_GAIN = 0.1  # score units (contact + weighted kerbs) a move must be expected to win
+KERB_WEIGHT = 0.5  # a kerb number's SCALE unit against a contact one
+EXPLORE = 0.3  # weight of what a move would teach, while its setting is little known
+EXPLORE_VALUES = 3  # values of one setting driven before what its click does counts as known
 DAMPER_NAMES = {name for name, _ in DAMPERS}
 SHAPE_BIN = 20.0  # mm/s, histograms are compared at this width
 WHEELS = {"front": ("fl", "fr"), "rear": ("rl", "rr")}
@@ -163,6 +171,7 @@ class DamperModel:
     models: dict[str, Linear] = field(default_factory=dict)
     stints: int = 0
     settings: int = 0  # distinct damper settings among the stints (the springs aside)
+    tried: dict[str, int] = field(default_factory=dict)  # per setting, distinct values driven
 
     @classmethod
     def fit(cls, dims: list[Dim], data: list[StintMetrics]) -> "DamperModel":
@@ -185,7 +194,8 @@ class DamperModel:
             models[metric] = Linear(cov @ (m0 / s0 ** 2 + Phi.T @ (y / var)), cov, names)
         damper = [n for n in names if n in DAMPER_NAMES]
         settings = len({tuple(round(s.x.get(n, 0.0), 6) for n in damper) for s in data})
-        return cls(dims, models, len(data), settings)
+        tried = {n: len({round(s.x[n], 6) for s in data if n in s.x}) for n in names}
+        return cls(dims, models, len(data), settings, tried)
 
     def contact(self, x: dict[str, float]) -> tuple[float, float]:
         """Contact score (sum of the contact metrics in SCALE units): mean, variance."""
@@ -196,6 +206,26 @@ class DamperModel:
                 m += a / SCALE[metric]
                 v += b / SCALE[metric] ** 2
         return m, v
+
+    def _delta(self, metrics, x: dict[str, float], x_base: dict[str, float]) -> tuple[float, float]:
+        """Predicted change of the sum of ``metrics`` (SCALE units) from ``x_base`` to ``x``:
+        mean, variance. Higher is worse."""
+        m = v = 0.0
+        for metric in metrics:
+            lin = self.models.get(metric)
+            if lin is None:
+                continue
+            d = np.array([0.0] + [x.get(n, 0.0) - x_base.get(n, 0.0) for n in lin.names])
+            m += float(d @ lin.mean) / SCALE[metric]
+            v += float(max(d @ lin.cov @ d, 0.0)) / SCALE[metric] ** 2
+        return m, v
+
+    def change(self, x: dict[str, float], x_base: dict[str, float]) -> tuple[float, float, float]:
+        """What a move does to the score: (contact change, kerb change, variance of the
+        weighted sum). Negative is better."""
+        cm, cv = self._delta(CONTACT, x, x_base)
+        km, kv = self._delta(KERB, x, x_base)
+        return cm, km, cv + KERB_WEIGHT ** 2 * kv
 
     def kerb_ok(self, x: dict[str, float], x_base: dict[str, float]) -> float:
         """Chance no kerb number gets worse than at ``x_base`` (the setup you drove) by more
@@ -223,6 +253,7 @@ class DamperChoice:
     contact_base: tuple[float, float]
     exploring: bool
     reason: str
+    kerbs: float = 0.0  # predicted change of the kerb numbers, SCALE units (negative: better)
 
 
 def _reach(d: Dim) -> int:
@@ -232,18 +263,25 @@ def _reach(d: Dim) -> int:
 
 def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: dict[str, float],
            balance_ok) -> DamperChoice:
-    """Best damper moves (whole clicks): lower predicted contact score, kerbs within margin,
-    the balance band holding (``balance_ok``: indices of these dims → probability). While
-    the model has few stints, what a move would teach counts too (EXPLORE)."""
+    """Best damper moves (whole clicks): the most predicted gain in contact score and
+    weighted kerb numbers, kerbs within margin, the balance band holding (``balance_ok``:
+    indices of these dims → probability). A move of a setting driven at fewer than
+    EXPLORE_VALUES values also counts what it would teach (EXPLORE)."""
     def x_of(idx):
         return {**x_main, **{d.name: d.x(idx[d.name]) for d in dims}}
 
-    def value(idx):
-        m, v = model.contact(x_of(idx))
-        bonus = EXPLORE * math.sqrt(v) if model.settings < EXPLORE_SETTINGS else 0.0
-        return m - bonus, m, v
+    xb = x_of(base)
 
-    b_val, b_m, b_v = value(base)
+    def score(idx):
+        """(value, gain, sd of the gain, new): value adds the teaching bonus to the gain."""
+        cm, km, v = model.change(x_of(idx), xb)
+        gain, sd = -(cm + KERB_WEIGHT * km), math.sqrt(v)
+        new = any(idx[n] != base[n] and model.tried.get(n, 0) < EXPLORE_VALUES for n in idx)
+        return gain + (EXPLORE * sd if new else 0.0), gain, sd, new
+
+    def allowed(idx):
+        return model.kerb_ok(x_of(idx), xb) >= 0.5 and balance_ok(idx) >= 0.5
+
     singles = []
     for d in dims:
         r = _reach(d)
@@ -251,29 +289,33 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
             to = base[d.name] + step
             if d.lo <= to <= d.hi:
                 idx = {**base, d.name: to}
-                if model.kerb_ok(x_of(idx), x_of(base)) >= 0.5 and balance_ok(idx) >= 0.5:
-                    singles.append((value(idx), idx, d.name))
-    singles.sort(key=lambda s: s[0][0])
-    cands = [(v, idx) for v, idx, _ in singles]
-    for i, (v1, idx1, n1) in enumerate(singles[:6]):
-        for v2, idx2, n2 in singles[i + 1:6]:
+                if allowed(idx):
+                    singles.append((score(idx), idx, d.name))
+    singles.sort(key=lambda s: -s[0][0])
+    cands = [(s, idx) for s, idx, _ in singles]
+    for i, (_, idx1, n1) in enumerate(singles[:6]):
+        for _, idx2, n2 in singles[i + 1:6]:
             if n1 != n2:
                 idx = {**idx1, n2: idx2[n2]}
-                if model.kerb_ok(x_of(idx), x_of(base)) >= 0.5 and balance_ok(idx) >= 0.5:
-                    cands.append((value(idx), idx))
-    if not cands:
+                if allowed(idx):
+                    cands.append((score(idx), idx))
+    # A gain is claimed only when it clears its own doubt; a move that doesn't is for
+    # learning, and only while one of the settings it moves is little known.
+    ok = [(s, idx) for s, idx in cands
+          if s[1] - 0.5 * s[2] >= MIN_GAIN or (s[3] and s[0] >= MIN_GAIN)]
+    b_m, b_v = model.contact(xb)
+    if not ok:
         return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
-    (val, m, v), best = min(cands, key=lambda c: c[0][0])
-    if b_val - val < MIN_GAIN:
-        return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
+    (_, gain, sd, _), best = max(ok, key=lambda c: c[0][0])
     moves = {k: (base[k], best[k]) for k in best if best[k] != base[k]}
-    # A better contact patch is claimed only when the gain clears its own doubt; else the
-    # move is for learning (only until EXPLORE_SETTINGS different settings were driven).
-    exploring = (b_m - m) - 0.5 * math.sqrt(v) < MIN_GAIN
-    if exploring and model.settings >= EXPLORE_SETTINGS:
-        return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
-    return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring,
-                        "learning what it does to the contact patch" if exploring else "steadier tyre load")
+    exploring = gain - 0.5 * sd < MIN_GAIN
+    cm, km, _ = model.change(x_of(best), xb)
+    m, v = model.contact(x_of(best))
+    if exploring:
+        reason = "learning what it does to the tyre load and kerbs"
+    else:
+        reason = "takes the kerbs better" if -KERB_WEIGHT * km > -cm else "steadier tyre load"
+    return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring, reason, km)
 
 
 def histograms(store, rid: int, kerbs: bool | None, width: float, knowledge: dict) -> dict:

@@ -5,7 +5,7 @@
              your fingerprint and presses (feel/), balance model (opt/balance_model.py),
              lap model of this car at this layout with its aero map and residual GP
              (opt/laptime.py), platform safety; the drag level first
-  dampers    a better contact patch inside the same band, kerbs no worse (opt/dampers.py)
+  dampers    a better contact patch and kerbs inside the same band (opt/dampers.py)
 
 Only the current game build's recordings are learned from. Proposals that are written
 are kept (``proposals``), so the next stint can be linked back to what was asked for and
@@ -554,7 +554,7 @@ class Advisor:
 
             dc = dampers.choose(dmodel, ddims, dbase, x_main, balance_ok)
             plan.dampers = {"contact": list(dc.contact), "contact_base": list(dc.contact_base),
-                            "exploring": dc.exploring, "stints": dmodel.stints,
+                            "kerbs": dc.kerbs, "exploring": dc.exploring, "stints": dmodel.stints,
                             "settings": dmodel.settings}
             gone = []
             for name, (a, b) in dc.moves.items():
