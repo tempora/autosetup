@@ -2,393 +2,412 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <title>autosetup</title>
 <style>
-/* Follows UI_LAYOUT_CONTRACT.md (approved 2026-10-22, amended 2026-10-23, 2026-10-28 and 2026-10-29). Desktop only. */
+/* autosetup UI. Every visible text comes from web/i18n/<lang>.json. Desktop only. */
+:root{color-scheme:dark;
+ --shell:#0c0707;--bg:#120a0a;--l1:#1a0f0f;--l2:#231515;--l3:#2d1c1b;--bd:#3c2726;
+ --t1:#f2e7e6;--t2:#cfbab8;--t3:#9d8583;
+ --pri:#d8847b;--onPri:#2b0d0b;--sel:#4b2422;--onSel:#f7dcd8;--priC:#5b2a26;--onPriC:#ffdad5;
+ --ter:#d9a77d;--terC:#5b3a20;--onTerC:#ffdcc0;--err:#ee8b80;--green:#5cc97b;--red:#ef5350;
+ --text:var(--t1);--muted:var(--t3);--line:var(--bd);
+ --f:"IBM Plex Sans","Segoe UI Variable","Segoe UI",system-ui,sans-serif;--spring:cubic-bezier(.34,1.45,.64,1)}
+:root[data-theme="light"]{color-scheme:light;
+ --shell:#f4e8e6;--bg:#fff8f7;--l1:#fbefed;--l2:#f3e3e0;--l3:#ead5d2;--bd:#d8c2bf;
+ --t1:#231918;--t2:#534341;--t3:#857371;
+ --pri:#9c4038;--onPri:#ffffff;--sel:#f5d9d5;--onSel:#3b0907;--priC:#ffdad5;--onPriC:#3b0907;
+ --ter:#8a5a2b;--terC:#ffdcc0;--onTerC:#2e1500;--err:#ba1a1a;--green:#2e8b4a;--red:#c62828}
 *{box-sizing:border-box}
-*{border-radius:0 !important}
 [hidden]{display:none !important}
-.round,.live-dot{border-radius:50% !important}
-:root{color-scheme:dark;--bg:#111214;--surface:#18191c;--line:#26282b;--text:#e4e4e2;--muted:#8a8d93;--danger:#e5534b;
---s1:#4a90d9;--s2:#e08a3c;--us:#3aa6a0;--os:#d9534f;--live:#e5484d;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--ease:cubic-bezier(.16,1,.3,1)}
-@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f5f5f3;--surface:#eaeae7;--line:#d9d9d6;
---text:#1d1e21;--muted:#686b71;--danger:#b42318;--s1:#2563ad;--s2:#b05a10;--us:#1f7f79;--os:#b93a36;--live:#c62f34}}
-:root[data-theme="light"]{color-scheme:light;--bg:#f5f5f3;--surface:#eaeae7;--line:#d9d9d6;
---text:#1d1e21;--muted:#686b71;--danger:#b42318;--s1:#2563ad;--s2:#b05a10;--us:#1f7f79;--os:#b93a36;--live:#c62f34}
 html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--text);min-width:1000px;min-height:640px;overflow:hidden;
-font:15px/1.5 "IBM Plex Sans","Segoe UI Variable","Segoe UI",system-ui,sans-serif}
+html{scrollbar-width:thin}
+body{background:var(--bg);color:var(--t1);font:14px/1.45 var(--f);min-width:1100px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:300;opacity:.055;background-size:220px 220px;
+ background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")}
 button{font:inherit;color:inherit;cursor:pointer}
-:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
-.mini{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-.mono{font-family:var(--mono)}
-.muted{color:var(--muted)}
-.ico{display:inline-block;vertical-align:middle;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:7px 14px;
-border:1px solid var(--line);background:transparent;font-size:14px;transition:background 150ms ease,color 150ms ease,border-color 150ms ease}
-.btn:hover{background:var(--surface)}
-.btn.on{background:var(--text);border-color:var(--text);color:var(--bg)}
-.btn.primary{background:var(--text);border-color:var(--text);color:var(--bg);min-height:46px;font-weight:600;padding:0 22px}
-.btn.quiet{border-color:transparent;color:var(--muted)}
-.btn.quiet:hover{color:var(--text);background:none}
-.btn:disabled{opacity:.4;cursor:default}
-.icon-btn{width:34px;height:34px;padding:0;border:1px solid transparent;background:none;color:var(--muted);
-display:inline-flex;align-items:center;justify-content:center;transition:color 150ms ease,border-color 150ms ease}
-.icon-btn:hover{color:var(--text);border-color:var(--line)}
-.seg{display:inline-grid;grid-auto-flow:column;gap:2px}
-.seg .btn{min-height:34px;padding:4px 14px;font-size:13px;color:var(--muted)}
-.seg .btn.on{color:var(--bg)}
-.empty{color:var(--muted);font-size:14px;padding:10px 0}
+button:disabled{cursor:default;opacity:.45}
+:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.muted{color:var(--t3)}
+.g{color:var(--pri)}.l{color:var(--ter)}
+.empty{color:var(--t3);padding:24px;text-align:center}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 
-/* ---------- nav ---------- */
-.app{display:grid;grid-template-rows:44px minmax(0,1fr);height:100vh}
-.nav{display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line)}
-.tabs{display:flex;height:100%}
-.tab{position:relative;height:100%;padding:0 16px;border:none;background:none;color:var(--muted);font-size:14px;font-weight:500;transition:color 150ms ease}
-.tab:hover:not(:disabled){color:var(--text)}
-.tab.on{color:var(--text)}
-.tab::after{content:"";position:absolute;left:16px;right:16px;bottom:-1px;height:2px;background:var(--text);transform:scaleX(0);transition:transform 200ms var(--ease)}
-.tab.on::after{transform:scaleX(1)}
-.tab:disabled{opacity:.35;cursor:default}
-.hist-mark{display:flex;align-items:center;height:24px;margin-left:8px;padding-left:24px;border-left:1px solid var(--line)}
-.live-dot{display:inline-block;width:8px;height:8px;background:var(--muted)}
-.live-dot.on{background:var(--live)}
-.nav-right{margin-left:auto;display:flex;align-items:center;gap:6px}
-.err{color:var(--danger);font-size:13px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* ---------- screens ---------- */
-main{position:relative;min-height:0}
-.screen{position:absolute;inset:0;opacity:0;visibility:hidden;transform:scale(.99);
-transition:opacity 200ms var(--ease),transform 200ms var(--ease),visibility 200ms}
-.screen.on{opacity:1;visibility:visible;transform:none}
-.split{display:grid;grid-template-columns:300px minmax(0,1fr)}
-.left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
-.left-scroll{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:18px 20px}
-.left-scroll>section{padding:0 0 18px;margin:0 0 18px;border-bottom:1px solid var(--line)}
-.left-scroll>section:last-child{border-bottom:none;margin-bottom:0}
-.pinned{display:flex;flex-direction:column;gap:8px;padding:14px 20px 18px;border-top:1px solid var(--line)}
-.pinned .btn{width:100%;justify-content:space-between}
-.pinned .seg{display:grid;grid-template-columns:1fr 1fr}
-.pinned .seg .btn{justify-content:center}
-.sess .track{font-size:16px;font-weight:600;line-height:1.35}
-.sess .car{font-size:13.5px;color:var(--muted)}
-
-/* welcome */
-.welcome{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}
-.welcome h1{margin:0;font-size:28px;font-weight:500;letter-spacing:-.01em}
-.welcome p{margin:0;max-width:560px;color:var(--muted);font-size:16px}
-.welcome p.start{font-size:14px;margin-top:6px}
-
-/* lap analysis: left */
-.lap-time{font:500 30px/1.15 var(--mono);margin:4px 0 12px}
-.kv{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono)}
-.kv td{padding:3px 0;text-align:right;white-space:nowrap}
-.kv td+td,.kv th+th{padding-left:14px}
-.kv.ab{font-size:13px}
-.kv.ab td:first-child{width:1%}
-.kv td:first-child{text-align:left;font:13.5px/1.5 "IBM Plex Sans",system-ui,sans-serif;color:var(--muted)}
-.kv th{text-align:right;padding:0 0 4px;font:600 11px var(--mono);color:var(--muted)}
-.kv .win{font-weight:600}
-.stint-row{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:38px;padding:6px 8px;border:none;
-background:none;text-align:left;font:14px var(--mono);transition:background 150ms ease}
-.stint-row:hover{background:var(--surface)}
-.stint-row .ico{transition:transform 200ms var(--ease);margin-right:6px}
-.stint-row[aria-expanded="true"] .ico{transform:rotate(90deg)}
-.laps{overflow:hidden;transition:height 200ms var(--ease)}
-.lap-row{display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:6px;width:100%;min-height:32px;padding:3px 8px 3px 28px;
-border:none;background:none;text-align:left;font:13.5px var(--mono);color:var(--text);transition:background 150ms ease}
-.lap-row:hover{background:var(--surface)}
-.lap-row.dropped{color:var(--muted)}
-.lap-row .mark{width:12px;height:3px}
-
-/* lap analysis: centre */
-.centre{display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px 24px 16px}
-.map-box{position:relative;flex:1;min-height:200px}
-#map{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
-#map.panning{cursor:grabbing}
-#map text{font:11px var(--mono);fill:var(--muted)}
-#map text.wait{font:14px "IBM Plex Sans",system-ui,sans-serif}
-.map-tools{position:absolute;right:0;top:0}
-.readout{display:flex;gap:22px;font:14px/1.5 var(--mono);min-height:24px;padding:6px 0 2px;white-space:nowrap;overflow:hidden}
-.readout .k{color:var(--muted);margin-right:6px;font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:12.5px}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;margin:0;background:none;cursor:pointer}
-input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line)}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:20px;margin-top:-9px;background:var(--text);border:none;transition:transform 150ms ease}
-input[type=range]:active::-webkit-slider-thumb{transform:scaleX(1.4)}
-input[type=range]::-moz-range-track{height:2px;background:var(--line)}
-input[type=range]::-moz-range-thumb{width:12px;height:20px;background:var(--text);border:none}
-.traces svg{display:block;width:100%}
-.traces text{font:10.5px var(--mono);fill:var(--muted)}
-.grid line{stroke:var(--line);stroke-width:1}
-
-/* setup */
-.setup-centre{display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px 24px 16px;gap:10px}
-.setup-top{display:flex;align-items:center;gap:12px;min-height:34px}
-.setup-top .adv{margin-left:auto}
-.adv-box{display:flex;flex-direction:column;flex:1;min-height:0;gap:10px}
-.vis{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;border-top:1px solid var(--line)}
-.vis-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
-.vis-row>div{padding:12px 16px 14px;min-width:0}
-.vis-row>div+div{border-left:1px solid var(--line)}
-.vis-row.one{grid-template-columns:minmax(0,1fr)}
-.vis svg{display:block;width:100%;overflow:visible}
-.vis svg text{font:11px var(--mono);fill:var(--muted)}
-.vis svg text.v{fill:var(--text);font-size:13px}
-.vis svg text.big{fill:var(--text);font-size:15px}
-.vis .lapd{font:500 24px/1.2 var(--mono);margin:4px 0 8px}
-.vis .lapd .sd{font-size:14px;color:var(--muted);margin-left:6px}
-.susp-tools{display:flex;align-items:center;gap:16px;margin:2px 0 10px}
-.susp-tools .mini{margin-right:2px}
-.susp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 28px}
-.susp .stats{font:12px/1.5 var(--mono);color:var(--muted);margin-top:4px}
-.table-scroll{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;border-top:1px solid var(--line)}
-table.big{border-collapse:separate;border-spacing:0;font:13.5px/1.4 var(--mono)}
-table.big th,table.big td{padding:5px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
-table.big thead th{position:sticky;top:0;z-index:2;background:var(--bg);font:600 11.5px var(--mono);color:var(--muted)}
-table.big tbody th{position:sticky;left:0;z-index:1;background:var(--bg);text-align:left;font:13.5px "IBM Plex Sans",system-ui,sans-serif;color:var(--text);min-width:220px}
-table.big thead th:first-child{left:0;z-index:3}
-table.big th .u{color:var(--muted);font:11.5px var(--mono);margin-left:6px}
-table.big tr.grp th{padding-top:16px;color:var(--muted);font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase}
-table.big td.chg{font-weight:600}
-table.big td.dropped,table.big th.dropped{color:var(--muted)}
-table.big tbody tr:hover td,table.big tbody tr:hover th{background:var(--surface)}
-
-/* history */
-.hist{height:100%;overflow:auto;padding:18px 24px}
-table.list{width:100%;max-width:1100px;border-collapse:collapse;font:14px/1.5 var(--mono)}
-table.list th{text-align:left;padding:6px 12px;font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
-table.list td{padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
-table.list td:first-child,table.list td:nth-child(2){font-family:"IBM Plex Sans",system-ui,sans-serif;white-space:normal}
-table.list tbody tr{cursor:pointer;transition:background 150ms ease}
-table.list tbody tr:hover{background:var(--surface)}
-table.list tr.cur td{font-weight:600}
-
-/* ---------- setup pop-up ---------- */
-.modal-back{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);
-opacity:0;visibility:hidden;transition:opacity 200ms var(--ease),visibility 200ms}
-.modal-back.open{opacity:1;visibility:visible}
-.modal{width:min(720px,calc(100vw - 48px));max-height:calc(100vh - 80px);display:flex;flex-direction:column;background:var(--bg);
-border:1px solid var(--line);transform:scale(.97) translateY(6px);transition:transform 200ms var(--ease)}
-.modal-back.open .modal{transform:none}
-.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
-.modal-file{font:600 15px/1.35 var(--mono);overflow-wrap:anywhere;margin-top:2px}
-.modal-body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:4px 20px 12px}
-.modal-foot{display:flex;align-items:center;gap:12px;padding:12px 20px 16px;border-top:1px solid var(--line)}
-.modal-foot .status{flex:1;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
-.modal-foot .status.error{color:var(--danger)}
-.change{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:2px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
-.change .name{grid-column:1;font-size:15px}
-.change .delta{grid-column:2;grid-row:1/span 3;align-self:center;font:15px var(--mono);text-align:right}
-.change .lock{grid-column:3;grid-row:1/span 3;align-self:center}
-.change .vals{grid-column:1;font:13px var(--mono);color:var(--muted)}
-.change .why{grid-column:1;font-size:13px;color:var(--muted)}
-#changes{transition:opacity 150ms ease}
-#changes.busy{opacity:.4}
-.spin{animation:spin 900ms linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.lock{width:34px;height:34px;padding:0;border:none;background:none;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;transition:color 150ms ease}
-.lock:hover,.lock[aria-pressed="true"]{color:var(--text)}
-.modal-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-.feelrow{display:grid;grid-template-columns:72px auto;align-items:center;gap:10px;padding:8px 0}
-.feel-acts{display:flex;align-items:center;gap:8px;padding:6px 0 12px;border-bottom:1px solid var(--line)}
-.gap{font-size:13.5px;padding:10px 0;border-bottom:1px solid var(--line)}
-.why{font-size:13.5px;padding:10px 0;color:var(--muted)}
-.tip{position:fixed;z-index:200;pointer-events:none;background:var(--surface);border:1px solid var(--line);
-padding:6px 9px;font:12px/1.45 var(--mono);color:var(--muted);display:none;max-width:260px}
-.tip b{color:var(--text);font-weight:600}
-svg.plot{display:block;width:100%;overflow:visible}
-svg.plot text{font:11px var(--mono);fill:var(--muted)}
-/* ---------- menu (§1) ---------- */
+/* ---- header ---- */
+.app{display:grid;grid-template-rows:48px minmax(0,1fr);min-height:100vh}
+.hdr{position:sticky;top:0;z-index:50;display:flex;align-items:stretch;background:var(--shell);border-bottom:1px solid var(--bd)}
+.tab{display:flex;align-items:center;padding:0 20px;border:none;background:none;color:var(--t3);font-weight:500;position:relative}
+.tab:hover:not(:disabled){color:var(--t1)}
+.tab.on{color:var(--t1)}
+.tab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--pri)}
+.ctx{display:flex;align-items:center;margin-left:14px;padding-left:16px;border-left:1px solid var(--bd);font-size:13px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
+.hdr .right{margin-left:auto;display:flex;align-items:center;gap:8px;padding-right:8px}
+.err{color:var(--err);font-size:12.5px;max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live{display:inline-flex;align-items:center;gap:8px;padding:0 10px;color:var(--t2);font-size:13px;white-space:nowrap}
+.live .dot{width:8px;height:8px;border-radius:50%;background:var(--t3)}
+.live.on .dot{background:var(--red)}
+.tbtn{height:32px;padding:0 14px;border:1px solid var(--bd);background:none;color:var(--t1);font-size:13px;border-radius:16px}
+.tbtn:hover{background:var(--l2)}
+.ibtn{width:38px;height:38px;border:none;background:none;color:var(--t2);display:inline-flex;align-items:center;justify-content:center;border-radius:12px;transition:background 150ms,border-radius 250ms var(--spring)}
+.ibtn:hover{background:var(--l2);color:var(--t1)}
 .menu-wrap{position:relative}
-.menu{position:absolute;right:0;top:calc(100% + 5px);z-index:60;min-width:200px;padding:4px 0;background:var(--bg);border:1px solid var(--line);
-opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity 150ms var(--ease),transform 150ms var(--ease),visibility 150ms}
-.menu.open{opacity:1;visibility:visible;transform:none}
-.mitem{display:block;width:100%;min-height:36px;padding:8px 14px;border:none;background:none;text-align:left;font-size:14px;transition:background 150ms ease}
-.mitem:hover,.mitem:focus-visible{background:var(--surface)}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;padding:6px;background:var(--l1);border:1px solid var(--bd);border-radius:14px;display:none;flex-direction:column;gap:2px;z-index:60}
+.menu.open{display:flex}
+.mitem{height:36px;padding:0 12px;border:none;background:none;text-align:left;border-radius:10px;font-size:13.5px}
+.mitem:hover{background:var(--l2)}
+main{position:relative;min-height:0}
+.screen{display:none}
+.screen.on{display:block}
 
-/* ---------- driver, settings (§16, §17) ---------- */
-.page{height:100%;overflow-y:auto;scrollbar-width:thin;padding:18px 24px 32px}
-.page-inner{max-width:1000px}
-.page>.page-inner>section{padding:0 0 22px;margin:0 0 22px;border-bottom:1px solid var(--line)}
-.page>.page-inner>section:last-child{border-bottom:none}
-.page h2{margin:0 0 12px;font-size:17px;font-weight:600}
-.page h2 .mono{font-size:13.5px;font-weight:400;color:var(--muted);margin-left:8px}
-.page .mini{margin:14px 0 4px}
-table.facts{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono)}
-table.facts th{text-align:left;padding:6px 12px 6px 0;font:600 11px "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
-table.facts td{padding:7px 12px 7px 0;border-bottom:1px solid var(--line);white-space:nowrap}
-table.facts td.line{font-family:"IBM Plex Sans",system-ui,sans-serif;white-space:normal;width:50%}
-table.facts td:first-child{font-family:"IBM Plex Sans",system-ui,sans-serif}
-.srow{display:grid;grid-template-columns:200px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:46px;padding:6px 0;border-bottom:1px solid var(--line)}
-.srow>span:first-child{font-size:14px;color:var(--muted)}
-.srow .path{font:13px var(--mono);overflow-wrap:anywhere}
-.srow .acts{display:flex;align-items:center;gap:8px}
-.srow .tpl{display:flex;flex-direction:column;gap:4px;min-width:0}
-.srow .tpl input{font:13px var(--mono);color:var(--text);background:none;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
-.srow .tpl .muted{font:12px var(--mono);overflow-wrap:anywhere}
-.menu-screen.screen{display:flex;flex-direction:column}
-.menu-screen .page{flex:1;min-height:0}
-.page-foot{display:flex;justify-content:flex-end;padding:12px 24px 16px;border-top:1px solid var(--line)}
-@media(prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+/* ---- pills: one joined shape, the chosen option morphs out of it ---- */
+.seg{position:relative;display:inline-flex;align-items:center;background:var(--l2);border-radius:14px;flex:none}
+.seg button{position:relative;z-index:1;height:28px;padding:0 12px;border:none;background:transparent;color:var(--t2);font-size:12.5px;font-weight:500;border-radius:14px;white-space:nowrap;transition:color 200ms}
+.seg button:hover{color:var(--t1)}
+.seg button[aria-pressed="true"]{color:var(--onSel);font-weight:600}
+.seg .thumb{position:absolute;z-index:0;top:-2px;bottom:-2px;border-radius:16px;background:var(--sel);transition:left 460ms var(--spring),width 460ms var(--spring),transform 220ms ease}
+.seg .thumb.go{transform:scaleY(.86)}
+.seg.big{border-radius:17px;width:100%;display:flex}
+.seg.big button{flex:1;height:34px;font-size:13px;border-radius:17px}
+.seg.big .thumb{border-radius:19px}
+.kq{font-size:12px;color:var(--t3);margin:0 2px 0 10px}
+
+/* ---- cards ---- */
+.card{background:var(--l1);border-radius:14px;padding:16px 18px;min-width:0}
+.th{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px}
+.th h3{margin:0;font-size:14px;font-weight:600}
+.th .x{font-size:12.5px;color:var(--t3)}
+.cls{flex:none;display:inline-block;padding:0 8px;height:20px;line-height:20px;border-radius:10px;background:var(--l3);color:var(--t2);font-size:11px;font-weight:600}
+
+/* ---- home ---- */
+.home{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:10px;padding:18px 20px 24px;max-width:1400px}
+.hero{padding:26px 28px;background:var(--l1);border-radius:14px 4px 4px 14px;display:flex;flex-direction:column;gap:18px}
+.hello{font-size:34px;font-weight:300;line-height:1.1}
+.fact{font-size:15px;color:var(--t2);max-width:52ch}
+.stat{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--t3)}
+.stat b{color:var(--t1);font-weight:500}
+.cont{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 24px;align-items:end;padding:18px 20px;background:var(--l2);border-radius:14px}
+.cont .k{grid-column:1/3;font-size:12px;color:var(--t3)}
+.cont .trk{font-size:24px;font-weight:500;line-height:1.15}
+.cont .car{display:flex;align-items:center;gap:8px;color:var(--t2);font-size:13.5px;margin-top:4px}
+.cont .lt{font-size:28px;font-weight:300;text-align:right;line-height:1}
+.cont .lt small{display:block;font-size:12px;color:var(--t3);margin-top:4px}
+.cont .acts{grid-column:1/3;display:flex;gap:8px;margin-top:10px}
+.btnp{height:40px;padding:0 20px;border:none;border-radius:20px;background:var(--pri);color:var(--onPri);font-weight:600;transition:border-radius 250ms var(--spring)}
+.btnp:active{border-radius:10px}
+.btnt{height:40px;padding:0 18px;border:none;border-radius:20px;background:var(--l3);color:var(--t1);font-weight:500}
+.btnt:hover{background:var(--sel);color:var(--onSel)}
+.week{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+.wk{background:var(--l2);border-radius:4px;padding:12px 16px}
+.week .wk:first-child{border-radius:12px 4px 4px 12px}.week .wk:last-child{border-radius:4px 12px 12px 4px}
+.wk .v{font-size:22px;font-weight:300}.wk .k{font-size:12px;color:var(--t3)}
+.recent{display:flex;flex-direction:column;gap:3px}
+.recenth{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;background:var(--l1);border-radius:4px 14px 4px 4px;font-size:14px;font-weight:600}
+.linkbtn{border:none;background:none;color:var(--pri);font-size:13px;font-weight:500;border-radius:8px;padding:4px 8px}
+.linkbtn:hover{background:var(--l2)}
+.rr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 14px;width:100%;padding:11px 18px;border:none;background:var(--l1);text-align:left;border-radius:4px}
+.recent .rr:last-child{border-radius:4px 4px 14px 4px}
+.rr:hover{background:var(--l2)}
+.rr .t{font-weight:500}.rr .b{text-align:right;font-weight:500}.rr .s,.rr .d{font-size:12px;color:var(--t3)}.rr .d{text-align:right}
+
+/* ---- lap analysis ---- */
+.split{display:grid;grid-template-columns:280px minmax(0,1fr);gap:8px;padding:8px;align-items:start}
+.left{position:sticky;top:56px;display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 64px)}
+.sess .trk{font-size:20px;line-height:1.2}
+.sess .car{color:var(--t2);font-size:13px}
+.stints{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.lbl{font-size:12px;font-weight:500;color:var(--t3);padding:4px 4px 6px}
+.group{display:flex;flex-direction:column;gap:2px}
+.st{background:var(--l1);border-radius:4px}
+.group>.st:first-child{border-radius:14px 14px 4px 4px}.group>.st:last-child{border-radius:4px 4px 14px 14px}.group>.st:only-child{border-radius:14px}
+.st.open{background:var(--l2)}
+.sh{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 10px;width:100%;padding:10px 14px;border:none;background:none;text-align:left;border-radius:inherit}
+.sh:hover{background:var(--l2)}
+.st.open .sh:hover{background:none}
+.sh .n,.sh .bt{font-weight:500}
+.sh .bt.best{color:var(--ter)}
+.sh .sub{color:var(--t3);font-size:12px}
+.st.nolap .sh{cursor:default;color:var(--t3)}
+.st.nolap .sh:hover{background:none}
+.body{padding:0 10px 10px 14px}
+.lr{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:10px;width:calc(100% + 8px);padding:6px 10px;margin:0 -4px;border:none;background:none;font-size:13px;text-align:left;border-radius:8px}
+.lr:hover,.lr.isA,.lr.isB{background:var(--l3)}
+.lr .dot{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--bd);align-self:center}
+.lr:hover .dot{box-shadow:inset 0 0 0 1.5px var(--t3)}
+.lr.isA .dot{background:var(--t1);box-shadow:none}
+.lr.isB .dot{background:var(--t3);box-shadow:none}
+.lr .x{color:var(--t3);font-size:12px;margin-left:6px}
+.lr .bad{text-decoration:line-through;color:var(--t3)}
+.centre{display:flex;flex-direction:column;gap:8px;min-width:0}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grow{flex:1}
+.mapv{position:relative;height:640px;background:var(--l1);border-radius:14px;overflow:hidden}
+.mapv>svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab}
+.maplegend{position:absolute;top:12px;right:14px;display:flex;gap:14px;font-size:12.5px;color:var(--t2);pointer-events:none}
+.maplegend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.mapctl{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:2px}
+.mapctl button{width:38px;height:36px;border:none;background:var(--l2);color:var(--t1);display:flex;align-items:center;justify-content:center;border-radius:4px}
+.mapctl button:first-child{border-radius:12px 12px 4px 4px}.mapctl button:last-child{border-radius:4px 4px 12px 12px}
+.mapctl button:hover{background:var(--l3)}
+.mapctl button[aria-pressed="true"]{background:var(--sel);color:var(--onSel)}
+.wait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:15px}
+.datav{background:var(--l1);border-radius:14px;padding:12px 16px 10px}
+.datav svg{display:block;width:100%;cursor:crosshair;touch-action:none;user-select:none}
+.dock{position:static;display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--l1);border:1px solid var(--bd);border-radius:16px}
+.dock.pin{position:sticky;bottom:12px;z-index:6}
+.mirror{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:stretch}
+.side{display:flex;gap:6px;min-width:0;overflow:hidden}
+.side.b{justify-content:flex-end}
+.side.off{visibility:hidden}
+.cell{display:flex;align-items:center;gap:6px;height:42px;padding:0 10px;background:var(--l2);border-radius:10px;font-size:14px;font-weight:500;white-space:nowrap}
+.side.b .cell{color:var(--t2)}
+.cell.pd{flex:1 1 0;min-width:0}
+.cell.gr,.cell.sp{flex:none}
+.cell .pv{min-width:44px;flex:none}
+.cell .bar{flex:1;height:8px;border-radius:4px;background:var(--l3);overflow:hidden;min-width:40px}
+.cell .bar i{display:block;height:100%;border-radius:4px}
+.cell.brk .bar{direction:rtl}
+.cell small{font-size:11.5px;color:var(--t3);font-weight:400}
+.ctrl{display:flex;align-items:center;justify-content:center;padding:0 6px}
+.play{width:54px;height:42px;border:none;border-radius:21px;background:var(--pri);color:var(--onPri);display:flex;align-items:center;justify-content:center;transition:border-radius 250ms var(--spring)}
+.play:active{border-radius:12px}
+.play svg{width:20px;height:20px;fill:currentColor}
+.tl{display:flex;align-items:center;gap:12px}
+.chips{position:relative;flex:1;height:30px;cursor:pointer;touch-action:none;user-select:none}
+.chips:focus{outline:none}.chips:focus-visible{outline:2px solid var(--pri);outline-offset:3px;border-radius:8px}
+.chipset{display:flex;gap:6px;height:100%;align-items:flex-start}
+.sgrp{display:flex;flex-direction:column;gap:4px;min-width:0}
+.segs{display:flex;gap:2px;height:10px;margin-top:4px}
+.ms{display:block;min-width:0;border-radius:2px;background:var(--l3);opacity:.55;transition:opacity 120ms}
+.ms.gain{background:var(--pri)}.ms.loss{background:var(--ter)}.ms.played{opacity:1}
+.sl{font-size:10.5px;color:var(--t3);line-height:1}
+.head{position:absolute;top:1px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--t1);box-shadow:0 0 0 3px var(--l1);pointer-events:none}
+.ptime{flex:none;font-size:13px;min-width:96px;text-align:right}
+.ptime span{color:var(--t3)}
+
+/* ---- setup ---- */
+/* the setup screen fills the window and never scrolls: balance takes what it needs, the car drawings and the
+   damper charts share the rest and are drawn to fit */
+.setup{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:8px;padding:8px;height:calc(100vh - 48px);overflow:hidden}
+.tiles{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) minmax(0,1.4fr);gap:8px;min-height:0}
+.tiles>.card{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.tiles>.card>.th{flex:none}
+.tiles .carv{flex:1;min-height:0}
+.tiles .carv svg{height:100%}
+.tiles .wide{grid-column:1/3}
+.bx{display:flex;flex-direction:column;gap:6px}
+.bx-axis,.bx-row{display:grid;grid-template-columns:64px minmax(0,1fr) 220px;gap:16px;align-items:center}
+.bx-ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--t3)}
+.bx-grp{font-size:12px;font-weight:600;color:var(--t2);margin-top:6px}
+.bx-ph{font-size:13px;color:var(--t2)}
+.bx-scale{position:relative;height:22px;border-radius:11px;background:var(--l2)}
+.bx-band{position:absolute;top:3px;bottom:3px;border-radius:8px;background:var(--l3)}
+.bx-mid{position:absolute;left:50%;top:5px;bottom:5px;width:1px;background:var(--t3);opacity:.6}
+.bx-path{position:absolute;top:10px;height:2px;background:var(--pri);opacity:.7}
+.bx-now,.bx-aft{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%}
+.bx-now{background:var(--t1)}.bx-now.us{background:var(--pri)}.bx-now.os{background:var(--ter)}
+.bx-aft{box-shadow:inset 0 0 0 2px var(--pri);background:var(--l2)}
+.bx-txt{font-size:13px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bx-txt b{font-weight:600;color:var(--t1)}.bx-txt b.us{color:var(--pri)}.bx-txt b.os{color:var(--ter)}
+.carv{padding:10px 0 6px}
+.carv svg{display:block;width:100%;max-width:290px;height:auto;margin:0 auto;overflow:visible}
+.carv text{font-family:var(--f);font-size:15px;fill:var(--t3)}
+.carv text.v{fill:var(--t1);font-size:15px !important;font-weight:500}
+.carv .hot{fill:var(--pri) !important}
+.hgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:12px 28px;flex:1;min-height:0}
+.hw{display:flex;flex-direction:column;min-height:0}
+.hw .hc{flex:1;min-height:0;position:relative}
+.hw .hc svg{position:absolute;inset:0;width:100%;height:100%}
+.hw .top{display:flex;justify-content:space-between;font-size:12.5px;color:var(--t3);margin-bottom:4px}
+.hw .top b{color:var(--t1);font-weight:600}
+.hw svg{display:block;width:100%;height:auto}
+.hw svg text{font-family:var(--f);font-size:11px;fill:var(--t3)}
+.legend{display:flex;gap:14px;align-items:center;font-size:12.5px;color:var(--t3)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.panel{background:var(--l1);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
+.panel>.status{margin-top:auto}
+.panel h2{margin:0;font-size:20px;font-weight:400}
+.panel .sub{color:var(--t3);font-size:13px;margin-bottom:10px}
+.plbl{font-size:12.5px;color:var(--t2);margin:6px 0 4px}
+.prow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;font-size:13.5px}
+.ghost{height:34px;padding:0 16px;border:1px solid var(--t3);background:none;font-size:13px;border-radius:17px;width:max-content;margin-top:8px}
+.ghost:hover{background:var(--l2)}
+.ghost[aria-pressed="true"]{background:var(--sel);color:var(--onSel);border-color:var(--sel)}
+.why{font-size:13.5px;color:var(--t2);padding:6px 0}
+.gap{font-size:13px;color:var(--ter);padding:4px 0}
+.panel>*{flex:none}
+.list{display:flex;flex-direction:column;gap:2px;margin-top:12px;transition:opacity 150ms}
+.panel>.list{flex:0 1 auto;min-height:72px;overflow-y:auto;scrollbar-width:thin}
+.list.busy{opacity:.4}
+.li{display:grid;grid-template-columns:minmax(0,1fr) 40px;align-items:center;gap:0 6px;padding:8px 4px 8px 14px;background:var(--l2);border-radius:4px}
+.list .li:first-child{border-radius:12px 12px 4px 4px}.list .li:last-child{border-radius:4px 4px 12px 12px}.list .li:only-child{border-radius:12px}
+.li.hot{background:var(--l3)}
+.li .n{font-weight:500}.li .s{color:var(--t2);font-size:12.5px}.li .r{color:var(--t3);font-size:12px;margin-top:2px}
+.li.locked .n{color:var(--t3)}
+.lock{width:36px;height:36px;border:none;background:none;color:var(--t3);display:flex;align-items:center;justify-content:center;border-radius:10px;transition:border-radius 250ms var(--spring),background 150ms}
+.lock:hover{background:var(--l3);color:var(--t1)}
+.lock[aria-pressed="true"]{background:var(--sel);color:var(--onSel);border-radius:12px}
+.status{font-size:12.5px;color:var(--t3);min-height:18px;margin-top:8px}
+.status.error{color:var(--err)}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px}
+.foot .t{font-size:22px;font-weight:300;color:var(--pri)}
+.foot .t small{display:block;font-size:12px;color:var(--t3)}
+.fab{display:inline-flex;align-items:center;gap:10px;height:52px;padding:0 24px 0 18px;border:none;border-radius:16px;background:var(--pri);color:var(--onPri);font-size:14.5px;font-weight:600;transition:border-radius 320ms var(--spring),transform 320ms var(--spring)}
+.fab:hover:not(:disabled){border-radius:26px}
+.fab:active:not(:disabled){border-radius:12px;transform:scale(.96)}
+.fab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.fab .sh2{transition:transform 420ms cubic-bezier(.34,1.8,.64,1)}
+.fab:hover:not(:disabled) .sh2{transform:translateX(2.5px)}
+
+/* ---- history ---- */
+.page{padding:16px 20px 28px;display:flex;flex-direction:column;gap:12px;max-width:1500px}
+.search{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;background:var(--l2);border-radius:17px;min-width:280px}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--t1);font:inherit;font-size:13.5px}
+.search input::placeholder{color:var(--t3)}
+.search:focus-within{box-shadow:0 0 0 2px var(--pri)}
+.count{font-size:12.5px;color:var(--t3)}
+.hl{display:flex;flex-direction:column;gap:3px}
+.grp{background:var(--l1);border-radius:4px}
+.hl .grp:first-child{border-radius:14px 14px 4px 4px}.hl .grp:last-child{border-radius:4px 4px 14px 14px}.hl .grp:only-child{border-radius:14px}
+.gh{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) 110px 120px 150px 110px 24px;align-items:center;gap:16px;width:100%;padding:12px 18px;border:none;background:none;text-align:left;border-radius:inherit}
+.gh:hover{background:var(--l2)}
+.grp.open{background:var(--l2)}
+.grp.open .gh:hover{background:none}
+.gh .trk{font-size:17px;font-weight:500;line-height:1.2}
+.gh .sub{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gh .car{display:flex;align-items:center;gap:8px;min-width:0;font-size:13.5px}
+.gh .car .nm{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num small{display:block;font-size:11.5px;color:var(--t3)}
+.best{font-size:17px;font-weight:500}
+.spark{display:block;width:150px;height:30px;overflow:visible}
+.date{font-size:13px;color:var(--t2);text-align:right}
+.chev{width:16px;height:16px;fill:none;stroke:var(--t3);stroke-width:2;transition:transform 300ms var(--spring)}
+.grp.open .chev{transform:rotate(90deg)}
+.sess{padding:0 10px 10px}
+.sr,.shead{display:grid;grid-template-columns:minmax(0,1.3fr) 90px 90px 120px 120px 24px;align-items:center;gap:16px}
+.shead{padding:6px 10px 4px;font-size:11.5px;color:var(--t3)}
+.sr{width:100%;padding:8px 10px;border:none;background:none;font-size:13.5px;text-align:left;border-radius:10px}
+.sr:hover{background:var(--l3)}
+.sr .k,.sr .d{color:var(--t3)}.sr .pb{color:var(--ter);font-weight:600}
+.sr .go{width:14px;height:14px;fill:none;stroke:var(--t3);stroke-width:2;opacity:0}
+.sr:hover .go{opacity:1}
+
+/* ---- driver, settings ---- */
+.sec{background:var(--l1);border-radius:4px;padding:16px 20px}
+.page .sec:first-of-type{border-radius:14px 14px 4px 4px}.page .sec:last-of-type{border-radius:4px 4px 14px 14px}
+.sec h2{margin:0 0 12px;font-size:17px;font-weight:500}
+.sec h2 small{font-size:12.5px;color:var(--t3);font-weight:400;margin-left:8px}
+.drv{display:grid;grid-template-columns:340px minmax(0,1fr);gap:28px;align-items:center}
+.plot{display:block;width:100%;height:auto;overflow:visible}
+.plot text{font-family:var(--f)}
+.cars{display:flex;flex-direction:column;gap:3px}
+.carl{display:grid;grid-template-columns:12px minmax(0,1fr);gap:4px 12px;padding:10px 14px;background:var(--l2);border-radius:4px}
+.cars .carl:first-child{border-radius:12px 12px 4px 4px}.cars .carl:last-child{border-radius:4px 4px 12px 12px}.cars .carl:only-child{border-radius:12px}
+.carl .d{width:10px;height:10px;border-radius:50%;margin-top:5px}
+.carl b{font-weight:500}.carl span:not(.d){grid-column:2;font-size:13px;color:var(--t2)}
+.row{display:grid;grid-template-columns:200px minmax(0,1fr) auto;align-items:center;gap:16px;min-height:48px;padding:6px 0}
+.row+.row{border-top:1px solid var(--l2)}
+.row .k{color:var(--t2);font-size:13.5px}
+.row .path{font-size:12.5px;word-break:break-all}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field input{height:36px;padding:0 14px;border:none;border-radius:18px;background:var(--l2);color:var(--t1);font:inherit;font-size:13.5px;outline:none}
+.field input:focus{box-shadow:0 0 0 2px var(--pri)}
+.field .prev{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb{height:34px;padding:0 16px;border:none;border-radius:17px;background:var(--l2);font-size:13px;font-weight:500;white-space:nowrap}
+.tb:hover{background:var(--l3)}
+.tb.warn{color:var(--pri)}
+.acts{display:flex;gap:8px;align-items:center}
+.pagefoot{display:flex;justify-content:flex-end}
+
+/* ---- dialog, tooltip ---- */
+.scrim{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+.dlg{width:440px;background:var(--l1);border-radius:20px;padding:20px 22px}
+.dlg h3{margin:0 0 12px;font-size:17px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+.dlg dl{display:grid;grid-template-columns:140px minmax(0,1fr);gap:8px 12px;margin:0;font-size:13.5px}
+.dlg dt{color:var(--t3)}.dlg dd{margin:0;word-break:break-all}
+.tip{position:fixed;z-index:250;pointer-events:none;background:var(--l3);padding:7px 10px;border-radius:10px;font-size:12.5px;color:var(--t1);display:none;max-width:280px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
 </style></head><body>
 <div class="app">
- <nav class="nav">
-  <div class="tabs" role="tablist">
-   <button type="button" class="tab" role="tab" data-screen="analysis" id="tab-analysis">Lap Analysis</button>
-   <button type="button" class="tab" role="tab" data-screen="setup" id="tab-setup">Setup</button>
-   <button type="button" class="tab" role="tab" data-screen="history" id="tab-history">History</button>
-  </div>
-  <div class="hist-mark" id="hist-mark" hidden><button type="button" class="btn quiet" id="hist-back"><span class="live-dot" id="live-dot"></span>Back to live</button></div>
-  <div class="nav-right">
+ <nav class="hdr">
+  <button type="button" class="tab" data-screen="analysis" id="tab-analysis" data-t="tab.analysis"></button>
+  <button type="button" class="tab" data-screen="setup" id="tab-setup" data-t="tab.setup"></button>
+  <button type="button" class="tab" data-screen="history" id="tab-history" data-t="tab.history"></button>
+  <span class="ctx" id="ctx"></span>
+  <div class="right">
    <span class="err" id="err"></span>
+   <span class="live" id="live"><span class="dot"></span><span id="live-text"></span></span>
+   <button type="button" class="tbtn" id="hist-back" hidden data-t="nav.back"></button>
    <div class="menu-wrap">
-    <button id="menu-btn" class="icon-btn" type="button" aria-label="Menu" title="Menu" aria-haspopup="menu" aria-expanded="false"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+    <button type="button" class="ibtn" id="menu-btn" aria-haspopup="menu" aria-expanded="false" data-tt="nav.menu"><svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="menu" id="menu" role="menu">
-     <button type="button" class="mitem" role="menuitem" data-go="driver">Driver</button>
-     <button type="button" class="mitem" role="menuitem" data-go="settings">Settings</button>
-     <button type="button" class="mitem" role="menuitem" data-go="about">About</button>
+     <button type="button" class="mitem" role="menuitem" data-go="home" data-t="menu.home"></button>
+     <button type="button" class="mitem" role="menuitem" data-go="driver" data-t="menu.driver"></button>
+     <button type="button" class="mitem" role="menuitem" data-go="settings" data-t="menu.settings"></button>
+     <button type="button" class="mitem" role="menuitem" data-go="about" data-t="menu.about"></button>
     </div>
    </div>
   </div>
  </nav>
  <main>
-  <section class="screen" id="screen-welcome" aria-label="Welcome">
-   <div class="welcome"><h1>Welcome back</h1><p id="fact"></p><p class="start">Launch a session in LMU</p></div>
-  </section>
+  <section class="screen" id="screen-home"><div class="home" id="home"></div></section>
 
-  <section class="screen split" id="screen-analysis" aria-label="Lap Analysis">
-   <aside class="left">
-    <div class="left-scroll">
-     <section class="sess"><div class="track" data-f="track"></div><div class="car" data-f="car"></div></section>
-     <section id="lapbox"></section>
-     <section><div class="mini" style="margin-bottom:6px">Stints</div><div id="stints"></div></section>
+  <section class="screen" id="screen-analysis">
+   <div class="split">
+    <aside class="left">
+     <div class="card sess"><div class="trk" id="a-track"></div><div class="car" id="a-car"></div></div>
+     <div class="stints"><div class="lbl" data-t="stints.title"></div><div class="group" id="stints"></div></div>
+    </aside>
+    <div class="centre">
+     <div class="bar">
+      <div class="seg" id="views" role="group" data-tt="views.label"></div>
+      <span class="grow"></span>
+      <span class="kq" id="linek" data-t="line.label"></span><div class="seg" id="linemode" role="group" data-tt="line.label"></div>
+      <span class="kq" id="modek" data-t="mode.label"></span><div class="seg" id="mode" role="group" data-tt="mode.label"></div>
+     </div>
+     <div id="mapview">
+      <div class="mapv" id="mapt"><svg id="map" role="img" data-tt="map.label"></svg><div class="maplegend" id="legend"></div>
+       <div class="wait" id="wait" hidden></div>
+       <div class="mapctl" role="group">
+        <button type="button" id="zin" data-tt="map.zoomin"><svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button" id="zout" data-tt="map.zoomout"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button type="button" id="follow" aria-pressed="false" data-tt="map.follow"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+        <button type="button" id="fit" data-tt="map.fit"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+       </div>
+      </div>
+     </div>
+     <div class="datav" id="dataview" hidden>
+      <div class="th"><h3 data-t="data.title"></h3><span class="x" data-t="data.hint"></span><button type="button" class="tb" id="whole" hidden data-t="data.whole"></button></div>
+      <svg id="traces" role="img" data-tt="data.title"></svg>
+     </div>
+     <div class="dock" id="dock">
+      <div class="mirror"><div class="side a" id="sideA"></div><div class="ctrl"><button type="button" class="play" id="pp"></button></div><div class="side b" id="sideB"></div></div>
+      <div class="tl"><div class="chips" id="scrub" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" data-tt="play.position"><div class="chipset" id="chipset"></div><div class="head" id="phead"></div></div><span class="ptime" id="ptime"></span></div>
+     </div>
     </div>
-    <div class="pinned">
-     <button type="button" class="btn" id="compare" aria-pressed="false">Compare</button>
-     <div class="seg" id="sync" role="group" aria-label="Markers follow" hidden></div>
-     <button type="button" class="btn next-setup">Next setup</button>
-    </div>
-   </aside>
-   <div class="centre">
-    <div class="map-box" id="map-box"><svg id="map" role="img" aria-label="Track map"></svg>
-     <div class="map-tools"><button type="button" class="btn quiet" id="zoom-reset" hidden>Whole lap</button></div></div>
-    <div class="readout" id="readout"></div>
-    <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Position on lap">
-    <div class="traces" id="traces"></div>
    </div>
   </section>
 
-  <section class="screen split" id="screen-setup" aria-label="Setup">
-   <aside class="left">
-    <div class="left-scroll">
-     <section class="sess"><div class="track" data-f="track"></div><div class="car" data-f="car"></div></section>
-     <section><div class="mini">Base</div><div class="mono" id="base-stint" style="margin-top:4px"></div></section>
-    </div>
-    <div class="pinned"><button type="button" class="btn next-setup">Next setup</button></div>
-   </aside>
-   <div class="setup-centre">
-    <div class="setup-top">
-     <div class="seg" id="table-by" role="group" aria-label="Columns" hidden></div>
-     <button type="button" class="btn adv" id="advanced" aria-pressed="false">Advanced</button>
-    </div>
-    <div class="vis" id="vis"></div>
-    <div class="adv-box" id="adv-box" hidden><div class="table-scroll" id="table-scroll"></div></div>
+  <section class="screen" id="screen-setup">
+   <div class="setup">
+    <div class="tiles" id="tiles"></div>
+    <aside class="panel" id="panel"></aside>
    </div>
   </section>
 
-  <section class="screen" id="screen-history" aria-label="History">
-   <div class="hist" id="history"></div>
-  </section>
-
-  <section class="screen menu-screen" id="screen-driver" aria-label="Driver">
-   <div class="page"><div class="page-inner" id="driver"></div></div>
-   <div class="page-foot"><button type="button" class="btn page-close">Close</button></div>
-  </section>
-
-  <section class="screen menu-screen" id="screen-settings" aria-label="Settings">
-   <div class="page"><div class="page-inner" id="settings"></div></div>
-   <div class="page-foot"><button type="button" class="btn page-close">Close</button></div>
-  </section>
+  <section class="screen" id="screen-history"><div class="page" id="history"></div></section>
+  <section class="screen" id="screen-driver"><div class="page" id="driver"></div></section>
+  <section class="screen" id="screen-settings"><div class="page" id="settings"></div></section>
  </main>
 </div>
-
-<div class="modal-back" id="modal">
- <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-file">
-  <div class="modal-head">
-   <div><div class="mini" id="modal-from">Next setup</div><div class="modal-file" id="modal-file"></div></div>
-   <button type="button" class="icon-btn" id="modal-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-  </div>
-  <div class="modal-body">
-   <div class="modal-row" id="short-row" hidden><span id="short-text"></span><div class="seg" id="short-feel" role="group"></div></div>
-   <div id="changes"></div>
-   <div class="why" id="why" hidden></div>
-   <div id="feel">
-    <div class="mini" style="margin-top:12px">Feel</div>
-    <div class="feelrow"><span class="muted">Front</span><div class="seg" id="feel-front" role="group" aria-label="Front"></div></div>
-    <div class="feelrow"><span class="muted">Rear</span><div class="seg" id="feel-rear" role="group" aria-label="Rear"></div></div>
-    <div class="feel-acts"><button type="button" class="btn" id="this-is-it">This is it</button></div>
-   </div>
-   <div class="gap" id="gap" hidden></div>
-   <div class="modal-row" id="brake-row" hidden><span class="mini">Brakes</span><div class="seg" id="brake-feel"></div></div>
-  </div>
-  <div class="modal-foot"><span class="status" id="status" role="status"></span><button id="write" class="btn primary" type="button" disabled>Write setup</button></div>
- </div>
-</div>
-
-<div class="modal-back pop" id="about">
- <div class="modal" role="dialog" aria-modal="true" aria-label="About" style="width:min(520px,calc(100vw - 48px))">
-  <div class="modal-head"><div class="mini">About</div><button type="button" class="icon-btn pop-close" aria-label="Close"><svg class="ico" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-  <div class="modal-body" id="about-body"></div>
- </div>
-</div>
-
+<div class="scrim" id="about" hidden><div class="dlg" role="dialog" aria-modal="true"><h3><span data-t="about.title"></span><button type="button" class="ibtn" id="about-close" data-tt="about.close"><svg class="ico" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></h3><dl id="about-body"></dl></div></div>
 <div class="tip" id="tip"></div>
-
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const SVGNS = "http://www.w3.org/2000/svg";
-const LOCK = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
-const UNLOCK = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
-const SPIN = '<svg class="ico spin" width="14" height="14" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>';
-const CHEV = '<svg class="ico" width="12" height="12" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>';
-const WHEELS = ["fl", "fr", "rl", "rr"];
-// Display units (Settings, §17). Data arrives in km/h, °C and kPa; LMU's own setting
-// labels are shown as the garage shows them.
-const UNIT = {speed: "km/h", temp: "°C", pressure: "kPa"};
-function cv(q, v) {
- if (v == null || !isFinite(v)) return v;
- if (q === "speed") return UNIT.speed === "mph" ? v * 0.621371 : v;
- if (q === "temp") return UNIT.temp === "°F" ? v * 9 / 5 + 32 : v;
- if (q === "dtemp") return UNIT.temp === "°F" ? v * 9 / 5 : v;
- if (q === "pressure") return UNIT.pressure === "psi" ? v * 0.145038 : v;
- return v;
-}
-const uname = q => ({speed: UNIT.speed, temp: UNIT.temp, dtemp: UNIT.temp, pressure: UNIT.pressure})[q] || "";
-const qdec = (q, d) => q === "pressure" && UNIT.pressure === "psi" ? d + 1 : d;
-const S = {
- screen: "welcome", state: null, live: {state: "off"}, history: false,
- session: null,      // the session on screen: {id, context, car_name, layout, ...}
- stints: [], sel: null, expanded: new Set(),
- a: null, b: null, compare: false, lapA: null, lapB: null, map: null, mapCtx: null,
- zoom: null, mapView: null, sync: "dist", pos: 0, target: 0, proposal: null, proposalBusy: false, written: new Set(),
- tableBy: "stint", table: null, advanced: false, hist: {kerbs: "off"}, hists: {},
-};
-
-// ---------- helpers ----------
-const fmtLap = t => t == null ? "–" : `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, "0")}`;
-const fx = (v, d = 2) => v == null || !isFinite(v) ? "–" : Number(v).toFixed(d);
-const signed = (v, d = 0) => v == null || !isFinite(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
-const fmtDate = s => {
- const m = String(s || "").match(/(\d{4})-(\d\d)-(\d\d)T(\d\d)_(\d\d)/);
- return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : String(s || "");
-};
 function el(tag, attrs = {}, text) {
  const e = document.createElement(tag);
- for (const [k, v] of Object.entries(attrs)) {
-  if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v);
- }
+ for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else if (k.startsWith("on")) e[k] = v; else e.setAttribute(k, v); }
  if (text != null) e.textContent = text;
  return e;
 }
@@ -399,738 +418,570 @@ function sv(tag, attrs = {}, text) {
  return e;
 }
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 async function api(url, body) {
- const opt = body === undefined ? {cache: "no-store"} :
-  {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+ const opt = body === undefined ? {cache: "no-store"} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
  const r = await fetch(url, opt);
  const data = await r.json().catch(() => ({}));
  if (!r.ok) throw new Error(data.error || r.statusText);
  return data;
 }
-// Hover texts (contract §20); elements carry them as data-tip. The feel controls have none.
-const TIPS = {
- balance: "Understeer angle against your target band, in degrees of steering. + more understeer than target, − more oversteer. Small number: after the proposed changes.",
- side: "Ride height front and rear at speed, and rake. Current and proposed.",
- changes: "Where each proposed change sits on the car; the arrow shows its direction.",
- lapd: "Predicted lap-time change with these changes. ± is how unsure the prediction is.",
- susp: "Damper shaft speed in mm/s. Left of zero is rebound, right is bump. Shaded: slow (below the knee).",
- elapsed: "Time into the lap.",
- distance: "Distance from the start line.",
- speed: "Speed.",
- gear: "Gear.",
- throttle: "Throttle pedal, 0 to 100 %.",
- brake: "Brake pedal, 0 to 100 %.",
- steering: "Steering wheel angle.",
- steer: "Steering wheel angle.",
- delta: "Time of lap A against lap B at this point. − means A is ahead.",
- gap: "Distance between the two cars. + means A is ahead.",
- lock: "Keep this setting as it is.",
- unlock: "Let this setting change again.",
- next: "The changes proposed from the last stint.",
-};
+
+// ---------- strings: every visible text comes from web/i18n/<lang>.json ----------
+let STR = {}, LANGS = {en: "English"}, LANG = "en";
+const t = (k, v) => { let s = STR[k] ?? k; if (v) for (const [a, b] of Object.entries(v)) s = s.split("{" + a + "}").join(b ?? ""); return s; };
+async function loadStrings() {
+ try { LANG = localStorage.getItem("autosetup.lang") || "en"; } catch (e) {}
+ try { LANGS = await (await fetch("/i18n/languages.json", {cache: "no-store"})).json(); } catch (e) {}
+ const get = async l => (await fetch(`/i18n/${l}.json`, {cache: "no-store"})).json();
+ try { STR = await get("en"); } catch (e) { STR = {}; }
+ if (LANG !== "en") { try { STR = {...STR, ...(await get(LANG))}; } catch (e) { LANG = "en"; } }
+ document.documentElement.lang = LANG;
+ document.title = t("app.title");
+ for (const e of document.querySelectorAll("[data-t]")) e.textContent = t(e.dataset.t);
+ for (const e of document.querySelectorAll("[data-tt]")) { e.setAttribute("aria-label", t(e.dataset.tt)); e.setAttribute("title", t(e.dataset.tt)); }
+}
+
+// ---------- units and numbers ----------
+const UNIT = {speed: "km/h", temp: "°C", pressure: "kPa"};
+const cv = (q, v) => v == null || !isFinite(v) ? v : q === "speed" && UNIT.speed === "mph" ? v * 0.621371 : v;
+const fmtLap = s => s == null || !isFinite(s) ? "–" : `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, "0")}`;
+const fmtT = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+const fx = (v, d = 2) => v == null || !isFinite(v) ? "–" : Number(v).toFixed(d);
+const signed = (v, d = 0) => v == null || !isFinite(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+const when = s => { const m = String(s || "").match(/(\d{4})-(\d\d)-(\d\d)T(\d\d)_(\d\d)/); return m ? {d: t("fmt.date", {d: +m[3], m: +m[2], y: m[1]}), t: `${m[4]}:${m[5]}`, k: m.slice(1).join(""), date: new Date(+m[1], +m[2] - 1, +m[3])} : {d: String(s || ""), t: "", k: String(s || ""), date: new Date(0)}; };
+const fmtStamp = s => { const m = String(s).match(/(\d{4})-(\d\d)-(\d\d)/); return m ? t("fmt.date", {d: +m[3], m: +m[2], y: m[1]}) : String(s); };
+const SHORT = {"Bahrain International Circuit": "Bahrain", "WeatherTech Raceway Laguna Seca": "Laguna Seca", "Lusail International Circuit": "Lusail", "Circuit de Barcelona": "Barcelona",
+ "Fuji Speedway": "Fuji", "Circuit de Spa-Francorchamps": "Spa", "Autódromo José Carlos Pace": "Interlagos", "Sebring International Raceway": "Sebring", "Circuit de la Sarthe": "Le Mans",
+ "Autodromo Enzo e Dino Ferrari": "Imola", "Autodromo Internazionale Enzo e Dino Ferrari": "Imola", "Circuit of the Americas": "COTA", "Autódromo Internacional do Algarve": "Portimão", "Autodromo Nazionale Monza": "Monza"};
+const shortTrack = n => SHORT[n] || n || "";
+const CLASS = {LMP2_ELMS: "LMP2"};
+const className = c => CLASS[c] || c || "";
+const carName = k => String(k).replace(/_/g, " ");
 const showError = msg => { $("err").textContent = msg || ""; $("err").title = msg || ""; };
+
+// ---------- state ----------
+const S = {screen: "home", prev: null, state: null, live: {state: "off"}, history: false, session: null, stints: [], open: new Set(),
+ a: null, b: null, lapA: null, lapB: null, delta: null, map: null, mapCtx: null, view: "map", line: "pedals", mode: "dist",
+ t: 0, play: false, follow: false, zoom: null, proposal: null, proposalBusy: false, written: new Set(), hist: {kerbs: "off"}, hists: {},
+ settings: null, feelTarget: null, hq: "", hcls: "all", hsort: "recent", hopen: new Set()};
+
+// ---------- pills: one shape, the chosen option is a pill that morphs between options ----------
+function placeThumb(g, animate) {
+ let th = g.querySelector(".thumb"); if (!th) { th = el("span", {class: "thumb"}); g.prepend(th); }
+ const b = g.querySelector('button[aria-pressed="true"]');
+ if (!b || !g.offsetWidth) { th.style.width = "0"; return; }
+ if (animate) { th.classList.add("go"); setTimeout(() => th.classList.remove("go"), 200); }
+ th.style.left = (b.offsetLeft - 2) + "px"; th.style.width = (b.offsetWidth + 4) + "px";
+}
+function pills(box, values, labels, current, onPick, big) {
+ const g = typeof box === "string" ? $(box) : box || el("div", {class: "seg", role: "group"});
+ g.className = "seg" + (big ? " big" : "");
+ g.replaceChildren(...values.map((v, i) => {
+  const b = el("button", {type: "button", "aria-pressed": v === current}, labels[i]);
+  b.onclick = () => { if (b.getAttribute("aria-pressed") === "true") return;
+   g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); placeThumb(g, true); onPick(v); };
+  return b;
+ }));
+ requestAnimationFrame(() => placeThumb(g, false));
+ return g;
+}
+const refreshThumbs = () => document.querySelectorAll(".seg").forEach(g => placeThumb(g, false));
+window.addEventListener("resize", refreshThumbs);
 
 // ---------- theme ----------
 const LIGHT = matchMedia("(prefers-color-scheme: light)");
-function themePref() { try { return localStorage.getItem("autosetup.theme") || "system"; } catch (e) { return "system"; } }
+function themePref() { try { return localStorage.getItem("autosetup.theme") || "dark"; } catch (e) { return "dark"; } }
 function setThemePref(p) {
- try { if (p === "system") localStorage.removeItem("autosetup.theme"); else localStorage.setItem("autosetup.theme", p); } catch (e) {}
- applyTheme(p === "system" ? (LIGHT.matches ? "light" : "dark") : p);
-}
-function applyTheme(t) {
- document.documentElement.dataset.theme = t;
- drawAll();
- if (S.screen === "setup") renderSetupCentre();
- if (S.screen === "settings") renderSettings();
+ try { localStorage.setItem("autosetup.theme", p); } catch (e) {}
+ document.documentElement.dataset.theme = p === "system" ? (LIGHT.matches ? "light" : "dark") : p;
+ redraw();
 }
 LIGHT.addEventListener("change", () => { if (themePref() === "system") setThemePref("system"); });
 
-// ---------- screens ----------
-const MENU_SCREENS = {driver: "Driver", settings: "Settings"};
+// ---------- screens and nav ----------
+const MENU_SCREENS = ["driver", "settings", "home"];
 function show(screen) {
- if (MENU_SCREENS[screen] && !MENU_SCREENS[S.screen]) S.prev = S.screen;
  S.screen = screen;
- for (const s of ["welcome", "analysis", "setup", "history", "driver", "settings"]) $("screen-" + s).classList.toggle("on", s === screen);
- for (const b of document.querySelectorAll(".tab")) { const on = b.dataset.screen === screen; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); }
+ for (const s of ["home", "analysis", "setup", "history", "driver", "settings"]) $("screen-" + s).classList.toggle("on", s === screen);
+ for (const b of document.querySelectorAll(".tab")) b.classList.toggle("on", b.dataset.screen === screen);
  renderNav();
- if (screen === "analysis") requestAnimationFrame(drawAll);
- if (screen === "setup") loadTable();
+ if (screen === "home") loadHome();
+ if (screen === "analysis") setTimeout(() => { renderAnalysisBar(); drawAnalysis(); }, 0);
+ if (screen === "setup") renderSetup();
  if (screen === "history") loadHistory();
  if (screen === "driver") loadDriver();
  if (screen === "settings") loadSettings();
+ requestAnimationFrame(refreshThumbs);
+ window.scrollTo(0, 0);
 }
 for (const b of document.querySelectorAll(".tab")) b.onclick = () => { if (!b.disabled) show(b.dataset.screen); };
 function renderNav() {
- const has = !!S.session, menu = MENU_SCREENS[S.screen];
- $("tab-analysis").disabled = !has;
+ const has = !!S.session, o = S.live;
+ $("tab-analysis").disabled = !has && o.state !== "live";
  $("tab-setup").disabled = !has;
- $("hist-mark").hidden = !S.history || !!menu;
- $("live-dot").classList.toggle("on", S.live.state === "live");
+ const s = S.session, track = s ? s.layout : o.state === "live" ? o.track || "" : "", car = s ? s.car_name : o.state === "live" ? o.vehicle || "" : "";
+ $("ctx").textContent = track ? `${shortTrack(track)} · ${car}` : "";
+ $("a-track").textContent = shortTrack(track); $("a-car").textContent = car;
+ $("live").classList.toggle("on", o.state === "live");
+ $("live-text").textContent = o.state === "live" ? t("nav.live", {session: o.session_name || o.track || ""}) : o.state === "menu" ? t("nav.menu_open") : t("nav.off");
+ $("hist-back").hidden = !S.history;
 }
-const closeMenuScreen = () => show(S.prev === "welcome" && S.session ? "analysis" : (S.prev || "welcome"));
-for (const b of document.querySelectorAll(".page-close")) b.onclick = closeMenuScreen;
-function renderSession() {
- const s = S.session, o = S.live;
- const track = s ? s.layout : (o.state === "live" ? o.track || "" : "");
- const car = s ? s.car_name : (o.state === "live" ? o.vehicle || "" : "");
- for (const e of document.querySelectorAll('[data-f="track"]')) e.textContent = track;
- for (const e of document.querySelectorAll('[data-f="car"]')) e.textContent = car;
-}
+$("hist-back").onclick = async () => {
+ S.history = false;
+ if (S.live.state === "live" && S.live.session) { await openSession(S.live.session, false); show("analysis"); }
+ else { S.session = null; S.stints = []; renderNav(); show("home"); }
+};
+function openMenu() { $("menu").classList.add("open"); $("menu-btn").setAttribute("aria-expanded", "true"); }
+function closeMenu() { $("menu").classList.remove("open"); $("menu-btn").setAttribute("aria-expanded", "false"); }
+$("menu-btn").onclick = e => { e.stopPropagation(); $("menu").classList.contains("open") ? closeMenu() : openMenu(); };
+document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
+for (const b of document.querySelectorAll("[data-go]")) b.onclick = () => { closeMenu(); if (b.dataset.go === "about") openAbout(); else show(b.dataset.go); };
+document.addEventListener("keydown", e => {
+ if (e.key === "Escape") { if ($("menu").classList.contains("open")) closeMenu(); else if (!$("about").hidden) $("about").hidden = true; return; }
+ if (e.code === "Space" && S.screen === "analysis" && !/INPUT|BUTTON|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); setPlay(!S.play); }
+});
 
-// ---------- sessions: live, history ----------
+// ---------- tooltips ----------
+const tip = $("tip");
+document.addEventListener("mouseover", e => { const x = e.target.closest("[data-tip]"); if (!x) { tip.style.display = "none"; return; } tip.textContent = x.getAttribute("data-tip"); tip.style.display = "block"; });
+document.addEventListener("mousemove", e => { if (tip.style.display !== "block") return; tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px"; });
+
+// ---------- sessions ----------
 async function openSession(id, history) {
  const sessions = (await api("/api/sessions")).sessions;
  S.session = sessions.find(s => s.id === id) || null;
  S.history = history && !!S.session;
- S.a = S.b = null; S.compare = false; S.sync = "dist"; S.proposal = null; S.table = null; S.expanded = new Set();
- S.zoom = null; S.mapView = null;
- renderNav(); renderSession(); renderSync();
+ S.a = S.b = null; S.proposal = null; S.open = new Set(); S.zoom = null; S.t = 0; setPlay(false); MV.k = 1; MV.cx = MV.cy = null;
+ renderNav();
  await loadStints(false);
 }
-// Reloads that arrive while one is running are merged into a single follow-up.
 let stintsRun = null, stintsQueued = null;
 function loadStints(keep = true) {
  if (stintsRun) { stintsQueued = stintsQueued === null ? keep : stintsQueued && keep; return stintsRun; }
- stintsRun = (async () => {
-  try { await loadStintsNow(keep); }
-  finally {
-   stintsRun = null;
-   if (stintsQueued !== null) { const k = stintsQueued; stintsQueued = null; loadStints(k); }
-  }
- })();
+ stintsRun = (async () => { try { await loadStintsNow(keep); } finally { stintsRun = null; if (stintsQueued !== null) { const k = stintsQueued; stintsQueued = null; loadStints(k); } } })();
  return stintsRun;
 }
 async function loadStintsNow(keep) {
- if (!S.session) { S.stints = []; renderLeft(); drawAll(); return; }
+ if (!S.session) { S.stints = []; renderStints(); drawAnalysis(); return; }
  const before = S.stints.length;
  S.stints = (await api(`/api/stints?session=${S.session.id}`)).stints;
- if (!keep || S.stints.length !== before) {
-  // New outing (or a fresh session): show the newest stint's best clean lap.
-  if (!keep || !S.compare) { S.a = null; }
- }
+ if (!keep || S.stints.length !== before) { if (!keep) { S.a = null; S.b = null; } }
  await loadMap();
  pickDefaults();
- renderLeft();
+ renderStints();
  await loadLaps();
  loadProposal();
- if (S.screen === "setup") loadTable(true);
 }
 async function pollLive() {
  try {
-  const o = await api("/api/live");
-  const was = S.live;
+  const o = await api("/api/live"), was = S.live;
   S.live = o;
   if (!S.history && o.state === "live") {
-   if (o.session && (!S.session || S.session.id !== o.session)) {
-    await openSession(o.session, false);
-    if (S.screen === "welcome") show("analysis");
-   } else if (!o.session && S.screen === "welcome") {
-    renderSession(); show("analysis");  // first outing of this car + track not imported yet
-   }
+   if (o.session && (!S.session || S.session.id !== o.session)) { await openSession(o.session, false); if (S.screen === "home") show("analysis"); }
+   else if (!o.session && S.screen === "home") show("analysis");
   }
-  if (was.state !== o.state) { renderSession(); renderNav(); drawAll(); }
+  if (was.state !== o.state) { renderNav(); drawAnalysis(); }
  } catch (e) { /* the health check handles a down server */ }
  setTimeout(pollLive, 3000);
 }
-$("hist-back").onclick = async () => {
- S.history = false;
- const o = S.live;
- if (o.state === "live" && o.session) { await openSession(o.session, false); show("analysis"); }
- else { S.session = null; S.stints = []; renderNav(); renderSession(); show("welcome"); loadWelcome(); }
-};
-async function loadWelcome() {
- try { $("fact").textContent = (await api("/api/welcome")).fact || ""; } catch (e) {}
-}
-async function loadHistory() {
- const box = $("history");
- let sessions = [];
- try { sessions = (await api("/api/sessions")).sessions; } catch (e) { showError(e.message); }
- if (!sessions.length) { box.replaceChildren(el("div", {class: "empty"}, "No sessions yet")); return; }
- const t = el("table", {class: "list"});
- const head = el("tr");
- for (const h of ["Car", "Track", "Date", "Stints", "Laps", "Best"]) head.append(el("th", {}, h));
- const thead = el("thead"); thead.append(head);
- const body = el("tbody");
- for (const s of sessions) {
-  const tr = el("tr", {tabindex: 0, class: S.session && S.session.id === s.id ? "cur" : ""});
-  for (const v of [s.car_name, s.layout, fmtDate(s.recorded_at), String(s.stints), String(s.laps), fmtLap(s.best)]) tr.append(el("td", {}, v));
-  const open = async () => { await openSession(s.id, true); show("analysis"); };
-  tr.onclick = open;
-  tr.onkeydown = e => { if (e.key === "Enter") open(); };
-  body.append(tr);
- }
- t.append(thead, body);
- box.replaceChildren(t);
-}
-async function loadState() {
- S.state = await api("/api/state");
- showError(S.state.watcher.last_error);
- return S.state.watcher;
-}
+async function loadState() { S.state = await api("/api/state"); showError(S.state.watcher.last_error); return S.state.watcher; }
 let importStamp = null, refreshing = false;
 async function refresh() {
- // One at a time: while the server is busy, refreshes would otherwise pile up and all
- // reload the stints together when it answers.
  if (refreshing) return;
  refreshing = true;
  try {
-  const w = await loadState();
-  const stamp = `${w.imported}|${w.last_import}`;
+  const w = await loadState(), stamp = `${w.imported}|${w.last_import}`;
   const imported = importStamp !== null && stamp !== importStamp;
   importStamp = stamp;
-  if (imported && S.session) {
-   if (!S.history && S.live.session && S.live.session !== S.session.id) await openSession(S.live.session, false);
-   else await loadStints(true);
-  }
- } catch (e) { /* server down: the health check reloads */ }
+  if (imported && S.session) { if (!S.history && S.live.session && S.live.session !== S.session.id) await openSession(S.live.session, false); else await loadStints(true); }
+ } catch (e) {}
  finally { refreshing = false; }
 }
 
-// ---------- stints and laps (left) ----------
+// ---------- stints and laps ----------
 const stintNo = st => S.stints.indexOf(st) + 1;
 const stintById = id => S.stints.find(s => s.id === id) || null;
 const racingLaps = st => st.laps.filter(l => l.complete && !l.in_pits);
 const lapKey = (stint, seq) => `${stint}:${seq}`;
 const parseKey = k => { const [a, b] = String(k).split(":").map(Number); return {stint: a, seq: b}; };
-function bestLap(st) {
- const laps = racingLaps(st), clean = laps.filter(l => l.clean), pool = clean.length ? clean : laps;
- return pool.length ? pool.reduce((a, l) => (l.time < a.time ? l : a)) : null;
-}
-// The stint the next setup is built from: the newest with a lap outside the pits (a lap or two is enough).
+function bestLap(st) { const laps = racingLaps(st), clean = laps.filter(l => l.clean), pool = clean.length ? clean : laps; return pool.length ? pool.reduce((a, l) => (l.time < a.time ? l : a)) : null; }
 const baseStint = () => [...S.stints].reverse().find(s => s.laps.some(l => !l.in_pits)) || S.stints[S.stints.length - 1] || null;
-function keyOk(k) { return k && S.stints.some(s => racingLaps(s).some(l => lapKey(s.id, l.seq) === k)); }
+const keyOk = k => k && S.stints.some(s => racingLaps(s).some(l => lapKey(s.id, l.seq) === k));
 function pickDefaults() {
- if (!keyOk(S.a)) {
-  const st = [...S.stints].reverse().find(s => bestLap(s)) || null;
-  const l = st && bestLap(st);
-  S.a = l ? lapKey(st.id, l.seq) : null;
- }
- if (S.a) S.expanded.add(parseKey(S.a).stint);
- if (S.compare && (!keyOk(S.b) || S.b === S.a)) S.b = defaultB();
- S.sel = S.a ? parseKey(S.a).stint : null;
+ if (!keyOk(S.a)) { const st = [...S.stints].reverse().find(s => bestLap(s)) || null, l = st && bestLap(st); S.a = l ? lapKey(st.id, l.seq) : null; }
+ if (S.b && (!keyOk(S.b) || S.b === S.a)) S.b = null;
+ if (S.a) S.open.add(parseKey(S.a).stint);
+ if (S.b) S.open.add(parseKey(S.b).stint);
 }
-function defaultB() {
- // The best lap of the latest earlier stint on a different setup; else the best other lap.
- const st = stintById(parseKey(S.a).stint);
- const idx = S.stints.indexOf(st);
- let changed = st.changes.length > 0;
- for (let i = idx - 1; i >= 0; i--) {
-  if (changed) { const l = bestLap(S.stints[i]); if (l) return lapKey(S.stints[i].id, l.seq); }
-  changed = changed || S.stints[i].changes.length > 0;
- }
- let best = null;
- for (const s of S.stints) for (const l of racingLaps(s)) {
-  const k = lapKey(s.id, l.seq);
-  if (k !== S.a && l.clean && (!best || l.time < best.time)) best = {k, time: l.time};
- }
- return best ? best.k : null;
+function bestOverall() { let best = null; for (const s of S.stints) { const l = bestLap(s); if (l && l.clean && (!best || l.time < best.l.time)) best = {s, l}; } return best; }
+function pickLap(k) {
+ if (k === S.a) { S.a = S.b; S.b = null; }
+ else if (k === S.b) S.b = null;
+ else if (!S.a) S.a = k;
+ else S.b = k;
+ renderStints(); loadLaps();
 }
-function renderLeft() {
- renderLapBox();
- const box = $("stints");
- if (!S.stints.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
- box.replaceChildren(...[...S.stints].reverse().map(st => {
-  const wrap = el("div");
-  const laps = racingLaps(st), best = bestLap(st), open = S.expanded.has(st.id);
-  const row = el("button", {type: "button", class: "stint-row", "aria-expanded": open});
-  const left = el("span"); left.innerHTML = CHEV; left.append(`Stint ${stintNo(st)}`);
-  row.append(left, el("span", {class: "muted"}, `${fmtLap(best && best.time)} · ${laps.length}`));
-  const list = el("div", {class: "laps"});
-  list.hidden = !open;
-  for (const l of laps) {
-   const k = lapKey(st.id, l.seq);
-   const b = el("button", {type: "button", class: "lap-row" + (l.clean ? "" : " dropped")});
-   const mark = el("span", {class: "mark"});
-   if (k === S.a) mark.style.background = css("--s1");
-   else if (S.compare && k === S.b) mark.style.background = css("--s2");
-   b.append(mark, el("span", {}, `Lap ${l.lap}`), el("span", {}, fmtLap(l.time)));
-   b.onclick = () => { if (S.compare) S.b = k; else { S.a = k; S.sel = st.id; } renderLeft(); loadLaps(); };
-   list.append(b);
+function renderStints() {
+ const g = $("stints");
+ if (!S.stints.length) { g.replaceChildren(el("div", {class: "st"}, "")); g.firstChild.append(el("div", {class: "empty"}, t("stints.none"))); return; }
+ const best = bestOverall();
+ g.replaceChildren(...[...S.stints].reverse().map(st => {
+  const laps = racingLaps(st), div = el("div", {class: "st"});
+  if (!laps.length) { div.classList.add("nolap"); const h = el("div", {class: "sh"}); h.append(el("span", {class: "n"}, t("stint.n", {n: stintNo(st)})), el("span", {class: "sub"}, t("stint.nolap"))); div.append(h); return div; }
+  const bl = bestLap(st), open = S.open.has(st.id), isBest = best && best.s === st;
+  if (open) div.classList.add("open");
+  const h = el("button", {type: "button", class: "sh", "aria-expanded": open});
+  h.append(el("span", {class: "n"}, t("stint.n", {n: stintNo(st)})), el("span", {class: "bt" + (isBest ? " best" : "")}, fmtLap(bl && bl.time)),
+   el("span", {class: "sub"}, t(laps.length === 1 ? "stint.lap" : "stint.laps", {n: laps.length})), el("span", {class: "sub"}, isBest ? t("stint.best") : ""));
+  h.onclick = () => { if (S.open.has(st.id)) S.open.delete(st.id); else S.open.add(st.id); renderStints(); };
+  div.append(h);
+  if (open) {
+   const body = el("div", {class: "body"});
+   for (const l of laps) {
+    const k = lapKey(st.id, l.seq), r = el("button", {type: "button", class: "lr" + (k === S.a ? " isA" : "") + (k === S.b ? " isB" : ""), "aria-pressed": k === S.a || k === S.b});
+    const name = el("span", {}, t("lap.n", {n: l.lap}));
+    if (!l.clean) name.append(el("span", {class: "x"}, l.off_track ? t("lap.offtrack") : t("lap.notclean")));
+    r.append(el("span", {class: "dot"}), name, el("span", {class: l.clean ? "" : "bad"}, fmtLap(l.time)));
+    r.onclick = () => pickLap(k);
+    body.append(r);
+   }
+   div.append(body);
   }
-  row.onclick = () => { if (S.expanded.has(st.id)) S.expanded.delete(st.id); else S.expanded.add(st.id); renderLeft(); };
-  wrap.append(row, list);
-  return wrap;
+  return div;
  }));
 }
-const LAP_ROWS = [
- ["S1", l => l.trace.sectors[0], 3], ["S2", l => l.trace.sectors[1], 3], ["S3", l => l.trace.sectors[2], 3],
- ["Top speed", l => cv("speed", l.metrics.speed_max ?? Math.max(...l.trace.speed.filter(v => v != null))), 1],
- ["Min speed", l => cv("speed", l.metrics.speed_min ?? Math.min(...l.trace.speed.filter(v => v != null))), 1],
-];
-function renderLapBox() {
- const box = $("lapbox"), A = S.lapA, B = S.compare ? S.lapB : null;
- box.replaceChildren();
- if (!A) return;
- const name = l => `Stint ${stintNo(stintById(l.stint)) || "?"} · Lap ${l.lap}`;
- box.append(el("div", {class: "mini"}, name(A)), el("div", {class: "lap-time"}, fmtLap(A.time)));
- const t = el("table", {class: B ? "kv ab" : "kv"});
- if (B) {
-  const h = el("tr");
-  for (const x of ["", "A", "B", "Δ"]) h.append(el("th", {}, x));
-  t.append(h);
-  // The same minute on both: seconds only, so the columns fit; A's full time is above.
-  const same = Math.floor(A.time / 60) === Math.floor(B.time / 60), lt = v => same ? (v % 60).toFixed(3) : fmtLap(v);
-  const r = el("tr");
-  r.append(el("td", {}, "Lap"), el("td", {class: A.time < B.time ? "win" : ""}, lt(A.time)), el("td", {class: B.time < A.time ? "win" : ""}, lt(B.time)), el("td", {}, signed(A.time - B.time, 3)));
-  t.append(r);
- }
- for (const [label, f, dec] of LAP_ROWS) {
-  const va = f(A), vb = B ? f(B) : null;
-  if (va == null && vb == null) continue;
-  const r = el("tr");
-  r.append(el("td", {}, label), el("td", {}, fx(va, dec)));
-  if (B) r.append(el("td", {}, fx(vb, dec)), el("td", {}, va != null && vb != null ? signed(va - vb, dec) : "–"));
-  t.append(r);
- }
- box.append(t);
-}
-$("compare").onclick = () => {
- S.compare = !S.compare;
- $("compare").classList.toggle("on", S.compare);
- $("compare").setAttribute("aria-pressed", S.compare);
- if (!S.compare) setSync("dist");
- renderSync();
- if (S.compare && (!keyOk(S.b) || S.b === S.a)) S.b = S.a ? defaultB() : null;
- if (S.compare && S.b) S.expanded.add(parseKey(S.b).stint);
- renderLeft(); loadLaps();
-};
-
-// Distance: both markers at one point of the lap. Time: each where its lap was that many
-// seconds in, like a ghost; S.pos and S.target then hold seconds (§3).
-function renderSync() {
- $("sync").hidden = !S.compare;
- if (S.compare) seg("sync", ["dist", "time"], ["Distance", "Time"], S.sync, v => { if (v) setSync(v); });
-}
-function setSync(mode) {
- if (mode === S.sync) return;
- const A = S.lapA;
- const p = !A ? 0 : mode === "time" ? (valueAt(A, "time", S.pos) ?? 0) : (distAt(A, S.pos) ?? 0);
- S.sync = mode; S.pos = S.target = p;
- renderSync(); drawAll();
-}
-function distAt(lap, t) {
- if (!lap) return null;
- const tr = lap.trace, ts = tr.time;
- let lo = 0, hi = ts.length - 1;
- while (hi > 0 && ts[hi] == null) hi--;
- if (ts[lo] == null || t <= ts[lo]) return tr.distance[lo];
- if (t >= ts[hi]) return tr.distance[hi];
- while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ts[m] != null && ts[m] <= t) lo = m; else hi = m; }
- const f = (t - ts[lo]) / ((ts[hi] - ts[lo]) || 1);
- return tr.distance[lo] + f * (tr.distance[hi] - tr.distance[lo]);
-}
-const timed = () => !!(S.compare && S.sync === "time" && S.lapA && S.lapB);
-const posOf = lap => !lap ? null : timed() ? distAt(lap, S.pos) : S.pos;  // where this lap's marker is, m
-// What the slider spans: elapsed time in Time mode, else the visible part of the lap.
-const sliderRange = () => timed() ? [0, Math.max(S.lapA.time, S.lapB.time)] : visibleRange();
-const fromDist = d => timed() ? (valueAt(S.lapA, "time", d) ?? 0) : d;
-
-// ---------- laps, map, slider, traces ----------
 async function loadMap() {
  if (!S.session) { S.map = null; return; }
  if (S.mapCtx === S.session.context && S.map) return;
- try { const r = await api("/api/trackmap?context=" + encodeURIComponent(S.session.context)); S.map = r.map; S.mapCtx = S.session.context; }
- catch (e) { S.map = null; }
+ try { const r = await api("/api/trackmap?context=" + encodeURIComponent(S.session.context)); S.map = r.map; S.mapCtx = S.session.context; } catch (e) { S.map = null; }
 }
 const lapCache = new Map();
 async function getLap(k) {
  if (!k) return null;
  if (lapCache.has(k)) return lapCache.get(k);
  const {stint, seq} = parseKey(k);
- try { const l = await api(`/api/lap?stint=${stint}&seq=${seq}`); lapCache.set(k, l); return l; } catch (e) { return null; }
+ try { const l = await api(`/api/lap?stint=${stint}&seq=${seq}`); lapCache.set(k, l); return l; } catch (e) { showError(t("err.lap", {e: e.message})); return null; }
 }
+let lapsSeq = 0;
 async function loadLaps() {
- const [a, b] = await Promise.all([getLap(S.a), getLap(S.compare ? S.b : null)]);
+ const my = ++lapsSeq;
+ const [a, b] = await Promise.all([getLap(S.a), getLap(S.b)]);
+ if (my !== lapsSeq) return;  // a newer pick is already loading
  S.lapA = a; S.lapB = b;
- renderLapBox();
- drawAll();
+ S.delta = a && b ? a.trace.distance.map((d, i) => a.trace.time[i] == null ? null : a.trace.time[i] - timeAt(b, d)) : null;
+ S.t = clamp(S.t, 0, lapT());
+ renderAnalysisBar(); drawAnalysis();
 }
-function lapLength() {
- return S.map ? S.map.length : Math.max(...[S.lapA, S.lapB].filter(Boolean).map(l => l.trace.distance.at(-1)), 1);
+const compare = () => !!(S.lapA && S.lapB);
+// interpolation along a lap trace
+function at(L, key, d) {
+ if (!L) return null;
+ const tr = L.trace, n = tr.distance.length, f = d / tr.step_m, i = Math.floor(f);
+ if (i < 0) return tr[key][0]; if (i >= n - 1) return tr[key][n - 1];
+ const a = tr[key][i], b = tr[key][i + 1];
+ return a == null || b == null ? (a ?? b) : a + (b - a) * (f - i);
 }
-const visibleRange = () => S.zoom || [0, lapLength()];
-function valueAt(lap, key, d) {
- if (!lap) return null;
- const tr = lap.trace, i = Math.round(d / tr.step_m);
- return i >= 0 && i < tr.distance.length ? tr[key][i] : null;
+const timeAt = (L, d) => at(L, "time", d);
+function distAt(L, s) {
+ if (!L) return 0;
+ const tr = L.trace, ts = tr.time; let lo = 0, hi = ts.length - 1;
+ while (hi > 0 && ts[hi] == null) hi--;
+ if (s <= (ts[0] ?? 0)) return tr.distance[0]; if (s >= ts[hi]) return tr.distance[hi];
+ while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ts[m] != null && ts[m] <= s) lo = m; else hi = m; }
+ return tr.distance[lo] + (s - ts[lo]) / ((ts[hi] - ts[lo]) || 1) * (tr.distance[hi] - tr.distance[lo]);
 }
-function drawAll() {
+const lapT = () => S.lapA ? S.lapA.time : 0;
+const lapLen = () => S.map ? S.map.length : S.lapA ? S.lapA.trace.distance.at(-1) : 1;
+const dA = () => distAt(S.lapA, S.t);
+const dB = d => S.mode === "time" ? distAt(S.lapB, S.t) : d;
+
+// ---------- lap analysis: bar ----------
+function renderAnalysisBar() {
+ pills("views", ["map", "data"], [t("views.map"), t("views.data")], S.view, v => { S.view = v; $("dock").classList.toggle("pin", v === "data"); renderAnalysisBar(); drawAnalysis(); });
+ pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; drawMap(); placeMarkers(); });
+ pills("mode", ["dist", "time"], [t("mode.dist"), t("mode.time")], S.mode, v => { S.mode = v; tick0(); });
+ const mv = S.view === "map";
+ $("mapview").hidden = !mv; $("dataview").hidden = mv;
+ $("linek").hidden = $("linemode").hidden = !mv || false;
+ $("modek").hidden = $("mode").hidden = !compare();
+ if (!compare() && S.line === "delta") S.line = "pedals";
+ $("linemode").querySelector('[aria-pressed="true"]') || pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; drawMap(); placeMarkers(); });
+ $("linemode").querySelectorAll("button")[1].disabled = !compare();
+}
+function drawAnalysis() {
  if (S.screen !== "analysis") return;
- drawMap(); drawTraces(); syncSlider(); drawMarkers(); drawReadout();
- $("zoom-reset").hidden = !S.zoom && !S.mapView;
+ const waiting = !S.history && S.live.state === "live" && !S.stints.length;
+ $("wait").hidden = !waiting; $("wait").textContent = waiting ? t("analysis.waiting") : "";
+ if (S.view === "map") drawMap(); else drawTraces();
+ buildDock(); tick0();
+ requestAnimationFrame(refreshThumbs);
 }
-$("zoom-reset").onclick = () => { S.zoom = null; S.mapView = null; drawAll(); };
+function redraw() { if (S.screen === "analysis") drawAnalysis(); if (S.screen === "setup") renderSetup(); if (S.screen === "driver") loadDriver(); }
 
-let mapP = null;  // world -> screen for the current map drawing
+// ---------- map: pedal or gain/loss colours, braking points, zoom, pan, follow ----------
+const MV = {k: 1, cx: null, cy: null};
+let mapP = null, mapWH = [1, 1];
+function mix(c1, c2, f) { const h = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), a = h(c1), b = h(c2); return "#" + a.map((v, k) => Math.round(v + (b[k] - v) * f).toString(16).padStart(2, "0")).join(""); }
 function drawMap() {
- const svg = $("map");
- svg.replaceChildren();
- mapP = null;
- const box = $("map-box").getBoundingClientRect();
- const W = Math.max(200, box.width), H = Math.max(200, box.height);
- svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
- mapSize = [W, H];
- if (!S.history && S.live.state === "live" && !S.stints.length) {
-  svg.append(sv("text", {x: W / 2, y: H / 2, "text-anchor": "middle", class: "wait"}, "Laps load when you're back in the garage"));
-  return;
- }
- if (!S.map) return;
- const [d0, d1] = visibleRange(), pts = S.map.points;
- const laps = [S.lapB, S.lapA].filter(l => l && l.trace.x && l.trace.x[0] != null);
- let xs = [], ys = [];
- if (S.zoom) for (const l of laps) l.trace.distance.forEach((d, i) => { if (d >= d0 && d <= d1 && l.trace.x[i] != null) { xs.push(l.trace.x[i]); ys.push(-l.trace.y[i]); } });
- if (!xs.length) { xs = pts.map(p => p[1]); ys = pts.map(p => -p[2]); }
- const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), pad = 24;
- const k = Math.min((W - 2 * pad) / ((x1 - x0) || 1), (H - 2 * pad) / ((y1 - y0) || 1));
- const ox = (W - (x1 - x0) * k) / 2, oy = (H - (y1 - y0) * k) / 2;
- const v = S.mapView || {k: 1, tx: 0, ty: 0};  // the map's own zoom and pan, on top of the fit
- const P = (x, y) => [(ox + (x - x0) * k) * v.k + v.tx, (oy + (-y - y0) * k) * v.k + v.ty];
- mapP = P;
- const path = list => list.map((p, i) => (i ? "L" : "M") + P(p[0], p[1]).map(v => v.toFixed(1)).join(",")).join("");
- const defs = sv("defs"), clip = sv("clipPath", {id: "map-clip"});
- clip.append(sv("rect", {x: 0, y: 0, width: W, height: H})); defs.append(clip); svg.append(defs);
- const g = sv("g", {"clip-path": "url(#map-clip)"});
- svg.append(g);
- const trackW = Math.max(7, Math.min(60, 12 * k * v.k));
- g.append(sv("path", {d: path(pts.map(p => [p[1], p[2]])) + "Z", fill: "none", stroke: css("--line"), "stroke-width": trackW, "stroke-linejoin": "round"}));
- for (const l of laps) {
-  const seg = [];
-  l.trace.distance.forEach((d, i) => { if (d >= d0 - 20 && d <= d1 + 20 && l.trace.x[i] != null) seg.push([l.trace.x[i], l.trace.y[i]]); });
-  if (seg.length > 1) g.append(sv("path", {d: path(seg), fill: "none", stroke: l === S.lapA ? css("--s1") : css("--s2"), "stroke-width": 2, "stroke-linejoin": "round"}));
- }
- const marks = [[0, "S/F"], ...(S.map.sectors || []).map((d, i) => [d, "S" + (i + 2)])];
- const at = d => { const i = Math.max(0, Math.min(pts.length - 1, Math.round(d / (S.map.step_m || 10)))); return [pts[i][1], pts[i][2]]; };
- for (const [d, label] of marks) {
-  if (d < d0 - 50 || d > d1 + 50) continue;
-  const [ax, ay] = P(...at(d)), [bx, by] = P(...at(Math.min(d + 20, S.map.length - 1)));
-  const nx = -(by - ay), ny = bx - ax, nl = Math.hypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl, r = trackW / 2 + 6;
-  g.append(sv("line", {x1: ax - ux * r, y1: ay - uy * r, x2: ax + ux * r, y2: ay + uy * r, stroke: css("--muted"), "stroke-width": label === "S/F" ? 2.5 : 1.5}));
-  g.append(sv("text", {x: ax + ux * (r + 12), y: ay + uy * (r + 12) + 4, "text-anchor": "middle"}, label));
- }
- g.append(sv("g", {id: "markers"}));
-}
-// Wheel zooms at the cursor, drag pans, double-click resets (§3).
-let mapSize = [1, 1];
-function mapPoint(e) {
- const r = $("map").getBoundingClientRect();
- return [(e.clientX - r.left) * mapSize[0] / r.width, (e.clientY - r.top) * mapSize[1] / r.height];
-}
-function redrawMap() { drawMap(); drawMarkers(); $("zoom-reset").hidden = !S.zoom && !S.mapView; }
-$("map").addEventListener("wheel", e => {
- if (!S.map) return;
- e.preventDefault();
- const v = S.mapView || {k: 1, tx: 0, ty: 0}, [px, py] = mapPoint(e);
- const k = Math.min(20, Math.max(1, v.k * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
- if (k === 1) S.mapView = null;
- else S.mapView = {k, tx: px - (px - v.tx) * k / v.k, ty: py - (py - v.ty) * k / v.k};
- redrawMap();
-}, {passive: false});
-let panFrom = null;
-$("map").addEventListener("pointerdown", e => {
- if (!S.mapView) return;
- panFrom = {p: mapPoint(e), tx: S.mapView.tx, ty: S.mapView.ty};
- $("map").setPointerCapture(e.pointerId); $("map").classList.add("panning");
-});
-$("map").addEventListener("pointermove", e => {
- if (!panFrom || !S.mapView) return;
- const [px, py] = mapPoint(e);
- S.mapView = {...S.mapView, tx: panFrom.tx + px - panFrom.p[0], ty: panFrom.ty + py - panFrom.p[1]};
- redrawMap();
-});
-const endPan = () => { panFrom = null; $("map").classList.remove("panning"); };
-$("map").addEventListener("pointerup", endPan);
-$("map").addEventListener("pointercancel", endPan);
-$("map").addEventListener("dblclick", () => { S.mapView = null; redrawMap(); });
-function drawMarkers() {
- const g = $("markers");
- if (!g || !mapP) return;
- g.replaceChildren();
- for (const l of [S.lapB, S.lapA]) {
-  const d = posOf(l), x = valueAt(l, "x", d), y = valueAt(l, "y", d);
-  if (x == null || y == null) continue;
-  const [cx, cy] = mapP(x, y);
-  g.append(sv("circle", {cx, cy, r: 6, fill: l === S.lapA ? css("--s1") : css("--s2"), stroke: css("--bg"), "stroke-width": 2}));
- }
-}
-function drawReadout() {
- const r = $("readout");
- r.replaceChildren();
- if (!S.lapA) return;
- const A = S.lapA, B = S.compare ? S.lapB : null, da = posOf(A), db = B ? posOf(B) : null;
- const item = (k, v, tip) => { const s = el("span", {"data-tip": TIPS[tip]}); s.append(el("span", {class: "k"}, k), document.createTextNode(v)); r.append(s); };
- const both = (key, scale, dec, unit) => {
-  const a = valueAt(A, key, da), b = B ? valueAt(B, key, db) : null;
-  const f = v => v == null ? "–" : fx(v * scale, dec);
-  return B ? `${f(a)} / ${f(b)}${unit}` : `${f(a)}${unit}`;
- };
- if (timed()) item("", `${fx(S.pos, 1)} s`, "elapsed");
- item("", `${fx(da / 1000, 2)} km`, "distance");
- item("Speed", both("speed", cv("speed", 1), 0, " " + UNIT.speed), "speed");
- item("Gear", both("gear", 1, 0, ""), "gear");
- item("Throttle", both("throttle", 100, 0, " %"), "throttle");
- item("Brake", both("brake", 100, 0, " %"), "brake");
- item("Steering", both("steer", 1, 0, "°"), "steering");
- if (B && timed()) item("Gap", da != null && db != null ? `${signed(da - db, 0)} m` : "–", "gap");
- else if (B) { const ta = valueAt(A, "time", da), tb = valueAt(B, "time", da); item("Δ", ta != null && tb != null ? `${signed(ta - tb, 3)} s` : "–", "delta"); }
-}
-// The slider spans the visible part of the lap; the marker eases towards it.
-function syncSlider() {
- const [d0, d1] = sliderRange();
- S.target = Math.min(Math.max(S.target, d0), d1);
- S.pos = Math.min(Math.max(S.pos, d0), d1);
- $("slider").value = Math.round((S.target - d0) / ((d1 - d0) || 1) * 1000);
-}
-let raf = 0;
-const FOLLOW = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 0.3;  // share of the gap closed per frame
-function moveTo(d) {
- S.target = d;
- if (!raf) { raf = requestAnimationFrame(step); setTimeout(() => { if (raf) step(); }, 50); }  // frames can be paused
-}
-function step() {
- if (raf) cancelAnimationFrame(raf);
- raf = 0;
- const diff = S.target - S.pos;
- S.pos = Math.abs(diff) < 1 ? S.target : S.pos + diff * FOLLOW;
- drawMarkers(); drawReadout(); drawCursor();
- if (S.pos !== S.target) raf = requestAnimationFrame(step);
-}
-$("slider").oninput = e => { const [d0, d1] = sliderRange(); moveTo(d0 + e.target.value / 1000 * (d1 - d0)); };
-
-const TRACES = [
- {key: "delta", title: "Δ", h: 54, dec: 2},
- {key: "speed", title: "Speed", h: 64, dec: 0},
- {key: "throttle", title: "Throttle", h: 34, scale: 100, fixed: [0, 100]},
- {key: "brake", title: "Brake", h: 34, scale: 100, fixed: [0, 100]},
- {key: "steer", title: "Steering", h: 44},
-];
-let traceGeom = [];
-function series(lap, key, scale = 1) {
- if (!lap) return null;
- if (key === "delta") {
-  if (!S.lapA || !S.lapB) return null;
-  const a = S.lapA.trace.time, b = S.lapB.trace.time, n = Math.min(a.length, b.length);
-  return Array.from({length: n}, (_, i) => a[i] == null || b[i] == null ? null : a[i] - b[i]);
- }
- const v = lap.trace[key];
- return v && v.some(x => x != null) ? v.map(x => (x == null ? null : x * scale)) : null;
-}
-function drawTraces() {
- const box = $("traces");
- box.replaceChildren();
- traceGeom = [];
- const A = S.lapA, B = S.compare ? S.lapB : null;
- if (!A) return;
- const [d0, d1] = visibleRange();
- const W = Math.max(300, box.clientWidth), ml = 64, mr = 4;
- const sx = d => ml + (d - d0) / ((d1 - d0) || 1) * (W - ml - mr);
- const colors = {A: css("--s1"), B: css("--s2")};
- for (const tr of TRACES) {
-  if (tr.key === "delta" && !B) continue;
-  const scale = tr.key === "speed" ? cv("speed", 1) : tr.scale || 1;
-  const data = tr.key === "delta" ? [["A", series(A, "delta")]] : [["B", series(B, tr.key, scale)], ["A", series(A, tr.key, scale)]];
-  const present = data.filter(d => d[1]);
-  if (!present.length) continue;
-  const step = A.trace.step_m, i0 = Math.max(0, Math.floor(d0 / step)), i1 = Math.ceil(d1 / step);
-  let lo = Infinity, hi = -Infinity;
-  for (const [, v] of present) for (let i = i0; i <= Math.min(i1, v.length - 1); i++) if (v[i] != null) { lo = Math.min(lo, v[i]); hi = Math.max(hi, v[i]); }
-  if (!isFinite(lo)) continue;
-  if (tr.fixed) [lo, hi] = tr.fixed;
-  if (tr.key === "delta") { const m = Math.max(Math.abs(lo), Math.abs(hi), 0.05); lo = -m; hi = m; }
-  else if (!tr.fixed) { const p = (hi - lo || 1) * 0.08; lo -= p; hi += p; }
-  // Shorter traces in a short window: the map keeps most of the screen.
-  const H = Math.round(tr.h * Math.min(1, Math.max(0.6, innerHeight / 900))), sy = v => 2 + (1 - (v - lo) / ((hi - lo) || 1)) * (H - 4);
-  const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": tr.title});
-  svg.append(sv("text", {x: 0, y: H / 2 + 4, "data-tip": TIPS[tr.key]}, tr.title));
-  svg.append(sv("line", {x1: ml, x2: W - mr, y1: H - 0.5, y2: H - 0.5, stroke: css("--line"), "stroke-width": 1}));
-  if (tr.key === "delta") svg.append(sv("line", {x1: ml, x2: W - mr, y1: sy(0), y2: sy(0), stroke: css("--line"), "stroke-width": 1}));
-  for (const [which, v] of present) {
-   let d = "", pen = false;
-   for (let i = i0; i <= Math.min(i1, v.length - 1); i++) {
-    if (v[i] == null) { pen = false; continue; }
-    d += (pen ? "L" : "M") + sx(i * step).toFixed(1) + "," + sy(v[i]).toFixed(1);
-    pen = true;
-   }
-   svg.append(sv("path", {d, fill: "none", stroke: colors[which], "stroke-width": 1.5, "stroke-linejoin": "round"}));
+ const svg = $("map"), box = $("mapt").getBoundingClientRect();
+ svg.replaceChildren(); $("legend").replaceChildren(); mapP = null;
+ if (!S.map || !box.width) return;
+ const W = box.width, H = box.height; mapWH = [W, H]; svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+ const pts = S.map.points, xs = pts.map(p => p[1]), ys = pts.map(p => -p[2]);
+ const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), pad = 50, top = 40, bot = 30;
+ const k = Math.min((W - 2 * pad) / ((x1 - x0) || 1), (H - top - bot) / ((y1 - y0) || 1)), ox = (W - (x1 - x0) * k) / 2, oy = top + (H - top - bot - (y1 - y0) * k) / 2;
+ mapP = (x, y) => [ox + (x - x0) * k, oy + (-y - y0) * k];
+ const NS_ = {"vector-effect": "non-scaling-stroke"};
+ svg.append(sv("path", {d: pts.map((p, i) => (i ? "L" : "M") + mapP(p[1], p[2]).map(v => v.toFixed(1)).join(",")).join("") + "Z", fill: "none", stroke: css("--l3"), "stroke-width": 22, "stroke-linejoin": "round", ...NS_}));
+ const A = S.lapA;
+ if (A) {
+  const tr = A.trace, n = tr.distance.length, pri = css("--pri"), ter = css("--ter"), neu = css("--t3"), GREEN = css("--green"), RED = css("--red");
+  const g = sv("g", {"stroke-linecap": "round"});
+  for (let i = 0; i < n - 1; i++) {
+   if (tr.x[i] == null || tr.x[i + 1] == null) continue;
+   let c, op = 1;
+   if (S.line === "delta" && S.delta) {
+    const j0 = Math.max(0, i - 2), j1 = Math.min(n - 1, i + 3), dd = (S.delta[j1] ?? 0) - (S.delta[j0] ?? 0), rate = dd / ((tr.distance[j1] - tr.distance[j0]) || 1) * 100;
+    c = rate < -0.012 ? pri : rate > 0.012 ? ter : neu;
+   } else { const br = tr.brake[i] || 0, th = tr.throttle[i] || 0; if (br > 0.05) { c = RED; op = .45 + .55 * br; } else if (th > 0.05) { c = GREEN; op = .3 + .7 * th; } else { c = neu; op = .6; } }
+   const [ax, ay] = mapP(tr.x[i], tr.y[i]), [bx, by] = mapP(tr.x[i + 1], tr.y[i + 1]);
+   g.append(sv("line", {x1: ax.toFixed(1), y1: ay.toFixed(1), x2: bx.toFixed(1), y2: by.toFixed(1), stroke: c, "stroke-opacity": op, "stroke-width": 7, ...NS_}));
   }
-  const cursor = sv("line", {x1: 0, x2: 0, y1: 0, y2: H, stroke: css("--text"), "stroke-width": 1});
-  const cursorB = sv("line", {x1: 0, x2: 0, y1: 0, y2: H, stroke: css("--s2"), "stroke-width": 1, visibility: "hidden"});
-  const brush = sv("rect", {x: 0, y: 0, width: 0, height: H, fill: css("--muted"), "fill-opacity": 0.18, visibility: "hidden"});
-  const hit = sv("rect", {x: ml, y: 0, width: W - ml - mr, height: H, fill: "transparent", style: "cursor:crosshair"});
-  svg.append(brush, cursor, cursorB, hit);
-  box.append(svg);
-  traceGeom.push({cursor, cursorB, sx});
-  attachTraceEvents(hit, svg, brush, sx, W, ml, mr, d0, d1);
- }
- drawCursor();
-}
-function attachTraceEvents(hit, svg, brush, sx, W, ml, mr, d0, d1) {
- const toD = e => {
-  const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width);
-  return d0 + (Math.max(ml, Math.min(W - mr, x)) - ml) / (W - ml - mr) * (d1 - d0);
- };
- let start = null;
- const go = d => { const p = fromDist(d); moveTo(p); syncSliderValue(p); };
- hit.addEventListener("pointerdown", e => { start = toD(e); hit.setPointerCapture(e.pointerId); go(start); });
- hit.addEventListener("pointermove", e => {
-  if (start == null) return;
-  const d = toD(e);
-  go(d);
-  const a = sx(Math.min(start, d)), b = sx(Math.max(start, d));
-  brush.setAttribute("x", a); brush.setAttribute("width", b - a); brush.setAttribute("visibility", "visible");
- });
- hit.addEventListener("pointerup", e => {
-  const d = toD(e);
-  brush.setAttribute("visibility", "hidden");
-  if (start != null && Math.abs(d - start) > 30) {
-   S.zoom = [Math.min(start, d), Math.max(start, d)]; S.mapView = null;  // the map fits the stretch
-   S.target = S.pos = fromDist(S.zoom[0]); start = null; drawAll(); return;
-  }
-  start = null;
- });
- hit.addEventListener("dblclick", () => { S.zoom = null; drawAll(); });
-}
-function syncSliderValue(p) { const [p0, p1] = sliderRange(); $("slider").value = Math.round((p - p0) / ((p1 - p0) || 1) * 1000); }
-function drawCursor() {
- // Time mode: one line per lap, in its colour; else one line for both.
- const two = timed(), xa = posOf(S.lapA), xb = two ? posOf(S.lapB) : null;
- for (const g of traceGeom) {
-  for (const [line, d, color] of [[g.cursor, xa, two ? css("--s1") : css("--text")], [g.cursorB, xb, css("--s2")]]) {
-   line.setAttribute("visibility", d == null ? "hidden" : "visible");
-   if (d == null) continue;
-   const x = g.sx(d);
-   line.setAttribute("x1", x); line.setAttribute("x2", x); line.setAttribute("stroke", color);
-  }
- }
-}
-let resizeTimer = 0;
-addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawAll, 120); });
-
-// ---------- setup table ----------
-function seg(boxId, values, labels, current, onPick) {
- $(boxId).replaceChildren(...values.map((v, i) => {
-  const b = el("button", {type: "button", class: "btn" + (v === current ? " on" : ""), "aria-pressed": v === current}, labels[i]);
-  b.onclick = () => onPick(v === current ? null : v);
-  return b;
- }));
-}
-async function loadTable(force = false) {
- renderBase();
- renderSetupCentre();
- if (!S.advanced) return;
- seg("table-by", ["stint", "lap"], ["Stints", "Laps"], S.tableBy, v => { if (v) { S.tableBy = v; loadTable(true); } });
- if (!S.session) { $("table-scroll").replaceChildren(); return; }
- if (!force && S.table && S.table.session === S.session.id && S.table.by === S.tableBy) { renderTable(); return; }
- try { S.table = await api(`/api/table?session=${S.session.id}&by=${S.tableBy}`); } catch (e) { showError(e.message); return; }
- renderTable();
-}
-$("advanced").onclick = () => {
- S.advanced = !S.advanced;
- $("advanced").classList.toggle("on", S.advanced);
- $("advanced").setAttribute("aria-pressed", S.advanced);
- loadTable();
-};
-function renderSetupCentre() {
- $("vis").hidden = S.advanced;
- $("adv-box").hidden = !S.advanced;
- $("table-by").hidden = !S.advanced;
- if (S.advanced) { if (S.table) renderTable(); }
- else renderVis();
-}
-function renderBase() {
- const st = baseStint();
- $("base-stint").textContent = st ? `Stint ${stintNo(st)}` : "–";
-}
-function renderTable() {
- const box = $("table-scroll"), tb = S.table;
- if (!tb || !tb.columns.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
- const t = el("table", {class: "big"});
- const head = el("tr");
- head.append(el("th", {}, ""));
- for (const c of tb.columns) head.append(el("th", {class: c.clean === false ? "dropped" : ""}, c.label));
- const thead = el("thead"); thead.append(head);
- const body = el("tbody");
- for (const g of tb.groups) {
-  const gr = el("tr", {class: "grp"});
-  gr.append(el("th", {}, g.name));
-  for (let i = 0; i < tb.columns.length; i++) gr.append(el("td", {}, ""));
-  body.append(gr);
-  for (const r of g.rows) {
-   const tr = el("tr");
-   const th = el("th", r.help ? {"data-tip": r.help} : {}, r.label), q = r.quantity;
-   if (r.unit) th.append(el("span", {class: "u"}, q ? uname(q) : r.unit));
-   tr.append(th);
-   r.values.forEach((raw, i) => {
-    const v = q ? cv(q, raw) : raw, prev = i ? r.values[i - 1] : raw;
-    const text = v == null ? "–" : (typeof v === "number" ? (r.unit === "s" && r.dec === 3 && v >= 60 ? fmtLap(v) : fx(v, qdec(q, r.dec))) : v);
-    const changed = g.name === "Setup" && i > 0 && raw !== prev;
-    tr.append(el("td", {class: (changed ? "chg" : "") + (tb.columns[i].clean === false ? " dropped" : "")}, text));
-   });
-   body.append(tr);
-  }
- }
- t.append(thead, body);
- box.replaceChildren(t);
-}
-
-// ---------- setup: the visual page (§4) ----------
-const BANDS = [["low", "Slow corners"], ["high", "Fast corners"]], PHASES = [["entry", "Turn-in"], ["mid", "Apex"], ["exit", "Exit"]];
-function svgBox(box, width, height) {
- const svg = sv("svg", {viewBox: `0 0 ${width} ${height}`, height, role: "img"});
- box.append(svg);
- return svg;
-}
-function renderVis() {
- const vis = $("vis"), pr = S.proposal, plan = pr && pr.plan;
- if (!S.session || !baseStint()) { vis.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
- const top = el("div", {class: "vis-row"}), mid = el("div", {class: "vis-row one"}), bottom = el("div", {class: "vis-row one"});
- const map = el("div"), side = el("div"), topv = el("div"), lap = el("div"), susp = el("div");
- top.append(map, side, topv); mid.append(lap); bottom.append(susp);
- vis.replaceChildren(top, mid, bottom);
- const label = (box, text, tip) => box.append(el("div", {class: "mini", "data-tip": TIPS[tip]}, text));
- label(map, "Balance", "balance"); label(side, "Side", "side"); label(topv, "Changes", "changes");
- label(lap, "Lap Δ", "lapd"); label(susp, "Suspension", "susp");
- const car = CARS[family(pr && pr.car_class)];
- if (!plan) { map.append(el("div", {class: "empty"}, "–")); lap.append(el("div", {class: "empty"}, "–")); }
- else { drawBalanceMap(map, plan); drawLapDelta(lap, plan.lap); }
- drawSide(side, plan && plan.platform, car);
- drawTop(topv, pr ? pr.changes : [], car);
- drawSuspension(susp);
-}
-function drawBalanceMap(box, plan) {
- const t = plan.target || {}, cells = t.cells || {}, tol = t.tolerance || {}, w = t.weights || {};
- const meas = (plan.measured && plan.measured.cells) || {}, pred = plan.predicted || {};
- if (!Object.keys(cells).length) { box.append(el("div", {class: "empty"}, "No corner passes yet")); return; }
- const W = 330, H = 190, l = 92, top = 22, cw = (W - l) / 3, ch = (H - top) / 2;
- const svg = svgBox(box, W, H);
- PHASES.forEach(([, label], i) => svg.append(sv("text", {x: l + cw * (i + 0.5), y: 14, "text-anchor": "middle"}, label)));
- [...BANDS].reverse().forEach(([band, label], r) => {
-  svg.append(sv("text", {x: 0, y: top + ch * (r + 0.5) + 4}, label));
-  PHASES.forEach(([phase], i) => {
-   const c = `${phase}_${band}`, x = l + cw * i, y = top + ch * r;
-   const g = sv("g", {opacity: (w[c] ?? 0.5) < 0.1 ? 0.4 : 1});
-   const target = cells[c], m = meas[c] ? meas[c][0] : null, p = pred[c] ? pred[c][0] : null;
-   let fill = css("--surface"), op = 1;
-   if (target != null && m != null) {
-    const d = m - target, out = Math.abs(d) - (tol[c] || 0.15);
-    if (out > 0) { fill = css(d > 0 ? "--us" : "--os"); op = Math.min(0.85, 0.25 + out / (2 * (tol[c] || 0.15))); }
-   }
-   g.append(sv("rect", {x: x + 1, y: y + 1, width: cw - 2, height: ch - 2, fill, "fill-opacity": op}));
-   const dm = target != null && m != null ? m - target : null, dp = target != null && p != null ? p - target : null;
-   g.append(sv("text", {x: x + cw / 2, y: y + ch / 2 + 2, "text-anchor": "middle", class: "big"}, dm == null ? "–" : `${signed(dm, 2)}°`));
-   g.append(sv("text", {x: x + cw / 2, y: y + ch / 2 + 20, "text-anchor": "middle"}, dp == null ? "" : `→ ${signed(dp, 2)}°`));
-   g.addEventListener("pointermove", e => showTip(e, [`${label}, ${PHASES[i][1].toLowerCase()}`,
-    `now ${m == null ? "–" : fx(m)}° · target ${fx(target)} ± ${fx(tol[c])}°`, `after ${p == null ? "–" : fx(p)}°`]));
-   g.addEventListener("pointerleave", hideTip);
-   svg.append(g);
+  svg.append(g);
+  const labels = sv("g", {id: "maplabels"});
+  const tick = (L, i, col, len, w) => { const q = L.trace, j = Math.min(q.x.length - 1, i + 2), kk = Math.max(0, i - 2); if (q.x[i] == null || q.x[j] == null || q.x[kk] == null) return;
+   const [px, py] = mapP(q.x[i], q.y[i]), [qx, qy] = mapP(q.x[j], q.y[j]), [rx, ry] = mapP(q.x[kk], q.y[kk]); let nx = -(qy - ry), ny = qx - rx; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+   labels.append(sv("line", {x1: px - nx * len, y1: py - ny * len, x2: px + nx * len, y2: py + ny * len, stroke: col, "stroke-width": w, "stroke-linecap": "round"})); };
+  const onsets = L => { const b = L.trace.brake, out = []; for (let i = 1; i < b.length; i++) if ((b[i] || 0) >= 0.1 && (b[i - 1] || 0) < 0.1) out.push(i); return out; };
+  if (S.line === "pedals") { if (S.lapB) onsets(S.lapB).forEach(i => tick(S.lapB, i, neu, 9, 2.5)); onsets(A).forEach(i => tick(A, i, RED, 12, 3)); }
+  const near = d => { let best = pts[0]; for (const p of pts) if (Math.abs(p[0] - d) < Math.abs(best[0] - d)) best = p; return best; };
+  [0, ...(S.map.sectors || [])].forEach((d, si) => {
+   const p = near(d), q = near(Math.min(lapLen() - 1, d + 25)), [ax, ay] = mapP(p[1], p[2]), [bx, by] = mapP(q[1], q[2]);
+   const nx = -(by - ay), ny = bx - ax, nl = Math.hypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl;
+   labels.append(sv("line", {x1: ax - ux * 14, y1: ay - uy * 14, x2: ax + ux * 14, y2: ay + uy * 14, stroke: css("--t1"), "stroke-width": d === 0 ? 3 : 1.5}));
+   const tx = sv("text", {x: ax + ux * 32, y: ay + uy * 32 + 4, "text-anchor": "middle", fill: css("--t2"), "font-size": 12.5, "font-weight": 600, "font-family": "inherit"}, t("sector.n", {n: si + 1}));
+   const sa = A.trace.sectors && A.trace.sectors[si], sb = S.lapB && S.lapB.trace.sectors && S.lapB.trace.sectors[si];
+   if (sa != null && sb != null) tx.append(sv("tspan", {fill: sa - sb < 0 ? pri : ter, "font-weight": 500, dx: 5}, signed(sa - sb, 3)));
+   labels.append(tx);
   });
+  svg.append(labels);
+  const L = $("legend"), li = (col, txt, style = "") => { const s = el("span"); s.innerHTML = `<i style="background:${col};${style}"></i>`; s.append(txt); L.append(s); };
+  if (S.line === "pedals") { li(GREEN, t("legend.throttle")); li(RED, t("legend.brake")); li(neu, t("legend.coast")); li(RED, t("legend.brakepoint"), "width:3px;height:12px;vertical-align:-2px"); }
+  else { li(pri, t("legend.gain", {lap: lapLabel(S.lapA)})); li(ter, t("legend.gain", {lap: lapLabel(S.lapB)})); li(neu, t("legend.even")); }
+ }
+ svg.append(sv("g", {id: "markers"}));
+ placeMarkers();
+}
+const lapLabel = L => L ? t("lap.n", {n: L.lap}) : "";
+function viewBoxNow(ax, ay) { const [W, H] = mapWH, k = S.follow ? Math.max(MV.k, 2.5) : MV.k, cx = S.follow ? ax : (MV.cx ?? W / 2), cy = S.follow ? ay : (MV.cy ?? H / 2); return {k, x: cx - W / k / 2, y: cy - H / k / 2, w: W / k, h: H / k}; }
+function carXY(L, d) { const x = at(L, "x", d), y = at(L, "y", d); return x == null ? null : mapP(x, y); }
+function placeMarkers() {
+ const svg = $("map"), g = $("markers"); if (!g || !mapP || !S.lapA) return; g.replaceChildren();
+ const d = dA(), pa = carXY(S.lapA, d); if (!pa) return;
+ const v = viewBoxNow(pa[0], pa[1]), z = v.k;
+ svg.setAttribute("viewBox", z <= 1.001 ? `0 0 ${mapWH[0]} ${mapWH[1]}` : `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`);
+ const lab = $("maplabels"); if (lab) lab.style.display = z > 1.6 ? "none" : "";
+ if (S.lapB) { const pb = carXY(S.lapB, dB(d)); if (pb) g.append(sv("circle", {cx: pb[0], cy: pb[1], r: 7 / z, fill: css("--t3"), stroke: css("--l1"), "stroke-width": 2.5 / z})); }
+ g.append(sv("circle", {cx: pa[0], cy: pa[1], r: 8.5 / z, fill: css("--t1"), stroke: css("--l1"), "stroke-width": 2.5 / z}));
+}
+function zoomBy(f, px, py) {
+ if (!mapP || !S.lapA) return;
+ const pa = carXY(S.lapA, dA()) || [mapWH[0] / 2, mapWH[1] / 2], v = viewBoxNow(pa[0], pa[1]), k2 = clamp((S.follow ? Math.max(MV.k, 2.5) : MV.k) * f, 1, 10);
+ if (!S.follow) { const cx = v.x + v.w / 2, cy = v.y + v.h / 2, qx = px ?? cx, qy = py ?? cy, r = v.k / k2; MV.cx = qx - (qx - cx) * r; MV.cy = qy - (qy - cy) * r; if (k2 <= 1.001) MV.cx = MV.cy = null; }
+ MV.k = k2; placeMarkers();
+}
+function fitMap() { MV.k = 1; MV.cx = MV.cy = null; S.follow = false; $("follow").setAttribute("aria-pressed", "false"); placeMarkers(); }
+(() => {
+ const svg = $("map");
+ const toMap = e => { const r = svg.getBoundingClientRect(), pa = (S.lapA && mapP && carXY(S.lapA, dA())) || [mapWH[0] / 2, mapWH[1] / 2], v = viewBoxNow(pa[0], pa[1]); return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h, v]; };
+ $("mapt").addEventListener("wheel", e => { if (e.target.closest(".mapctl")) return; e.preventDefault(); const [px, py] = toMap(e); zoomBy(e.deltaY < 0 ? 1.25 : 0.8, px, py); }, {passive: false});
+ let pan = null;
+ svg.addEventListener("pointerdown", e => { if (S.follow || MV.k <= 1.001) return; pan = {x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy}; svg.setPointerCapture(e.pointerId); });
+ svg.addEventListener("pointermove", e => { if (!pan) return; const r = svg.getBoundingClientRect(), [, , v] = toMap(e); MV.cx = pan.cx - (e.clientX - pan.x) / r.width * v.w; MV.cy = pan.cy - (e.clientY - pan.y) / r.height * v.h; placeMarkers(); });
+ svg.addEventListener("pointerup", () => { pan = null; });
+ svg.addEventListener("dblclick", fitMap);
+ $("zin").onclick = () => zoomBy(1.4); $("zout").onclick = () => zoomBy(1 / 1.4); $("fit").onclick = fitMap;
+ $("follow").onclick = () => { S.follow = !S.follow; $("follow").setAttribute("aria-pressed", S.follow); placeMarkers(); };
+})();
+new ResizeObserver(() => { if (S.screen === "analysis") drawAnalysis(); }).observe($("mapt"));
+
+// ---------- data view: every channel at full scale, drag to zoom ----------
+let tr = null;
+function drawTraces() {
+ const svg = $("traces"), A = S.lapA, B = S.lapB; svg.replaceChildren(); tr = null;
+ $("whole").hidden = !S.zoom;
+ if (!A) return;
+ const W = svg.getBoundingClientRect().width || 900, ml = 96, mr = 8, [z0, z1] = S.zoom || [0, lapLen()], GREEN = css("--green"), RED = css("--red");
+ const lanes = [...(S.delta ? [{k: "delta", h: 120}] : []), {k: "speed", h: 220}, {k: "throttle", h: 140, col: GREEN, pct: true}, {k: "brake", h: 140, col: RED, pct: true}, {k: "steer", h: 140}, {k: "gear", h: 100}];
+ const gap = 26, H = lanes.reduce((s, l) => s + l.h + gap, 26) + 4;
+ svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+ const X = d => ml + (d - z0) / ((z1 - z0) || 1) * (W - ml - mr);
+ const defs = sv("defs"), cp = sv("clipPath", {id: "plot"}); cp.append(sv("rect", {x: ml, y: 0, width: W - ml - mr, height: H})); defs.append(cp); svg.append(defs);
+ const sec = [0, ...(S.map ? S.map.sectors || [] : []), lapLen()];
+ for (let s = 0; s < sec.length - 1; s++) {
+  const a = Math.max(sec[s], z0), b = Math.min(sec[s + 1], z1);
+  if (b > a) svg.append(sv("text", {x: (X(a) + X(b)) / 2, y: 13, "text-anchor": "middle", fill: css("--t3"), "font-size": 12, "font-weight": 600}, t("sector.n", {n: s + 1})));
+  if (s && sec[s] > z0 && sec[s] < z1) svg.append(sv("line", {x1: X(sec[s]), x2: X(sec[s]), y1: 20, y2: H - 18, stroke: css("--bd")}));
+ }
+ const inRange = (L, i) => L.trace.distance[i] >= z0 - 20 && L.trace.distance[i] <= z1 + 20;
+ const plot = sv("g", {"clip-path": "url(#plot)"});
+ let y = 26;
+ lanes.forEach((ln, li) => {
+  const top = y, h = ln.h, unit = ln.k === "speed" ? UNIT.speed : t("unit." + ln.k);
+  if (li) svg.append(sv("line", {x1: 0, x2: W, y1: top - gap / 2, y2: top - gap / 2, stroke: css("--l3")}));
+  svg.append(sv("text", {x: 0, y: top + 15, fill: css("--t1"), "font-size": 14, "font-weight": 600}, t("trace." + ln.k, {lap: lapLabel(B)})));
+  if (unit) svg.append(sv("text", {x: 0, y: top + 32, fill: css("--t3"), "font-size": 12}, unit));
+  const src = L => ln.k === "delta" ? (L === A ? S.delta : null) : L.trace[ln.k].map(v => v == null ? null : ln.pct ? v * 100 : ln.k === "speed" ? cv("speed", v) : v);
+  const sa = src(A), sb = B ? src(B) : null;
+  let lo, hi;
+  if (ln.pct) { lo = 0; hi = 100; }
+  else {
+   const vals = []; sa.forEach((v, i) => { if (v != null && inRange(A, i)) vals.push(v); }); if (sb) sb.forEach((v, i) => { if (v != null && inRange(B, i)) vals.push(v); });
+   lo = vals.length ? Math.min(...vals) : 0; hi = vals.length ? Math.max(...vals) : 1;
+   if (ln.k === "delta" || ln.k === "steer") { const m = Math.max(Math.abs(lo), Math.abs(hi), ln.k === "delta" ? 0.05 : 5); lo = -m; hi = m; }
+   if (ln.k === "gear") { lo = Math.max(0, Math.floor(lo) - .3); hi = Math.ceil(hi) + .3; }
+   if (ln.k === "speed") { const p = (hi - lo) * .08; lo -= p; hi += p; }
+  }
+  const Y = v => top + h - (v - lo) / ((hi - lo) || 1) * h;
+  let ticks;
+  if (ln.pct) ticks = [0, 50, 100];
+  else if (ln.k === "speed") { const st = (hi - lo) > 120 ? 50 : (hi - lo) > 50 ? 20 : 10; ticks = []; for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) ticks.push(v); }
+  else if (ln.k === "gear") { ticks = []; for (let v = Math.ceil(lo); v <= hi; v++) ticks.push(v); }
+  else ticks = [lo, 0, hi];
+  ticks.forEach(v => { const yy = Y(v); svg.append(sv("line", {x1: ml, x2: W - mr, y1: yy, y2: yy, stroke: css("--l3"), "stroke-width": v === 0 ? 1.2 : .8}));
+   svg.append(sv("text", {x: ml - 10, y: yy + 4, "text-anchor": "end", fill: css("--t3"), "font-size": 11.5}, ln.k === "delta" ? signed(v, 2) : ln.k === "steer" ? Math.round(v) : v)); });
+  const line = (arr, L, col, w, op) => { let d = ""; arr.forEach((v, i) => { if (v == null || !inRange(L, i)) return; d += (d ? "L" : "M") + X(L.trace.distance[i]).toFixed(1) + "," + Y(clamp(v, lo, hi)).toFixed(1); });
+   plot.append(sv("path", {d, fill: "none", stroke: col, "stroke-width": w, "stroke-opacity": op, "stroke-linejoin": "round"})); };
+  if (sb) line(sb, B, ln.col || css("--t3"), 1.3, ln.col ? .45 : 1);
+  line(sa, A, ln.col || (ln.k === "delta" ? css("--pri") : css("--t1")), 1.8, 1);
+  y += h + gap;
+ });
+ svg.append(plot, sv("rect", {id: "sel", x: 0, y: 20, width: 0, height: H - 40, fill: css("--pri"), "fill-opacity": .12, visibility: "hidden"}), sv("line", {id: "cur", y1: 20, y2: H - 18, stroke: css("--pri"), "stroke-width": 1.5}));
+ tr = {X, ml, mr, W, z0, z1};
+}
+(() => {
+ const svg = $("traces"); let drag = null;
+ const toD = e => { const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * (tr.W / r.width); return clamp(tr.z0 + (px - tr.ml) / (tr.W - tr.ml - tr.mr) * (tr.z1 - tr.z0), 0, lapLen()); };
+ svg.addEventListener("pointerdown", e => { if (!tr) return; drag = {d: toD(e), moved: false}; svg.setPointerCapture(e.pointerId); });
+ svg.addEventListener("pointermove", e => { if (!drag || !tr) return; const d = toD(e); if (Math.abs(d - drag.d) > (tr.z1 - tr.z0) * 0.01) drag.moved = true;
+  const r = $("sel"); if (drag.moved && r) { const a = tr.X(Math.min(d, drag.d)), b = tr.X(Math.max(d, drag.d)); r.setAttribute("x", a); r.setAttribute("width", b - a); r.setAttribute("visibility", "visible"); } });
+ svg.addEventListener("pointerup", e => { if (!drag || !tr) return; const d = toD(e), a = Math.min(d, drag.d), b = Math.max(d, drag.d), moved = drag.moved; drag = null;
+  if (moved && b - a > 40) { S.zoom = [a, b]; drawTraces(); tick0(); } else { S.t = timeAt(S.lapA, d) ?? 0; setPlay(false); tick0(); } });
+ svg.addEventListener("dblclick", () => { S.zoom = null; drawTraces(); tick0(); });
+ $("whole").onclick = () => { S.zoom = null; drawTraces(); tick0(); };
+})();
+function cursor() { const c = $("cur"); if (!c || !tr) return; const d = dA(), x = tr.X(d); c.setAttribute("x1", x); c.setAttribute("x2", x); c.style.visibility = d >= tr.z0 && d <= tr.z1 ? "" : "hidden"; }
+
+// ---------- bottom bar: mirrored live pedals, play, mini-sector timeline ----------
+const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+function sideCells(cl) {
+ const thr = `<div class="cell pd"><span class="pv" id="thv${cl}"></span><span class="bar"><i id="th${cl}" style="background:var(--green)"></i></span></div>`;
+ const brk = `<div class="cell pd brk"><span class="bar"><i id="br${cl}" style="background:var(--red)"></i></span><span class="pv" id="brv${cl}" style="text-align:right"></span></div>`;
+ const gear = `<div class="cell gr" data-tip="${t("tip.gear")}"><small>${t("dock.gear")}</small><span id="gr${cl}"></span></div>`;
+ const spd = `<div class="cell sp"><span id="sp${cl}"></span><small>${UNIT.speed}</small></div>`;
+ return cl === "a" ? thr + brk + gear + spd : spd + gear + thr + brk;
+}
+let SEGS = [];
+function buildDock() {
+ $("sideA").innerHTML = S.lapA ? sideCells("a") : "";
+ $("sideB").innerHTML = S.lapB ? sideCells("b") : "";
+ $("sideB").classList.toggle("off", !S.lapB);
+ $("pp").disabled = !S.lapA;
+ const cs = $("chipset"); cs.replaceChildren(); SEGS = [];
+ if (!S.lapA) return;
+ const b = [0, ...(S.map ? S.map.sectors || [] : []), lapLen()], PER = 8, delta = d => S.delta ? at({trace: {...S.lapA.trace, v: S.delta}}, "v", d) : null;
+ for (let s = 0; s < b.length - 1; s++) {
+  const grp = el("div", {class: "sgrp"}), segs = el("div", {class: "segs"}); let w = 0;
+  for (let k = 0; k < PER; k++) {
+   const d0 = b[s] + (b[s + 1] - b[s]) * k / PER, d1 = b[s] + (b[s + 1] - b[s]) * (k + 1) / PER, t0 = timeAt(S.lapA, d0) ?? 0, t1 = s === b.length - 2 && k === PER - 1 ? lapT() : timeAt(S.lapA, d1) ?? 0;
+   const dd = S.delta ? (delta(d1) ?? 0) - (delta(d0) ?? 0) : 0, i = el("i", {class: "ms" + (!S.delta || Math.abs(dd) < 0.01 ? "" : dd < 0 ? " gain" : " loss")});
+   i.style.flex = Math.max(0.001, t1 - t0).toFixed(3); w += t1 - t0; segs.append(i); SEGS.push({t1, el: i});
+  }
+  grp.style.flex = Math.max(0.001, w).toFixed(2); grp.append(segs, el("span", {class: "sl"}, t("sector.n", {n: s + 1}))); cs.append(grp);
+ }
+}
+function pedals() {
+ const d = dA();
+ [["a", S.lapA, d], ...(S.lapB ? [["b", S.lapB, dB(d)]] : [])].forEach(([cl, L, dd]) => {
+  if (!L || !$("th" + cl)) return;
+  const th = clamp((at(L, "throttle", dd) || 0) * 100, 0, 100), br = clamp((at(L, "brake", dd) || 0) * 100, 0, 100);
+  $("th" + cl).style.width = th + "%"; $("thv" + cl).textContent = th.toFixed(1) + "%";
+  $("br" + cl).style.width = br + "%"; $("brv" + cl).textContent = br.toFixed(1) + "%";
+  $("sp" + cl).textContent = fx(cv("speed", at(L, "speed", dd)), 1); $("gr" + cl).textContent = Math.round(at(L, "gear", dd) ?? 0);
  });
 }
-// Line-art cars, side and top, in a frame of the car's length: x (side) and v (top) run
-// 0 at the nose to 1 at the tail; y is height above the ground, u is across (+ right).
-// A wheel arch in the body's floor line: from behind the wheel over it to in front (the
-// outline runs tail to nose along the floor), a half circle of radius r around the axle.
-// A smooth curve through points (centripetal Catmull-Rom as cubic Béziers), closed unless told
-// otherwise: corners come out round and every join keeps its tangent.
+function playerUI() {
+ const T = lapT(), p = T ? S.t / T * 100 : 0;
+ $("phead").style.left = p + "%"; $("scrub").setAttribute("aria-valuenow", p.toFixed(0));
+ for (const s of SEGS) s.el.classList.toggle("played", s.t1 <= S.t + 1e-6);
+ $("ptime").innerHTML = T ? `${fmtT(S.t)}<span> / ${fmtT(T)}</span>` : "";
+ $("pp").innerHTML = S.play ? PAUSE : PLAY; $("pp").setAttribute("aria-label", S.play ? t("play.pause") : t("play.play")); $("pp").title = $("pp").getAttribute("aria-label");
+}
+function tick0() { placeMarkers(); pedals(); cursor(); playerUI(); }
+let last = 0;
+function frame(now) { if (!S.play) return; const dt = last ? (now - last) / 1000 : 0; last = now; S.t += dt; if (S.t >= lapT()) S.t -= lapT(); tick0(); requestAnimationFrame(frame); }
+function setPlay(on) { S.play = !!on && !!S.lapA; last = 0; if (S.play) requestAnimationFrame(frame); if ($("pp")) playerUI(); }
+$("pp").onclick = () => setPlay(!S.play);
+(() => {
+ const sc = $("scrub"), to = e => { const r = sc.getBoundingClientRect(); S.t = clamp((e.clientX - r.left) / r.width, 0, 1) * lapT(); tick0(); };
+ sc.addEventListener("pointerdown", e => { if (!S.lapA) return; sc.setPointerCapture(e.pointerId); to(e); });
+ sc.addEventListener("pointermove", e => { if (e.buttons & 1 && S.lapA) to(e); });
+ sc.addEventListener("keydown", e => { if (e.key === "ArrowRight") { S.t = clamp(S.t + 1, 0, lapT()); tick0(); } if (e.key === "ArrowLeft") { S.t = clamp(S.t - 1, 0, lapT()); tick0(); } });
+})();
+
+// ---------- setup: balance, car, dampers; next setup docked on the right ----------
+let proposalTimer = null, proposalRunning = false, proposalAgain = false;
+const scheduleProposal = () => { clearTimeout(proposalTimer); proposalTimer = setTimeout(loadProposal, 400); };
+async function loadProposal() {
+ clearTimeout(proposalTimer);
+ if (proposalRunning) { proposalAgain = true; return; }
+ const st = baseStint();
+ if (!st) { S.proposal = null; if (S.screen === "setup") renderSetup(); return; }
+ proposalRunning = true; setBusy(true);
+ let pr = null, failed = null;
+ try { pr = await api("/api/proposal?stint=" + st.id); } catch (e) { failed = e; } finally { proposalRunning = false; }
+ if (proposalAgain) { proposalAgain = false; return loadProposal(); }
+ setBusy(false);
+ if (failed) showError(failed.message);
+ S.proposal = pr;
+ if (S.screen === "setup") renderSetup();
+}
+function setBusy(on) { S.proposalBusy = on; const l = document.querySelector("#panel .list"); if (l) l.classList.toggle("busy", on); const w = $("write"); if (w && on) w.disabled = true; setStatus(on ? t("setup.working") : (S.status || "")); }
+function setStatus(text, error) { const s = $("status"); if (!s) return; s.textContent = text || ""; s.classList.toggle("error", !!error); }
+const PHASES = [["entry", "phase.entry"], ["mid", "phase.mid"], ["exit", "phase.exit"]], BANDS = [["high", "band.high"], ["low", "band.low"]];
+function balance(box, plan) {
+ const tg = plan && plan.target || {}, cells = tg.cells || {}, tol = tg.tolerance || {}, meas = (plan && plan.measured && plan.measured.cells) || {}, pred = (plan && plan.predicted) || {};
+ if (!Object.keys(cells).length) { box.append(el("div", {class: "empty"}, t("balance.none"))); return; }
+ const M = 2.5, pct = v => ((clamp(v, -M, M) + M) / (2 * M) * 100).toFixed(2) + "%";
+ const word = (v, band) => Math.abs(v) <= band ? t("balance.ontarget") : t(v > 0 ? "balance.us" : "balance.os", {v: Math.abs(v).toFixed(1)});
+ const cls = (v, band) => Math.abs(v) <= band ? "" : v > 0 ? "us" : "os";
+ const wrap = el("div", {class: "bx"});
+ const ax = el("div", {class: "bx-axis"}), ends = el("div", {class: "bx-ends"});
+ ends.append(el("span", {}, t("balance.left")), el("span", {}, t("balance.mid")), el("span", {}, t("balance.right")));
+ ax.append(el("span"), ends, el("span")); wrap.append(ax);
+ for (const [band, bl] of BANDS) {
+  wrap.append(el("div", {class: "bx-grp"}, t(bl)));
+  for (const [ph, pl] of PHASES) {
+   const c = `${ph}_${band}`, target = cells[c], m = meas[c] ? meas[c][0] : null, p = pred[c] ? pred[c][0] : null, B = tol[c] || 0.15;
+   const row = el("div", {class: "bx-row"}), sc = el("div", {class: "bx-scale"}), txt = el("span", {class: "bx-txt"});
+   row.append(el("span", {class: "bx-ph"}, t(pl)), sc, txt);
+   sc.innerHTML = `<span class="bx-band" style="left:${pct(-B)};right:calc(100% - ${pct(B)})"></span><span class="bx-mid"></span>`;
+   if (target != null && m != null) {
+    const now = m - target, aft = p != null ? p - target : now, moves = Math.abs(now - aft) > 0.05;
+    if (moves) sc.insertAdjacentHTML("beforeend", `<span class="bx-path" style="left:${pct(Math.min(now, aft))};right:calc(100% - ${pct(Math.max(now, aft))})"></span><span class="bx-aft" style="left:${pct(aft)}"></span>`);
+    sc.insertAdjacentHTML("beforeend", `<span class="bx-now ${cls(now, B)}" style="left:${pct(now)}"></span>`);
+    const b = el("b", {class: cls(now, B)}, word(now, B)); txt.append(b);
+    if (moves && word(now, B) !== word(aft, B)) txt.append(" ", el("span", {}, "→ " + word(aft, B)));
+    row.setAttribute("data-tip", t("tip.balancecell", {now: fx(m), target: fx(target), tol: fx(B), after: p == null ? "–" : fx(p)}));
+   } else txt.textContent = "–";
+   wrap.append(row);
+  }
+ }
+ box.append(wrap);
+}
+function svgBox(box, width, height) { const s = sv("svg", {viewBox: `0 0 ${width} ${height}`, role: "img"}); box.append(s); return s; }
 function spline(pts, closed = true) {
  const f = v => +v.toFixed(4);
  const d = (a, b) => Math.max(1e-9, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])));
@@ -1282,10 +1133,10 @@ function drawSide(box, plat, car) {
  if (!cur) return;
  const num = (v, d, sign) => typeof v === "number" ? (sign ? signed(v, d) : fx(v, d)) : String(v ?? "–");
  const line = (a, b, d = 1, sign = false) => a === b || b == null ? num(a, d, sign) : `${num(a, d, sign)} → ${num(b, d, sign)}`;
- svg.append(sv("text", {x: x0 + af * L, y: ground + 18, "text-anchor": "middle", class: "v"}, `${line(cur.rh_front, nxt && nxt.rh_front)} mm`));
- svg.append(sv("text", {x: x0 + ar * L, y: ground + 18, "text-anchor": "middle", class: "v"}, `${line(cur.rh_rear, nxt && nxt.rh_rear)} mm`));
- svg.append(sv("text", {x: 10, y: 14}, `Rake ${line(cur.rake, nxt && nxt.rake, 1, true)} mm`));
- if (cur.wing) svg.append(sv("text", {x: W - 10, y: 14, "text-anchor": "end"}, `Wing ${line(cur.wing, nxt && nxt.wing)}`));
+ svg.append(sv("text", {x: x0 + af * L, y: ground + 18, "text-anchor": "middle", class: "v"}, t("side.rh", {v: line(cur.rh_front, nxt && nxt.rh_front)})));
+ svg.append(sv("text", {x: x0 + ar * L, y: ground + 18, "text-anchor": "middle", class: "v"}, t("side.rh", {v: line(cur.rh_rear, nxt && nxt.rh_rear)})));
+ svg.append(sv("text", {x: 10, y: 14}, t("side.rake", {v: line(cur.rake, nxt && nxt.rake, 1, true)})));
+ if (cur.wing) svg.append(sv("text", {x: W - 10, y: 14, "text-anchor": "end"}, t("side.wing", {v: line(cur.wing, nxt && nxt.wing)})));
 }
 // Where a setting sits on the car seen from above: [side −1 left · 0 centre · 1 right, v].
 function spot(key, car) {
@@ -1327,7 +1178,7 @@ function drawTop(box, changes, car) {
    "stroke-dasharray": wh.hidden ? "3 2" : "none"}));  // a prototype's wheels sit under the bodywork
  }
  const half = Math.max(...car.half.map(h => h[0])) * L;
- if (!changes || !changes.length) { svg.append(sv("text", {x: x0 + L / 2, y: cy + half + 24, "text-anchor": "middle"}, "No changes")); return; }
+ if (!changes || !changes.length) { svg.append(sv("text", {x: x0 + L / 2, y: cy + half + 24, "text-anchor": "middle"}, t("changes.none"))); return; }
  // Labels above (right side and centre) and below (left side), each with a leader to its mark;
  // a label takes the row nearest the car where it doesn't overlap another.
  const taken = {up: [], down: []};
@@ -1339,7 +1190,7 @@ function drawTop(box, changes, car) {
  };
  changes.forEach(c => {
   const [side, v] = spot(c.keys[0], car);
-  const [x, y] = P(side * wh.u, v), up = side >= 0, a = 6, text = `${c.name} ${signed(c.delta)}`;
+  const [x, y] = P(side * wh.u, v), up = side >= 0, a = 6, text = c.name;
   const tw = text.length * 6.6, cx = Math.min(W - tw / 2 - 2, Math.max(tw / 2 + 2, x)), n = row(up ? "up" : "down", cx - tw / 2 - 6, cx + tw / 2 + 6);
   svg.append(sv("polygon", {points: c.delta > 0 ? `${x},${y - a} ${x - a},${y + a} ${x + a},${y + a}` : `${x},${y + a} ${x - a},${y - a} ${x + a},${y - a}`, fill: css("--text")}));
   const ty = up ? cy - half - 10 - n * 14 : cy + half + 20 + n * 14, tx = cx;
@@ -1348,534 +1199,324 @@ function drawTop(box, changes, car) {
   svg.append(sv("line", {x1: x, y1: up ? y - a - 2 : y + a + 2, x2: tx, y2: up ? ty + 3 : ty - 11, stroke: css("--line"), "stroke-width": 1}), t);
  });
 }
-function drawLapDelta(box, lap) {
- if (!lap) { box.append(el("div", {class: "empty"}, "–")); return; }
- const d = el("div", {class: "lapd"}, `${signed(lap.delta, 2)} s`);
- d.append(el("span", {class: "sd"}, `± ${fx(lap.sd, 2)} s`));
- box.append(d);
- const sec = lap.sectors || [];
- if (!sec.length) return;
- const W = 900, rowH = 22, H = rowH * sec.length + 4, l = 40, mid = l + (W - l) / 2;
- const lim = Math.max(0.05, ...sec.map(Math.abs));
- const svg = svgBox(box, W, H);
- svg.append(sv("line", {x1: mid, x2: mid, y1: 0, y2: H, stroke: css("--line"), "stroke-width": 1}));
- sec.forEach((v, i) => {
-  const y = i * rowH + 4, w = Math.abs(v) / lim * ((W - l) / 2 - 70);
-  svg.append(sv("text", {x: 0, y: y + 13}, `S${i + 1}`));
-  svg.append(sv("rect", {x: v < 0 ? mid - w : mid, y, width: Math.max(w, 1), height: rowH - 8, fill: css("--s1")}));
-  svg.append(sv("text", {x: v < 0 ? mid - w - 6 : mid + w + 6, y: y + 12, "text-anchor": v < 0 ? "end" : "start", class: "v"}, `${signed(v, 2)} s`));
- });
-}
-async function histOf(stint) {
- const k = `${stint}|${S.hist.kerbs}`;  // bins are always 10 mm/s (§4)
- if (!S.hists[k]) S.hists[k] = api(`/api/histograms?stint=${stint}&kerbs=${S.hist.kerbs}&bin=10`).catch(() => null);
- return S.hists[k];
-}
-async function drawSuspension(box) {
- const tools = el("div", {class: "susp-tools"});
- const kerbBox = el("div", {class: "seg", role: "group", "aria-label": "Kerbs"});
- kerbBox.append(...[["off", "Off"], ["on", "On"], ["both", "Both"]].map(([v, t]) => { const b = el("button", {type: "button", class: "btn" + (S.hist.kerbs === v ? " on" : "")}, t); b.onclick = () => { S.hist.kerbs = v; renderVis(); }; return b; }));
- tools.append(el("span", {class: "mini"}, "Kerbs"), kerbBox);
- const grid = el("div", {class: "susp"});
- box.append(tools, grid);
+
+async function histOf(stint) { const k = `${stint}|${S.hist.kerbs}`; if (!S.hists[k]) S.hists[k] = api(`/api/histograms?stint=${stint}&kerbs=${S.hist.kerbs}&bin=10`).catch(() => null); return S.hists[k]; }
+async function dampers(box) {
+ const grid = el("div", {class: "hgrid"}); box.append(grid);
  const st = baseStint(), prev = st ? S.stints[S.stints.indexOf(st) - 1] : null;
  const [cur, before] = await Promise.all([histOf(st.id), prev ? histOf(prev.id) : null]);
  if (!grid.isConnected) return;
- if (!cur) { grid.append(el("div", {class: "empty"}, "No suspension data")); return; }
- for (const w of WHEELS) {
-  const cell = el("div");
-  cell.append(el("div", {class: "mini"}, w.toUpperCase()));
-  grid.append(cell);
-  histogram(cell, cur.wheels[w], before && before.wheels[w], cur.knee);
- }
+ if (!cur) { grid.append(el("div", {class: "empty"}, t("dampers.none"))); return; }
+ const draw = () => { grid.replaceChildren(); for (const w of ["fl", "fr", "rl", "rr"]) { const cell = el("div", {class: "hw"}); grid.append(cell); histogram(cell, w, cur.wheels[w], before && before.wheels[w], cur.knee); } };
+ draw();
+ // charts are drawn at their pixel width, so redraw when the column width changes
+ const size = () => `${grid.clientWidth}x${grid.clientHeight}`;
+ let last = size();
+ const ro = new ResizeObserver(() => { if (!grid.isConnected) { ro.disconnect(); return; } if (size() === last) return; last = size(); draw(); });
+ ro.observe(grid);
 }
-function histogram(box, h, prev, knee) {
+function histogram(box, w, h, prev, knee) {
+ const s = h.stats || {}, pct = v => v == null ? "–" : `${Math.round(v * 100)} %`;
+ const top = el("div", {class: "top"}); top.append(el("b", {}, t("wheel." + w)), el("span", {}, t("dampers.stats", {bump: pct(s.bump), slow: pct(s.slow)})));
+ box.append(top);
  const total = h.counts.reduce((a, b) => a + b, 0);
- if (!total) { box.append(el("div", {class: "empty"}, "No data")); return; }
- const centres = h.edges.slice(0, -1).map((e, i) => (e + h.edges[i + 1]) / 2), width = h.edges[1] - h.edges[0];
- // Window: where 99 % of the samples are, in whole 50 mm/s.
- let acc = 0, lim = 100;
- const order = centres.map((c, i) => [Math.abs(c), h.counts[i]]).sort((a, b) => a[0] - b[0]);
- for (const [a, n] of order) { acc += n; if (acc >= 0.99 * total) { lim = Math.max(100, Math.ceil(a / 50) * 50); break; } }
- const W = 440, H = 150, m = {l: 8, r: 8, t: 6, b: 18};
- const sx = v => m.l + (v + lim) / (2 * lim) * (W - m.l - m.r);
- const dens = c => c.map(n => n / total / width);
- const d = dens(h.counts);
- const sym = d.map((v, i) => { const j = centres.findIndex(c => Math.abs(c + centres[i]) < width / 2); return j >= 0 ? (v + d[j]) / 2 : v; });
- const pd = prev && prev.counts.reduce((a, b) => a + b, 0) ? dens(prev.counts.map(n => n * total / prev.counts.reduce((a, b) => a + b, 0))) : null;
- const top = Math.max(...d.filter((_, i) => Math.abs(centres[i]) <= lim), ...(pd || [0])) * 1.1 || 1;
- const sy = v => m.t + (1 - v / top) * (H - m.t - m.b);
- const svg = svgBox(box, W, H);
- svg.append(sv("rect", {x: sx(-knee), y: m.t, width: sx(knee) - sx(-knee), height: H - m.t - m.b, fill: css("--surface")}));
- for (const k of [-knee, knee]) svg.append(sv("line", {x1: sx(k), x2: sx(k), y1: m.t, y2: H - m.b, stroke: css("--muted"), "stroke-width": 1, "stroke-dasharray": "3 3"}));
- svg.append(sv("line", {x1: sx(0), x2: sx(0), y1: m.t, y2: H - m.b, stroke: css("--line"), "stroke-width": 1}));
- const path = (vals, color, dash) => {
-  let s = "";
-  centres.forEach((c, i) => {
-   if (Math.abs(c) > lim) return;
-   const x0 = sx(c - width / 2), x1 = sx(c + width / 2), y = sy(vals[i]);
-   s += (s ? "L" : "M") + `${x0},${y}L${x1},${y}`;
-  });
-  svg.append(sv("path", {d: s, fill: "none", stroke: color, "stroke-width": dash ? 1.2 : 1.6, "stroke-dasharray": dash ? "4 3" : "none"}));
- };
- path(sym, css("--muted"), true);
- if (pd) path(pd, css("--s2"), false);
- path(d, css("--s1"), false);
- svg.append(sv("text", {x: m.l, y: H - 4}, `−${lim}`), sv("text", {x: W - m.r, y: H - 4, "text-anchor": "end"}, `+${lim} mm/s`),
-  sv("text", {x: sx(0), y: H - 4, "text-anchor": "middle"}, "0"));
- const s = h.stats || {};
- const pct = v => v == null ? "–" : `${Math.round(v * 100)} %`;
- box.append(el("div", {class: "stats"}, `bump ${pct(s.bump)} · rebound ${pct(s.rebound)} · slow ${pct(s.slow)} · fast ${pct(s.fast)} · skew ${signed(s.skew, 2)}` +
-  (s.load_cv != null ? ` · load var ${fx(s.load_cv, 2)}` : "")));
+ if (!total) { box.append(el("div", {class: "empty"}, t("dampers.nodata"))); return; }
+ const centres = h.edges.slice(0, -1).map((e, i) => (e + h.edges[i + 1]) / 2), width = h.edges[1] - h.edges[0], lim = 200;
+ const hc = el("div", {class: "hc"}); box.append(hc);
+ const W = Math.max(240, Math.round(hc.clientWidth) || 440), H = Math.max(50, Math.round(hc.clientHeight) || 120), m = {l: 4, r: 4, t: 4, b: 18}, sx = v => m.l + (v + lim) / (2 * lim) * (W - m.l - m.r);
+ const dens = c => c.map(n => n / total / width), d = dens(h.counts);
+ const ptot = prev ? prev.counts.reduce((a, b) => a + b, 0) : 0, pd = ptot ? dens(prev.counts.map(n => n * total / ptot)) : null;
+ const topv = Math.max(...d.filter((_, i) => Math.abs(centres[i]) <= lim), ...(pd || [0])) * 1.1 || 1, sy = v => m.t + (1 - v / topv) * (H - m.t - m.b);
+ const svg = svgBox(hc, W, H);
+ svg.append(sv("rect", {x: sx(-knee), y: m.t, width: sx(knee) - sx(-knee), height: H - m.t - m.b, fill: css("--l3"), "fill-opacity": .6, rx: 4}));
+ svg.append(sv("line", {x1: sx(0), x2: sx(0), y1: m.t, y2: H - m.b, stroke: css("--t3"), "stroke-opacity": .5}));
+ const path = (vals, color, wd) => { let s2 = ""; centres.forEach((c, i) => { if (Math.abs(c) > lim) return; const y = sy(vals[i]); s2 += (s2 ? "L" : "M") + `${sx(c - width / 2)},${y}L${sx(c + width / 2)},${y}`; }); svg.append(sv("path", {d: s2, fill: "none", stroke: color, "stroke-width": wd})); };
+ if (pd) path(pd, css("--t3"), 1.4);
+ path(d, css("--t1"), 1.8);
+ svg.append(sv("text", {x: m.l, y: H - 3}, t("dampers.rebound", {v: lim})), sv("text", {x: sx(0), y: H - 3, "text-anchor": "middle"}, "0"), sv("text", {x: W - m.r, y: H - 3, "text-anchor": "end"}, t("dampers.bump", {v: lim})));
 }
-
-// ---------- next setup (pop-up) ----------
-let proposalTimer = null, proposalBusy = false, proposalAgain = false;
-function scheduleProposal() {
- clearTimeout(proposalTimer);
- proposalTimer = setTimeout(loadProposal, 400);
+function renderSetup() {
+ const tiles = $("tiles"), panel = $("panel"), pr = S.proposal, plan = pr && pr.plan;
+ if (!S.session || !baseStint()) { tiles.replaceChildren(el("div", {class: "card wide empty"}, t("stints.none"))); panel.replaceChildren(); return; }
+ const tile = (key, extra, wide) => { const c = el("div", {class: "card" + (wide ? " wide" : "")}), h = el("div", {class: "th"}); h.append(el("h3", {}, t(key + ".title"))); if (extra) h.append(extra); c.append(h); tiles.append(c); return c; };
+ tiles.replaceChildren();
+ const x = k => el("span", {class: "x"}, t(k));
+ const bal = tile("balance", x("balance.sub"), true); balance(bal, plan);
+ const car = CARS[family(pr && pr.car_class)];
+ const side = tile("side", x("side.sub")), sb = el("div", {class: "carv"}); side.append(sb); drawSide(sb, plan && plan.platform, car);
+ const top = tile("changes", x("changes.sub")), tb = el("div", {class: "carv"}); top.append(tb); drawTop(tb, pr ? pr.changes : [], car);
+ const polys = tb.querySelectorAll("polygon"), texts = tb.querySelectorAll("text.v");
+ (pr ? pr.changes : []).forEach((c, i) => { if (polys[i]) polys[i].dataset.k = i; if (texts[i]) texts[i].dataset.k = i; });
+ const legend = el("div", {class: "legend"});
+ legend.innerHTML = `<span><i style="background:var(--t1)"></i>${t("dampers.this")}</span><span><i style="background:var(--t3)"></i>${t("dampers.prev")}</span><span><i style="background:var(--l3)"></i>${t("dampers.slow")}</span>`;
+ const kerbs = pills(null, ["off", "on", "both"], [t("kerbs.off"), t("kerbs.on"), t("kerbs.both")], S.hist.kerbs, v => { S.hist.kerbs = v; renderSetup(); });
+ legend.append(el("span", {class: "kq"}, t("kerbs.label")), kerbs);
+ const dmp = tile("dampers", legend, true); dampers(dmp);
+ renderPanel(panel, pr, plan);
+ requestAnimationFrame(refreshThumbs);
 }
-async function loadProposal() {
- clearTimeout(proposalTimer);
- // One request at a time; asks while it runs become one follow-up with the latest state.
- if (proposalBusy) { proposalAgain = true; return; }
- const st = baseStint();
- if (!st) { S.proposal = null; renderSetupButtons(); return; }
- proposalBusy = true;
- setBusy(true);
- let pr = null, failed = null;
- try { pr = await api("/api/proposal?stint=" + st.id); }
- catch (e) { failed = e; }
- finally { proposalBusy = false; }
- if (proposalAgain) { proposalAgain = false; return loadProposal(); }  // outdated already: don't redraw with it
- setBusy(false);
- if (failed) showError(failed.message);
- S.proposal = pr;
- renderSetupButtons(); renderBase();
- if ($("modal").classList.contains("open")) renderModal();
- if (S.screen === "setup" && !S.advanced) renderVis();
-}
-// While a proposal is worked out (§6): rows dim, Write waits, the button spins.
-const WORKING = "Working out changes…";
-function setBusy(on) {
- S.proposalBusy = on;
- $("changes").classList.toggle("busy", on);
- if (on) setStatus(WORKING);
- else if ($("status").textContent === WORKING) setStatus("");
- if (on) $("write").disabled = true;
- renderSetupButtons();
-}
-function renderSetupButtons() {
- const pr = S.proposal, n = pr && pr.changes ? pr.changes.length : 0;
- for (const b of document.querySelectorAll(".next-setup")) {
-  const count = el("span", {class: "mono"});
-  if (S.proposalBusy) count.innerHTML = SPIN; else count.textContent = n ? String(n) : "";
-  b.replaceChildren(el("span", {}, "Next setup"), count);
-  b.setAttribute("data-tip", TIPS.next);
-  b.disabled = !baseStint();
+const LOCK = '<svg class="ico" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const UNLOCK = '<svg class="ico" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+const FLOPPY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h11.5l3.5 3.5v11.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path class="sh2" d="M7.5 3.5v5h7v-5"/><rect x="6.5" y="13" width="11" height="7.5" rx="1"/></svg>';
+function renderPanel(p, pr, plan) {
+ p.replaceChildren();
+ const from = pr && stintById(pr.stint_id), q = plan && plan.short;
+ p.append(el("h2", {}, t("next.title")));
+ const n = pr && pr.changes ? pr.changes.length : 0;
+ p.append(el("div", {class: "sub"}, pr ? t(n === 1 ? "next.sub1" : "next.sub", {n, stint: from ? stintNo(from) : "?"}) : t("setup.working")));
+ if (q) {
+  const st = stintById(q.stint), row = el("div", {class: "prow"});
+  row.append(el("span", {}, t("next.short", {n: st ? stintNo(st) : "?"})), pills(null, [true, false], [t("next.undrivable"), t("next.fine")], q.undrivable, async v => {
+   if (!st) return; try { st.rating = (await api("/api/rating", {file_name: st.file_name, undrivable: v})).rating; await loadProposal(); } catch (e) { setStatus(e.message, true); } }));
+  p.append(row);
  }
-}
-function openModal() {
- if (!baseStint()) return;
- setStatus("");
- renderModal();
- $("modal").classList.add("open");
- $("modal-close").focus();
- loadProposal();  // a setup saved in the garage meanwhile clears its error
-}
-const closeModal = () => $("modal").classList.remove("open");
-for (const b of document.querySelectorAll(".next-setup")) b.onclick = openModal;
-$("modal-close").onclick = closeModal;
-$("modal").addEventListener("click", e => { if (e.target === $("modal")) closeModal(); });
-// Keys (§19): no shortcuts; Esc closes the topmost thing.
-const openPop = () => document.querySelector(".pop.open");
-document.addEventListener("keydown", e => {
- if (e.key !== "Escape") return;
- if ($("menu").classList.contains("open")) closeMenu(true);
- else if (openPop()) closePop(openPop());
- else if ($("modal").classList.contains("open")) closeModal();
- else if (MENU_SCREENS[S.screen]) closeMenuScreen();
-});
-function setStatus(text, error = false) { $("status").textContent = text || ""; $("status").classList.toggle("error", !!error); }
-function renderModal() {
- const pr = S.proposal, box = $("changes");
- $("modal-file").textContent = pr && pr.target ? pr.target.file : (pr && pr.error ? "" : "No changes");
- if (!pr) { box.replaceChildren(); }
- else {
-  if (pr.error) setStatus(pr.error, true);  // about writing it: the changes still show
-  box.replaceChildren(...pr.changes.map(c => {
-   const row = el("div", {class: "change"});
-   row.append(el("span", {class: "name"}, c.name), el("span", {class: "delta"}, signed(c.delta)));
-   const b = el("button", {type: "button", class: "lock", "aria-pressed": "false", "aria-label": "Lock " + c.name, "data-tip": TIPS.lock});
-   b.innerHTML = UNLOCK;
-   b.onclick = () => setLock(c.keys, true);
-   row.append(b, el("span", {class: "vals"}, `${c.before_text} → ${c.approx ? "≈ " : ""}${c.after_text}`));
-   if (c.reason) row.append(el("span", {class: "why"}, c.reason));
-   return row;
-  }));
-  for (const l of pr.locks || []) {
-   const row = el("div", {class: "change"});
-   row.append(el("span", {class: "name muted"}, l.name), el("span", {}, ""));
-   const b = el("button", {type: "button", class: "lock", "aria-pressed": "true", "aria-label": "Unlock " + l.name, "data-tip": TIPS.unlock});
-   b.innerHTML = LOCK;
-   b.onclick = () => setLock([l.key], false);
-   row.append(b);
-   box.append(row);
-  }
+ if (pr && !pr.changes.length && pr.why) { const w = el("div", {class: "why"}, pr.why.text); if (pr.why.facts && pr.why.facts.length) w.setAttribute("data-tip", pr.why.facts.join(" · ")); p.append(w); }
+ const tg = S.feelTarget && plan && S.feelTarget.car_key === plan.car_key ? S.feelTarget : plan && plan.target;
+ if (plan && tg) {
+  p.append(el("div", {class: "plbl"}, t("feel.front")), pills(null, [-1, 0, 1], [t("feel.pointier"), t("feel.asitwas"), t("feel.lazier")], tg.front || 0, v => feel({axis: "front", value: v}), true));
+  p.append(el("div", {class: "plbl"}, t("feel.rear")), pills(null, [-1, 0, 1], [t("feel.looser"), t("feel.asitwas"), t("feel.safer")], tg.rear || 0, v => feel({axis: "rear", value: v}), true));
+  const it = el("button", {type: "button", class: "ghost", "aria-pressed": tg.anchor === "fingerprint" && !tg.front && !tg.rear, "data-tip": t("tip.thisisit")}, t("feel.thisisit"));
+  it.onclick = () => feel({lock: true}); p.append(it);
  }
- renderWhy();
- renderShort();
- renderFeel();
- renderGap();
- renderBrakes();
- const ready = !!(pr && pr.changes.length && pr.target && !pr.error);
- const done = ready && S.written.has(pr.signature);
- $("write").disabled = !ready || done || S.proposalBusy;
- $("write").textContent = done ? "Written" : "Write setup";
+ if (plan && plan.gap && plan.gap.length) { const g = plan.gap[0]; p.append(el("div", {class: "gap"}, t(g.axis === "rear" ? "next.gap_rear" : "next.gap_front", {s: fx(g.seconds, 1)}))); }
+ const bst = baseStint(), r = (bst && bst.rating) || {};
+ if (pr && pr.brake_pressure_by_feel && bst) {
+  const b = el("button", {type: "button", class: "ghost", "aria-pressed": !!r.lockups}, t("next.brakes"));
+  b.onclick = async () => { try { bst.rating = (await api("/api/rating", {file_name: bst.file_name, lockups: !r.lockups})).rating; scheduleProposal(); renderSetup(); } catch (e) { setStatus(e.message, true); } };
+  p.append(b);
+ }
+ const list = el("div", {class: "list" + (S.proposalBusy ? " busy" : "")});
+ for (const [i, c] of (pr ? pr.changes : []).entries()) {
+  const li = el("div", {class: "li"}), info = el("div");
+  info.append(el("div", {class: "n"}, c.name), el("div", {class: "s"}, `${c.before_text} → ${c.approx ? "≈ " : ""}${c.after_text}`));
+  if (c.reason) info.append(el("div", {class: "r"}, c.reason));
+  const b = el("button", {type: "button", class: "lock", "aria-pressed": "false", "aria-label": t("lock.lock", {name: c.name}), "data-tip": t("tip.lock")}); b.innerHTML = UNLOCK;
+  b.onclick = () => setLock(c.keys, true);
+  li.append(info, b);
+  li.onmouseenter = () => document.querySelectorAll(`#tiles [data-k="${i}"]`).forEach(e => e.classList.add("hot"));
+  li.onmouseleave = () => document.querySelectorAll(`#tiles [data-k="${i}"]`).forEach(e => e.classList.remove("hot"));
+  list.append(li);
+ }
+ for (const l of (pr && pr.locks) || []) {
+  const li = el("div", {class: "li locked"}), b = el("button", {type: "button", class: "lock", "aria-pressed": "true", "aria-label": t("lock.unlock", {name: l.name}), "data-tip": t("tip.unlock")}); b.innerHTML = LOCK;
+  b.onclick = () => setLock([l.key], false); li.append(el("div", {class: "n"}, l.name), b); list.append(li);
+ }
+ if (list.childElementCount) p.append(list);
+ p.append(el("div", {class: "status", id: "status"}));
+ const foot = el("div", {class: "foot"}), lap = plan && plan.lap, tt = el("span", {class: "t"});
+ if (lap && lap.delta != null) { tt.textContent = `${signed(lap.delta, 2)} s`; tt.append(el("small", {}, t("next.predicted", {sd: fx(lap.sd, 2)}))); }
+ const ready = !!(pr && pr.changes.length && pr.target && !pr.error), done = ready && S.written.has(pr.signature);
+ const w = el("button", {type: "button", class: "fab", id: "write"}); w.innerHTML = FLOPPY; w.append(done ? t("next.written") : t("next.write"));
+ w.disabled = !ready || done || S.proposalBusy;
+ w.onclick = async () => { w.disabled = true; try { await api("/api/write", {stint: baseStint().id, signature: pr.signature}); S.written.add(pr.signature); S.status = t("next.writtenmsg"); } catch (e) { S.status = ""; setStatus(e.message, true); await loadProposal(); return; } renderSetup(); setStatus(S.status); };
+ foot.append(tt, w); p.append(foot);
+ if (pr && pr.error) setStatus(pr.error, true); else if (S.proposalBusy) setStatus(t("setup.working"));
 }
-async function setLock(keys, locked) {
- const st = baseStint();
- if (!st) return;
- try { await api("/api/locks", {stint: st.id, keys, locked}); await loadProposal(); } catch (e) { setStatus(e.message, true); }
-}
-// Feel (§6): a toggle per axis asks for a step from how this stint felt, never a setting;
-// This is it locks the balance of this stint as the car's fingerprint. The proposal follows at once.
+async function setLock(keys, locked) { const st = baseStint(); if (!st) return; try { await api("/api/locks", {stint: st.id, keys, locked}); await loadProposal(); } catch (e) { setStatus(e.message, true); } }
 let feelBusy = false;
 async function feel(body) {
- const st = baseStint();
- if (!st || feelBusy) return;
- feelBusy = true;
- try {
-  const r = await api(body.lock ? "/api/lock" : "/api/feedback", {stint: st.id, ...body});
-  S.feelTarget = r.target;  // shows at once; the proposal that follows brings the same toggles
-  renderFeel();
-  await loadProposal();
-  S.feelTarget = null;
-  renderFeel();
- } catch (e) { setStatus(e.message, true); }
- finally { feelBusy = false; }
-}
-function renderFeel() {
- const pr = S.proposal, t = S.feelTarget && pr && S.feelTarget.car_key === pr.plan?.car_key ? S.feelTarget : pr && pr.plan && pr.plan.target;
- $("feel").hidden = !(pr && pr.plan);
- if (!t) return;
- const toggle = (axis, minus, plus) =>
-  seg(`feel-${axis}`, [-1, 0, 1], [minus, "As it was", plus], t[axis] || 0, v => feel({axis, value: v ?? 0}));
- toggle("front", "Pointier", "Lazier");
- toggle("rear", "Looser", "Safer");
- $("this-is-it").classList.toggle("on", t.anchor === "fingerprint" && !t.front && !t.rear);
-}
-$("this-is-it").onclick = () => feel({lock: true});
-// No changes (§6): one line on why; hovering it shows what the solver decided from.
-function renderWhy() {
- const pr = S.proposal, w = pr && !pr.changes.length ? pr.why : null, box = $("why");
- box.hidden = !w;
- box.textContent = w ? w.text : "";
- if (w && w.facts.length) box.setAttribute("data-tip", w.facts.join(" · ")); else box.removeAttribute("data-tip");
-}
-function renderGap() {
- const pr = S.proposal, plan = pr && pr.plan, box = $("gap");
- const lines = [];
- if (plan && plan.gap && plan.gap.length) {
-  const g = plan.gap[0];
-  lines.push(`${fx(g.seconds, 1)} s available with ${g.axis === "rear" ? "more rotation" : "a pointier front"}`);
- }
- box.hidden = !lines.length;
- box.textContent = lines.join(" · ");
-}
-function renderShort() {
- // A stint without a full lap: until you say it was fine, the proposal starts from the last one with a lap.
- const pr = S.proposal, q = pr && pr.plan && pr.plan.short, from = pr && stintById(pr.stint_id);
- $("modal-from").textContent = q && from && from.id !== q.stint ? `Next setup from Stint ${stintNo(from)}` : "Next setup";
- $("short-row").hidden = !q;
- if (!q) return;
- const st = stintById(q.stint);
- $("short-text").textContent = `Stint ${stintNo(st) || "?"} had no full lap`;
- seg("short-feel", [true, false], ["Undrivable", "It was fine"], q.undrivable, async v => {
-  if (!st) return;
-  q.undrivable = v;
-  renderShort();
-  try { st.rating = (await api("/api/rating", {file_name: st.file_name, undrivable: v})).rating; await loadProposal(); }
-  catch (e) { setStatus(e.message, true); }
- });
-}
-function renderBrakes() {
- // Prototypes (no ABS): brake pressure rises each stint until you say it's too much.
- const st = baseStint(), r = (st && st.rating) || {};
- const byFeel = !!(S.proposal && S.proposal.brake_pressure_by_feel);
- $("brake-row").hidden = !byFeel;
- if (!byFeel || !st) return;
- seg("brake-feel", [true], ["Too much brake pressure"], r.lockups ? true : null, async v => {
-  st.rating = {...(st.rating || {}), lockups: v === true};
-  renderBrakes();
-  try { st.rating = (await api("/api/rating", {file_name: st.file_name, lockups: v === true})).rating; scheduleProposal(); }
-  catch (e) { setStatus(e.message, true); }
- });
-}
-$("write").onclick = async () => {
- const st = baseStint(), pr = S.proposal;
- if (!st || !pr) return;
- $("write").disabled = true;
- try {
-  await api("/api/write", {stint: st.id, signature: pr.signature});
-  S.written.add(pr.signature);
-  closeModal();  // it went to the car's setup folder; load it in the garage
- } catch (e) { setStatus(e.message, true); await loadProposal(); }
- renderModal();
-};
-
-// ---------- tooltip ----------
-const tip = $("tip");
-function showTip(e, lines) {
- tip.replaceChildren();
- lines.forEach((l, i) => { const d = el("div"); if (i === 0 && lines.length > 1) d.append(el("b", {}, l)); else d.textContent = l; tip.append(d); });
- tip.style.display = "block";
- const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
- const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
- tip.style.left = x + "px"; tip.style.top = y + "px";
-}
-function hideTip() { tip.style.display = "none"; }
-// Anything with data-tip shows it on hover, and only then.
-let tipOn = null;
-document.addEventListener("mouseover", e => {
- const t = e.target instanceof Element ? e.target.closest("[data-tip]") : null;
- if (t === tipOn) return;
- tipOn = t;
- if (t) showTip(e, [t.getAttribute("data-tip")]); else hideTip();
-});
-document.addEventListener("mousemove", e => { if (tipOn) showTip(e, [tipOn.getAttribute("data-tip")]); });
-document.addEventListener("pointerdown", () => { if (tipOn) { tipOn = null; hideTip(); } });
-
-function dot(f, x, y, {color, filled = true, selected = false, onTip, onClick}) {
- const surface = css("--surface");
- const g = sv("g", {tabindex: 0});
- if (selected) g.append(sv("circle", {cx: x, cy: y, r: 9, fill: "none", stroke: css("--text"), "stroke-width": 1.5}));
- g.append(sv("circle", {cx: x, cy: y, r: 5, fill: filled ? color : surface, stroke: filled ? surface : color, "stroke-width": 2}));
- if (!filled) g.lastChild.setAttribute("r", 4);
- const hit = sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"});
- g.append(hit);
- if (onTip) {
-  g.addEventListener("pointermove", e => showTip(e, onTip()));
-  g.addEventListener("pointerleave", hideTip);
-  g.addEventListener("focus", () => { const r = hit.getBoundingClientRect(); showTip({clientX: r.right, clientY: r.top}, onTip()); });
-  g.addEventListener("blur", hideTip);
- }
- if (onClick) { g.style.cursor = "pointer"; g.addEventListener("click", onClick); g.addEventListener("keydown", e => { if (e.key === "Enter") onClick(); }); }
- f.svg.append(g);
-}
-// ---------- menu (§1) ----------
-function openMenu() { $("menu").classList.add("open"); $("menu-btn").setAttribute("aria-expanded", "true"); $("menu").querySelector(".mitem").focus(); }
-function closeMenu(focus) { $("menu").classList.remove("open"); $("menu-btn").setAttribute("aria-expanded", "false"); if (focus) $("menu-btn").focus(); }
-$("menu-btn").onclick = e => { e.stopPropagation(); if ($("menu").classList.contains("open")) closeMenu(); else openMenu(); };
-document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
-for (const b of document.querySelectorAll(".mitem")) b.onclick = () => {
- closeMenu();
- const go = b.dataset.go;
- if (go === "about") openAbout(); else show(go);
-};
-function openPopup(id) { $(id).classList.add("open"); $(id).querySelector(".pop-close").focus(); }
-function closePop(p) { p.classList.remove("open"); }
-for (const p of document.querySelectorAll(".pop")) {
- p.querySelector(".pop-close").onclick = () => closePop(p);
- p.addEventListener("click", e => { if (e.target === p) closePop(p); });
+ const st = baseStint(); if (!st || feelBusy) return; feelBusy = true;
+ try { const r = await api(body.lock ? "/api/lock" : "/api/feedback", {stint: st.id, ...body}); S.feelTarget = r.target; await loadProposal(); S.feelTarget = null; if (S.screen === "setup") renderSetup(); }
+ catch (e) { setStatus(e.message, true); } finally { feelBusy = false; }
 }
 
-// ---------- about (§18) ----------
-function kvTable(rows) {
- const t = el("table", {class: "kv"});
- for (const [k, v, mono] of rows) {
-  const r = el("tr"), c = el("td", {style: "text-align:left;white-space:normal;overflow-wrap:anywhere"});
-  if (mono) c.append(...v); else c.textContent = v;
-  r.append(el("td", {}, k), c);
-  t.append(r);
+// ---------- home ----------
+async function loadHome() {
+ const box = $("home");
+ let sessions = [], fact = "";
+ try { sessions = (await api("/api/sessions")).sessions; } catch (e) { showError(e.message); }
+ try { fact = (await api("/api/welcome")).fact || ""; } catch (e) {}
+ const live = sessions.filter(s => s.laps > 0).sort((a, b) => when(b.recorded_at).k.localeCompare(when(a.recorded_at).k));
+ const hero = el("div", {class: "hero"}), recent = el("div", {class: "recent"});
+ hero.append(el("div", {class: "hello"}, t("home.hello")));
+ if (fact) hero.append(el("div", {class: "fact"}, fact));
+ const stat = el("div", {class: "stat"}), w = S.state && S.state.watcher;
+ stat.innerHTML = `<span>${S.live.state === "live" ? t("nav.live", {session: S.live.track || ""}) : t("nav.off")}</span><span>${t("home.sessions", {n: `<b>${sessions.length}</b>`})}</span>` +
+  (w && w.last_import ? `<span>${t("home.lastimport", {when: `<b>${new Date(w.last_import * 1000).toLocaleString(LANG)}</b>`})}</span>` : "");
+ hero.append(stat);
+ if (!live.length) hero.append(el("div", {class: "fact"}, t("home.start")));
+ else {
+  const last = live[0], lw = when(last.recorded_at), best = Math.min(...live.filter(s => s.car_name === last.car_name && s.track === last.track).map(s => s.best).filter(v => v != null));
+  const c = el("div", {class: "cont"});
+  c.innerHTML = `<div class="k">${t("home.continue")}</div><div><div class="trk"></div><div class="car"><span class="nm"></span><span class="cls"></span></div></div><div class="lt">${fmtLap(best)}<small>${t("home.best", {date: lw.d})}</small></div>`;
+  c.querySelector(".trk").textContent = shortTrack(last.track); c.querySelector(".nm").textContent = last.car_name; c.querySelector(".cls").textContent = className(last.car_class);
+  const acts = el("div", {class: "acts"}), a1 = el("button", {type: "button", class: "btnp"}, t("home.open")), a2 = el("button", {type: "button", class: "btnt"}, t("home.next"));
+  a1.onclick = async () => { await openSession(last.id, true); show("analysis"); }; a2.onclick = async () => { await openSession(last.id, true); show("setup"); };
+  acts.append(a1, a2); c.append(acts); hero.append(c);
+  const ws = new Date(lw.date); ws.setDate(ws.getDate() - 6);
+  const wk = live.filter(s => when(s.recorded_at).date >= ws), week = el("div", {class: "week"});
+  for (const [v, k] of [[wk.length, "home.wk_sessions"], [wk.reduce((a, s) => a + s.laps, 0), "home.wk_laps"], [new Set(wk.map(s => s.track)).size, "home.wk_tracks"]]) { const d = el("div", {class: "wk"}); d.append(el("div", {class: "v"}, String(v)), el("div", {class: "k"}, t(k))); week.append(d); }
+  hero.append(week);
  }
- return t;
-}
-async function openAbout() {
- openPopup("about");
- try {
-  const a = await api("/api/about");
-  $("about-body").replaceChildren(kvTable([["Version", a.version], ["Metrics version", String(a.metrics_version)],
-   ["Database", [el("span", {class: "mono"}, a.database)], true], ["Recordings", String(a.recordings)], ["Laps", String(a.laps)]]));
- } catch (e) { $("about-body").replaceChildren(el("div", {class: "empty"}, e.message)); }
+ const rh = el("div", {class: "recenth"}), all = el("button", {type: "button", class: "linkbtn"}, t("home.all")); all.onclick = () => show("history");
+ rh.append(el("span", {}, t("home.recent")), all); recent.append(rh);
+ const seen = new Set();
+ for (const s of live) { const k = s.car_name + "|" + s.track; if (seen.has(k)) continue; seen.add(k); if (seen.size > 6) break;
+  const r = el("button", {type: "button", class: "rr", "data-tip": t("tip.openanalysis")}), w2 = when(s.recorded_at);
+  r.append(el("span", {class: "t"}, shortTrack(s.track)), el("span", {class: "b"}, fmtLap(s.best)), el("span", {class: "s"}, s.car_name), el("span", {class: "d"}, w2.d));
+  r.onclick = async () => { await openSession(s.id, true); show("analysis"); }; recent.append(r); }
+ box.replaceChildren(hero, recent);
 }
 
-// ---------- driver (§16) ----------
-const carName = k => String(k).replace(/_/g, " ");
-function factsTable(headers, rows) {
- const t = el("table", {class: "facts"}), h = el("tr");
- headers.forEach(x => h.append(el("th", {}, x)));
- const thead = el("thead"); thead.append(h);
- const tb = el("tbody");
- for (const r of rows) {
-  const tr = el("tr");
-  r.forEach((c, i) => tr.append(el("td", {class: i === r.length - 1 ? "line" : ""}, c)));
-  tb.append(tr);
- }
- t.append(thead, tb);
- return t;
+// ---------- history ----------
+async function loadHistory() {
+ let sessions = [];
+ try { sessions = (await api("/api/sessions")).sessions; } catch (e) { showError(e.message); }
+ const m = new Map();
+ sessions.filter(s => s.laps > 0).forEach(s => { const k = s.car_name + "|" + s.track; if (!m.has(k)) m.set(k, {k, car: s.car_name, track: s.track, cls: className(s.car_class), sess: []}); m.get(k).sess.push(s); });
+ S.groups = [...m.values()].map(g => { g.sess.sort((a, b) => when(b.recorded_at).k.localeCompare(when(a.recorded_at).k)); g.best = Math.min(...g.sess.map(s => s.best).filter(v => v != null)); g.laps = g.sess.reduce((a, s) => a + s.laps, 0); g.last = when(g.sess[0].recorded_at); return g; });
+ if (!S.hopen.size && S.groups.length) S.hopen.add([...S.groups].sort((a, b) => b.last.k.localeCompare(a.last.k))[0].k);
+ renderHistory();
 }
-function feelPlot(box, cars) {
- // Looser ↔ Safer across, Pointier ↔ Lazier up, button steps from the class's usual balance.
- const lim = Math.max(3, Math.ceil(Math.max(...cars.flatMap(c => [Math.abs(c.rear), Math.abs(c.front)]))));
- const W = 420, H = 360, m = {l: 64, r: 64, t: 22, b: 30}, pw = W - m.l - m.r, ph = H - m.t - m.b;
- const sx = v => m.l + (v + lim) / (2 * lim) * pw, sy = v => m.t + (1 - (v + lim) / (2 * lim)) * ph;
- const svg = sv("svg", {class: "plot", viewBox: `0 0 ${W} ${H}`, height: H, role: "img", style: `max-width:${W}px`});
- const g = sv("g", {class: "grid"});
- for (let v = -lim; v <= lim; v++) {
-  g.append(sv("line", {x1: sx(v), x2: sx(v), y1: m.t, y2: m.t + ph}), sv("line", {x1: m.l, x2: m.l + pw, y1: sy(v), y2: sy(v)}));
- }
- svg.append(g, sv("line", {x1: sx(0), x2: sx(0), y1: m.t, y2: m.t + ph, stroke: css("--muted"), "stroke-width": 1}),
-  sv("line", {x1: m.l, x2: m.l + pw, y1: sy(0), y2: sy(0), stroke: css("--muted"), "stroke-width": 1}));
- svg.append(sv("text", {x: m.l - 8, y: sy(0) + 4, "text-anchor": "end"}, "Looser"), sv("text", {x: m.l + pw + 8, y: sy(0) + 4}, "Safer"),
-  sv("text", {x: sx(0), y: m.t - 8, "text-anchor": "middle"}, "Lazier"), sv("text", {x: sx(0), y: H - 8, "text-anchor": "middle"}, "Pointier"));
- const f = {svg};
- for (const c of cars) {
-  dot(f, sx(c.rear), sy(c.front), {color: css("--s1"), onTip: () => [carName(c.car_key), c.line, `${c.layout} · ${fmtStamp(c.created_at)}`]});
-  svg.append(sv("text", {x: sx(c.rear) + 9, y: sy(c.front) - 8}, carName(c.car_key)));
- }
- box.append(svg);
+function spark(g) {
+ const pts = [...g.sess].reverse().map(s => s.best).filter(v => v != null);
+ if (pts.length < 2) return el("span", {class: "sub"}, t("history.one"));
+ let run = Infinity; const pb = pts.map(v => (run = Math.min(run, v))), lo = Math.min(...pb), hi = Math.max(...pb), W = 150, H = 30, X = i => i / (pb.length - 1) * (W - 8) + 4, Y = v => hi === lo ? H / 2 : 4 + (v - lo) / (hi - lo) * (H - 8);
+ const s = sv("svg", {class: "spark", viewBox: `0 0 ${W} ${H}`, "aria-label": t("history.trend")});
+ s.append(sv("path", {d: pb.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(""), fill: "none", stroke: css("--pri"), "stroke-width": 1.8, "stroke-linejoin": "round"}), sv("circle", {cx: X(pb.length - 1), cy: Y(pb.at(-1)), r: 3, fill: css("--pri")}));
+ return s;
 }
+function renderHistory() {
+ const box = $("history"), groups = S.groups || [];
+ const bar = el("div", {class: "bar"}), search = el("label", {class: "search"}), inp = el("input", {type: "search", placeholder: t("history.search"), "aria-label": t("history.search")});
+ inp.value = S.hq; inp.oninput = () => { S.hq = inp.value; renderList(); };
+ search.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>'; search.append(inp);
+ const classes = ["all", ...[...new Set(groups.map(g => g.cls))].sort()];
+ const count = el("span", {class: "count"});
+ bar.append(search, el("span", {class: "kq"}, t("history.class")), pills(null, classes, classes.map(c => c === "all" ? t("history.all") : c), S.hcls, v => { S.hcls = v; renderList(); }),
+  el("span", {class: "kq"}, t("history.sort")), pills(null, ["recent", "track", "laps"], [t("history.recent"), t("history.track"), t("history.mostlaps")], S.hsort, v => { S.hsort = v; renderList(); }), el("span", {class: "grow"}), count);
+ const list = el("div", {class: "hl"});
+ box.replaceChildren(bar, list);
+ function renderList() {
+  const q = S.hq.trim().toLowerCase();
+  let gs = groups.filter(g => (S.hcls === "all" || g.cls === S.hcls) && (!q || (g.car + " " + g.track + " " + shortTrack(g.track)).toLowerCase().includes(q)));
+  gs.sort(S.hsort === "track" ? (a, b) => shortTrack(a.track).localeCompare(shortTrack(b.track)) : S.hsort === "laps" ? (a, b) => b.laps - a.laps : (a, b) => b.last.k.localeCompare(a.last.k));
+  count.textContent = t("history.count", {n: gs.length, s: gs.reduce((a, g) => a + g.sess.length, 0)});
+  if (!gs.length) { list.replaceChildren(el("div", {class: "grp empty"}, groups.length ? t("history.nomatch") : t("history.none"))); return; }
+  list.replaceChildren(...gs.map(g => {
+   const open = S.hopen.has(g.k), d = el("div", {class: "grp" + (open ? " open" : "")}), h = el("button", {type: "button", class: "gh", "aria-expanded": open});
+   const tcell = el("div"); tcell.append(el("div", {class: "trk"}, shortTrack(g.track)), el("div", {class: "sub"}, g.track));
+   const car = el("div", {class: "car"}); car.append(el("span", {class: "nm", title: g.car}, g.car), el("span", {class: "cls"}, g.cls));
+   const n1 = el("div", {class: "num"}, String(g.sess.length)); n1.append(el("small", {}, t(g.sess.length === 1 ? "history.session" : "history.sessions")));
+   const n2 = el("div", {class: "num"}); n2.append(el("span", {class: "best"}, fmtLap(g.best)), el("small", {}, t(g.laps === 1 ? "stint.lap" : "stint.laps", {n: g.laps})));
+   const sp = el("div"); sp.append(spark(g));
+   const dt = el("div", {class: "date"}, g.last.d); dt.append(el("div", {class: "sub"}, g.last.t));
+   h.append(tcell, car, n1, n2, sp, dt); h.insertAdjacentHTML("beforeend", '<svg class="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>');
+   h.onclick = () => { if (S.hopen.has(g.k)) S.hopen.delete(g.k); else S.hopen.add(g.k); renderList(); };
+   d.append(h);
+   if (open) {
+    const ss = el("div", {class: "sess"}), hd = el("div", {class: "shead"});
+    for (const k of ["history.h_session", "history.h_stints", "history.h_laps", "history.h_best", "history.h_tobest"]) hd.append(el("span", {}, t(k)));
+    hd.append(el("span")); ss.append(hd);
+    for (const s of g.sess) {
+     const w = when(s.recorded_at), pb = s.best === g.best, r = el("button", {type: "button", class: "sr", "data-tip": t("tip.openanalysis")}), dd = el("span", {}, w.d + " ");
+     dd.append(el("span", {class: "k"}, w.t));
+     r.append(dd, el("span", {}, String(s.stints)), el("span", {}, String(s.laps)), el("span", {class: pb ? "pb" : ""}, fmtLap(s.best)), el("span", {class: "d"}, pb ? t("history.isbest") : `+${fx(s.best - g.best, 3)} s`));
+     r.insertAdjacentHTML("beforeend", '<svg class="go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>');
+     r.onclick = async () => { await openSession(s.id, true); show("analysis"); };
+     ss.append(r);
+    }
+    d.append(ss);
+   }
+   return d;
+  }));
+ }
+ renderList();
+ requestAnimationFrame(refreshThumbs);
+}
+
+// ---------- driver ----------
 async function loadDriver() {
  const box = $("driver");
- let d;
- try { d = await api("/api/driver"); } catch (e) { showError(e.message); return; }
- if (!d.classes.length) { box.replaceChildren(el("div", {class: "empty"}, "No laps yet")); return; }
+ let d; try { d = await api("/api/driver"); } catch (e) { showError(e.message); return; }
+ if (!d.classes.length) { box.replaceChildren(el("div", {class: "sec empty"}, t("stints.none"))); return; }
+ const COLS = ["--pri", "--ter", "--t1"];
  box.replaceChildren(...d.classes.map(c => {
-  const sec = el("section"), h = el("h2", {}, c.car_class);
-  h.append(el("span", {class: "mono"}, `${c.laps} laps`));
-  sec.append(h);
-  if (!c.cars.length) { sec.append(el("div", {class: "empty"}, "No fingerprint yet")); return sec; }
-  feelPlot(sec, c.cars);
-  sec.append(factsTable(["Car", ""], c.cars.map(x => [carName(x.car_key), x.line])));
-  return sec;
+  const sec = el("div", {class: "sec"}), h = el("h2", {}, className(c.car_class)); h.append(el("small", {}, t("stint.laps", {n: c.laps}))); sec.append(h);
+  if (!c.cars.length) { sec.append(el("div", {class: "muted"}, t("driver.none"))); return sec; }
+  const wrap = el("div", {class: "drv"}), W = 340, H = 260, P = 34, M = Math.max(2.5, ...c.cars.flatMap(x => [Math.abs(x.rear), Math.abs(x.front)]));
+  const X = v => P + (v + M) / (2 * M) * (W - 2 * P), Y = v => H - P - (v + M) / (2 * M) * (H - 2 * P);
+  const s = sv("svg", {class: "plot", viewBox: `0 0 ${W} ${H}`, role: "img"});
+  s.append(sv("rect", {x: P, y: P, width: W - 2 * P, height: H - 2 * P, rx: 14, fill: css("--l2")}), sv("line", {x1: X(0), x2: X(0), y1: P + 8, y2: H - P - 8, stroke: css("--t3"), "stroke-opacity": .5}), sv("line", {x1: P + 8, x2: W - P - 8, y1: Y(0), y2: Y(0), stroke: css("--t3"), "stroke-opacity": .5}));
+  s.append(sv("text", {x: W / 2, y: P - 10, "text-anchor": "middle", fill: css("--t3"), "font-size": 12}, t("feel.lazier")), sv("text", {x: W / 2, y: H - P + 22, "text-anchor": "middle", fill: css("--t3"), "font-size": 12}, t("feel.pointier")),
+   sv("text", {x: P - 8, y: H / 2 + 4, "text-anchor": "end", fill: css("--t3"), "font-size": 12}, t("feel.looser")), sv("text", {x: W - P + 8, y: H / 2 + 4, fill: css("--t3"), "font-size": 12}, t("feel.safer")));
+  const lines = el("div", {class: "cars"});
+  c.cars.forEach((x, i) => { const col = css(COLS[i % 3]), cx = X(x.rear), cy = Y(x.front);
+   s.append(sv("circle", {cx, cy, r: 7, fill: col}), sv("text", {x: cx + 12, y: cy + 4, fill: css("--t1"), "font-size": 12.5}, carName(x.car_key)));
+   const l = el("div", {class: "carl", "data-tip": `${x.layout} · ${fmtStamp(x.created_at)}`}); l.innerHTML = `<span class="d" style="background:${col}"></span>`; l.append(el("b", {}, carName(x.car_key)), el("span", {}, x.line)); lines.append(l); });
+  wrap.append(s, lines); sec.append(wrap); return sec;
  }));
 }
 
-// ---------- settings (§17) ----------
-const FOLDER_NAME = {install: "LMU install", telemetry: "Telemetry", settings: "Settings", database: "Database"};
+// ---------- settings ----------
+const FOLDER = {install: "settings.f_install", telemetry: "settings.f_telemetry", settings: "settings.f_settings", database: "settings.f_database"};
 let confirmForget = null, dataStatus = "";
-function srow(label, ...right) {
- const r = el("div", {class: "srow"});
- r.append(el("span", {}, label));
- const mid = right.length > 1 ? right[0] : el("span");
- const acts = el("div", {class: "acts"});
- acts.append(...(right.length > 1 ? right.slice(1) : right));
- r.append(mid, acts);
- return r;
-}
-function segEl(values, labels, current, onPick) {
- const box = el("div", {class: "seg", role: "group"});
- box.append(...values.map((v, i) => {
-  const b = el("button", {type: "button", class: "btn" + (v === current ? " on" : ""), "aria-pressed": v === current}, labels[i]);
-  b.onclick = () => { if (v !== current) onPick(v); };
-  return b;
- }));
- return box;
-}
-async function loadSettings() {
- try { S.settings = await api("/api/settings"); Object.assign(UNIT, S.settings.units); } catch (e) { showError(e.message); return; }
- renderSettings();
-}
-async function putSettings(body) {
- try {
-  S.settings = await api("/api/settings", body);
-  Object.assign(UNIT, S.settings.units);
- } catch (e) { showError(e.message); return; }
- renderSettings();
- if (body.units) { renderLapBox(); drawAll(); if (S.table) renderTable(); await loadProposal(); }
-}
+async function loadSettings() { try { S.settings = await api("/api/settings"); Object.assign(UNIT, S.settings.units); } catch (e) { showError(e.message); return; } renderSettings(); }
+async function putSettings(body) { try { S.settings = await api("/api/settings", body); Object.assign(UNIT, S.settings.units); } catch (e) { showError(e.message); return; } renderSettings(); if (body.units) await loadProposal(); }
+function row(label, mid, right) { const r = el("div", {class: "row"}); r.append(el("span", {class: "k"}, label), mid || el("span"), right || el("span")); return r; }
+function sec(title, ...rows) { const s = el("div", {class: "sec"}); s.append(el("h2", {}, title), ...rows); return s; }
 function renderSettings() {
- const st = S.settings, box = $("settings");
- if (!st) return;
- const ch = st.unit_choices;
- const appearance = el("section");
- appearance.append(el("h2", {}, "Appearance"),
-  srow("Theme", segEl(["system", "dark", "light"], ["System", "Dark", "Light"], themePref(), v => setThemePref(v))));
- const unitsSec = el("section");
- unitsSec.append(el("h2", {}, "Units"),
-  srow("Speed", segEl(ch.speed, ch.speed, st.units.speed, v => putSettings({units: {speed: v}}))),
-  srow("Temperature", segEl(ch.temp, ch.temp, st.units.temp, v => putSettings({units: {temp: v}}))),
-  srow("Pressure", segEl(ch.pressure, ch.pressure, st.units.pressure, v => putSettings({units: {pressure: v}}))));
- const data = el("section");
- data.append(el("h2", {}, "Data"));
- for (const f of st.folders) {
-  const open = el("button", {type: "button", class: "btn quiet"}, "Open folder");
-  open.disabled = !f.path;
-  open.onclick = async () => { try { await api("/api/open-folder", {which: f.which}); } catch (e) { showError(e.message); } };
-  data.append(srow(FOLDER_NAME[f.which] || f.which, el("span", {class: "path"}, f.path || "–"), open));
- }
- const imp = el("button", {type: "button", class: "btn"}, "Import now");
- imp.onclick = async () => {
-  imp.disabled = true;
-  try { const r = await api("/api/import", {}); dataStatus = `Imported ${r.imported}`; } catch (e) { showError(e.message); }
-  renderSettings();
- };
- const rec = el("button", {type: "button", class: "btn"}, st.recomputing ? "Recomputing" : "Recompute metrics");
- rec.disabled = st.recomputing;
- rec.onclick = async () => {
-  try { await api("/api/recompute", {}); } catch (e) { showError(e.message); return; }
-  await loadSettings(); pollRecompute();
- };
- const status = st.recomputed != null && !st.recomputing ? `Recomputed ${st.recomputed}` : dataStatus;
- data.append(srow("", el("span", {class: "mono muted"}, status), imp, rec));
- const prof = el("section");
- prof.append(el("h2", {}, "Driver profile"));
- const fps = st.fingerprints || [];
- if (!fps.length) prof.append(el("div", {class: "empty"}, "No fingerprint yet"));
+ const st = S.settings, box = $("settings"); if (!st) return;
+ const ch = st.unit_choices, langs = Object.keys(LANGS);
+ const app = sec(t("settings.appearance"),
+  row(t("settings.theme"), null, pills(null, ["system", "dark", "light"], [t("settings.system"), t("settings.dark"), t("settings.light")], themePref(), v => setThemePref(v))),
+  row(t("settings.language"), null, pills(null, langs, langs.map(l => LANGS[l]), LANG, async v => { try { localStorage.setItem("autosetup.lang", v); } catch (e) {} await loadStrings(); renderNav(); show(S.screen); })));
+ const units = sec(t("settings.units"),
+  row(t("settings.speed"), null, pills(null, ch.speed, ch.speed, st.units.speed, v => putSettings({units: {speed: v}}))),
+  row(t("settings.temp"), null, pills(null, ch.temp, ch.temp, st.units.temp, v => putSettings({units: {temp: v}}))),
+  row(t("settings.pressure"), null, pills(null, ch.pressure, ch.pressure, st.units.pressure, v => putSettings({units: {pressure: v}}))));
+ const tp = st.templates || {}, target = S.proposal && S.proposal.target;
+ const tpl = (key, label, preview) => { const f = el("label", {class: "field"}), i = el("input", {type: "text", value: tp[key] || tp["default_" + key], spellcheck: "false", "aria-label": label});
+  i.onchange = async () => { await putSettings({templates: {[key]: i.value || tp["default_" + key]}}); await loadProposal(); renderSettings(); }; f.append(i, el("span", {class: "prev"}, preview || "")); return row(label, f); };
+ const files = sec(t("settings.files"), tpl("name", t("settings.name"), target && target.file), tpl("notes", t("settings.desc"), target && target.notes));
+ const data = sec(t("settings.data"));
+ for (const f of st.folders) { const o = el("button", {type: "button", class: "tb"}, t("settings.open")); o.disabled = !f.path; o.onclick = async () => { try { await api("/api/open-folder", {which: f.which}); } catch (e) { showError(e.message); } }; data.append(row(t(FOLDER[f.which] || f.which), el("span", {class: "path"}, f.path || "–"), o)); }
+ const imp = el("button", {type: "button", class: "tb"}, t("settings.import")); imp.onclick = async () => { imp.disabled = true; try { const r = await api("/api/import", {}); dataStatus = t("settings.imported", {n: r.imported}); } catch (e) { showError(e.message); } renderSettings(); };
+ const rec = el("button", {type: "button", class: "tb"}, st.recomputing ? t("settings.recomputing") : t("settings.recompute")); rec.disabled = st.recomputing;
+ rec.onclick = async () => { try { await api("/api/recompute", {}); } catch (e) { showError(e.message); return; } await loadSettings(); pollRecompute(); };
+ const acts = el("div", {class: "acts"}); acts.append(imp, rec);
+ data.append(row(t("settings.recordings"), el("span", {class: "path muted"}, st.recomputing ? t("settings.recomputing") : dataStatus || t("settings.uptodate")), acts));
+ const prof = sec(t("settings.profile")), fps = st.fingerprints || [];
+ if (!fps.length) prof.append(el("div", {class: "muted"}, t("driver.none")));
  for (const f of fps) {
-  const info = el("span", {class: "mono muted"}, `${f.car_class} · ${f.layout} · ${fmtStamp(f.created_at)}`);
+  const info = el("span", {class: "path muted"}, `${className(f.car_class)} · ${f.layout} · ${fmtStamp(f.created_at)}`);
   if (confirmForget === f.car_key) {
-   const yes = el("button", {type: "button", class: "btn"}, "Confirm forget"), no = el("button", {type: "button", class: "btn quiet"}, "Cancel");
-   yes.onclick = async () => {
-    confirmForget = null;
-    try { await api("/api/forget", {car_key: f.car_key}); } catch (e) { showError(e.message); }
-    await loadSettings(); await loadProposal();
-   };
-   no.onclick = () => { confirmForget = null; renderSettings(); };
-   prof.append(srow(carName(f.car_key), info, no, yes));
-  } else {
-   const b = el("button", {type: "button", class: "btn"}, "Forget fingerprint");
-   b.onclick = () => { confirmForget = f.car_key; renderSettings(); };
-   prof.append(srow(carName(f.car_key), info, b));
-  }
+   const a2 = el("div", {class: "acts"}), no = el("button", {type: "button", class: "tb"}, t("settings.cancel")), yes = el("button", {type: "button", class: "tb warn"}, t("settings.confirmforget"));
+   no.onclick = () => { confirmForget = null; renderSettings(); }; yes.onclick = async () => { confirmForget = null; try { await api("/api/forget", {car_key: f.car_key}); } catch (e) { showError(e.message); } await loadSettings(); await loadProposal(); };
+   a2.append(no, yes); prof.append(row(carName(f.car_key), info, a2));
+  } else { const b = el("button", {type: "button", class: "tb warn"}, t("settings.forget")); b.onclick = () => { confirmForget = f.car_key; renderSettings(); }; prof.append(row(carName(f.car_key), info, b)); }
  }
- const files = el("section");
- files.append(el("h2", {}, "Setup files"));
- const t = st.templates || {}, target = S.proposal && S.proposal.target;
- const tpl = (key, label, preview) => {
-  const input = el("input", {type: "text", value: t[key] || t["default_" + key], spellcheck: "false", "aria-label": label});
-  input.onchange = async () => { await putSettings({templates: {[key]: input.value || t["default_" + key]}}); await loadProposal(); renderSettings(); };
-  const col = el("div", {class: "tpl"});
-  col.append(input, el("span", {class: "muted"}, preview || ""));
-  return srow(label, col, el("span"));
- };
- files.append(tpl("name", "Name", target && target.file), tpl("notes", "Description", target && target.notes));
- box.replaceChildren(appearance, unitsSec, files, data, prof);
+ box.replaceChildren(app, units, files, data, prof);
+ requestAnimationFrame(refreshThumbs);
 }
-const fmtStamp = s => { const m = String(s).match(/(\d{4})-(\d\d)-(\d\d)/); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s); };
-async function pollRecompute() {
- await loadSettings();
- if (S.settings && S.settings.recomputing) setTimeout(pollRecompute, 1000);
+async function pollRecompute() { await loadSettings(); if (S.settings && S.settings.recomputing) setTimeout(pollRecompute, 1000); }
+
+// ---------- about ----------
+async function openAbout() {
+ $("about").hidden = false; $("about-close").focus();
+ const b = $("about-body"); b.replaceChildren();
+ try { const a = await api("/api/about"); for (const [k, v] of [["about.version", a.version], ["about.metrics", a.metrics_version], ["about.database", a.database], ["about.recordings", a.recordings], ["about.laps", a.laps]]) b.append(el("dt", {}, t(k)), el("dd", {}, String(v ?? "–"))); }
+ catch (e) { b.append(el("dd", {}, e.message)); }
 }
+$("about-close").onclick = () => { $("about").hidden = true; };
+$("about").addEventListener("click", e => { if (e.target === $("about")) $("about").hidden = true; });
 
 // ---------- start ----------
-setThemePref(themePref());
 (async () => {
+ await loadStrings();
+ setThemePref(themePref());
  try { const w = await loadState(); importStamp = `${w.imported}|${w.last_import}`; } catch (e) { showError(e.message); }
  try { S.settings = await api("/api/settings"); Object.assign(UNIT, S.settings.units); } catch (e) {}
  try { S.live = await api("/api/live"); } catch (e) {}
  renderNav();
  if (S.live.state === "live" && S.live.session) { await openSession(S.live.session, false); show("analysis"); }
- else if (S.live.state === "live") { renderSession(); show("analysis"); }
- else { show("welcome"); loadWelcome(); }
+ else if (S.live.state === "live") show("analysis");
+ else show("home");
  setTimeout(pollLive, 3000);
  setInterval(refresh, 1000);
 })();
 let down = false;
-setInterval(async () => {
- try { const r = await fetch("/api/health", {cache: "no-store"}); if (!r.ok) throw 0; if (down) location.reload(); down = false; }
- catch (e) { down = true; }
-}, 2000);
+setInterval(async () => { try { const r = await fetch("/api/health", {cache: "no-store"}); if (!r.ok) throw 0; if (down) location.reload(); down = false; } catch (e) { down = true; } }, 2000);
+
 </script>
 </body></html>

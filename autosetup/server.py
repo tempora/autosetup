@@ -9,6 +9,7 @@ the game has finished writing them.
 from __future__ import annotations
 
 import json
+import re
 import os
 import socket
 import subprocess
@@ -474,6 +475,19 @@ class Handler(BaseHTTPRequestHandler):
                 body = (WEB_DIR / "index.html").read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif url.path.startswith("/i18n/"):
+                # UI strings: one plain JSON file per language in web/i18n, editable without a rebuild
+                name = url.path[len("/i18n/"):]
+                f = WEB_DIR / "i18n" / name
+                if not re.fullmatch(r"[A-Za-z_-]{2,20}\.json", name) or not f.is_file():
+                    return self._json({"error": "not found"}, 404)
+                body = f.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()

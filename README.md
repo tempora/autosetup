@@ -35,7 +35,8 @@ Drive a few laps, say how the car should feel, and it writes the next setup into
 
 1. Download the installer from [Releases](https://github.com/tempora/autosetup/releases/latest) and run it (Windows 10/11; LMU through Steam is found automatically).
 2. In LMU, turn telemetry recording on and drive. Stints show up when you're back in the garage.
-3. **Write setup** saves `autosetup_*.svm` to LMU's Settings folder. Load it in the garage, no restart needed.
+3. In **Setup**, say how the car should be: **Front should be** Pointier / As it was / Lazier, **Rear should be** Looser / As it was / Safer. Press **This is it** when it feels right.
+4. **Write setup** saves `autosetup_*.svm` to LMU's Settings folder. Load it in the garage, no restart needed.
 
 ## DAM plugin (optional)
 
