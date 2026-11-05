@@ -6,7 +6,7 @@ everything works from the game's recordings, and a matching .ld only adds channe
 
 File layout (little-endian): the header holds a pointer to the first channel's metadata;
 each channel's metadata is a linked list node with its sample count, rate, data pointer,
-data type and the conversion ``(raw / scale * 10^-dec + shift) * mul``.
+data type and the conversion ``raw / scale * 10^-dec * mul + shift``.
 
 ``Session Elapsed Time`` runs on the same session clock as the game recording's
 ``GPS Time``, so a log lines up with a recording by session time (``attach``).
@@ -74,7 +74,7 @@ class MotecLog:
     def values(self, name: str) -> np.ndarray:
         ch = self.channels[name]
         raw = np.frombuffer(self._raw, dtype=ch.numpy_type(), count=ch.count, offset=ch.data_ptr).astype(np.float64)
-        return (raw / (ch.scale or 1) * 10.0 ** -ch.dec + ch.shift) * (ch.mul or 1)
+        return raw / (ch.scale or 1) * 10.0 ** -ch.dec * (ch.mul or 1) + ch.shift
 
     def channel(self, name: str) -> tuple[np.ndarray, np.ndarray]:
         """(session time, values). Every channel spans the log from its start; sample i of a
@@ -168,21 +168,27 @@ def clock_offset(log: MotecLog, t: np.ndarray, speed_kmh: np.ndarray) -> float:
     return float(lags[int(np.nanargmax(corr))])
 
 
+def blank(log: MotecLog, name: str) -> bool:
+    """The game sent nothing for this channel: it reads zero through the whole log. LMU
+    does this per car, e.g. tyre load and forces for GT3 and LMP2, downforce for all."""
+    return bool(np.all(np.abs(log.values(name)) < 1e-3))
+
+
 def resample(log: MotecLog, t: np.ndarray, offset: float = 0.0) -> dict[str, np.ndarray]:
-    """Every channel the pipeline uses that the log has, interpolated onto ``t`` (session
-    seconds; ``offset`` from ``clock_offset``). Per-wheel channels come back as (n, 4) in
-    FL, FR, RL, RR order; NaN outside the log."""
+    """Every channel the pipeline uses that the log has and the game filled, interpolated
+    onto ``t`` (session seconds; ``offset`` from ``clock_offset``). Per-wheel channels come
+    back as (n, 4) in FL, FR, RL, RR order; NaN outside the log."""
     out: dict[str, np.ndarray] = {}
     for key, base in WHEEL_CHANNELS.items():
         names = [f"{base} {w}" for w in WHEELS]
-        if all(n in log.channels for n in names):
+        if all(n in log.channels for n in names) and not all(blank(log, n) for n in names):
             cols = []
             for n in names:
                 tt, v = log.channel(n)
                 cols.append(np.interp(t, tt + offset, v, left=np.nan, right=np.nan))
             out[key] = np.column_stack(cols)
     for key, name in CAR_CHANNELS.items():
-        if name in log.channels:
+        if name in log.channels and not blank(log, name):
             tt, v = log.channel(name)
             out[key] = np.interp(t, tt + offset, v, left=np.nan, right=np.nan)
     return out
