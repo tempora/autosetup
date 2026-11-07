@@ -25,6 +25,8 @@ brake_temp = [450.0, 850.0]
 bottoming_s = 0.2
 min_ride_height_mm = 2.0
 lower_above_mm = 25.0
+# Front ride height always at its lowest setting: moved there, never raised, never searched.
+front_rh_at_min = false
 # Third spring (prototypes): bottoming while the axle's third spring is on its packers
 # less than this share of the lap → a packer step in, instead of a higher ride height
 # (which costs downforce). How much packer suits you otherwise is left to the model.
@@ -135,6 +137,9 @@ fuel_s_per_l = 0.03
 # balance setups before the model replaces the balance rules.
 model_min_stints = 4
 model_min_setups = 3
+
+[GT3]
+front_rh_at_min = true  # a GT3 always runs the front at the minimum
 
 [Hyper]
 brake_temp = [400.0, 1000.0]

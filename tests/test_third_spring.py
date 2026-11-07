@@ -7,7 +7,7 @@ import numpy as np
 from autosetup.metrics.compute import _third_contacts, _third_spring
 from autosetup.metrics.signals import GRID_HZ
 from autosetup.opt.space import damper_dims, main_dims
-from tests.test_rules import _setup, run
+from tests.test_rules import FREE_FRONT, _setup, run
 
 THIRD = {
     "VM_FRONT_3RD_PACKERS": dict(minValue=0, maxValue=21, value=14, stringValue="1.4 cm"),
@@ -47,7 +47,8 @@ def test_no_third_spring_metrics_without_a_third_spring():
 
 def test_bottoming_without_packer_contact_adds_packer_not_ride_height():
     setup = _setup(THIRD)
-    pr = run({"bottoming_s": 1.0, "rh_min_fl": 0.5, "rh_min_fr": 0.6, "third_packers_f": 0.01}, setup)
+    pr = run({"bottoming_s": 1.0, "rh_min_fl": 0.5, "rh_min_fr": 0.6, "third_packers_f": 0.01}, setup,
+             knowledge=FREE_FRONT)  # third springs: a prototype, front ride height free
     [c] = [c for c in pr.changes if c.group == "platform"]
     assert c.keys == ["VM_FRONT_3RD_PACKERS"] and c.delta == 1
     assert "on the packers only 1%" in c.reason

@@ -38,7 +38,7 @@ from autosetup.opt.laptime import UNKNOWN_SD, lap_function
 from autosetup.opt.platform import platform_of
 from autosetup.opt.priors import sensitivities
 from autosetup.opt.space import DAMPERS, MAIN, Dim, aero_wing, damper_dims, main_dims, setup_fingerprint
-from autosetup.rules import Change, Proposal, _index_dir, manages_brake_pressure, propose
+from autosetup.rules import FRONT_RH, Change, Proposal, _index_dir, manages_brake_pressure, propose
 from autosetup.scales import CarScales, build_scales
 from autosetup.setup_writer import WriteError, write_setup
 from autosetup.sim.aero import Platform
@@ -95,7 +95,7 @@ def _bb_reach(d: Dim, scales: CarScales) -> int:
 
 def _by_kind(table: dict, name: str):
     return next((v for k, v in table.items() if name == k or (k.endswith("_") and name.startswith(k))), None)
-PHASE = {"entry": "at turn-in", "mid": "at the apex", "exit": "on exit"}
+PHASE = {"braking": "under braking", "entry": "at turn-in", "mid": "at the apex", "exit": "on exit"}
 BAND = {"low": "slow", "high": "fast"}
 SMALL_ALONE = "small on its own · works with the other changes"
 
@@ -448,6 +448,8 @@ class Advisor:
             pr.notes += plan.notes
             return pr, plan
         taken = set(locks) | {key for c in pr.changes for key in c.keys}
+        if k.get("front_rh_at_min"):  # the rules keep it at the minimum: not the optimiser's
+            taken |= set(FRONT_RH)
         ddims = damper_dims(setup, taken)
         # The slow dampers with a balance effect are searched with the main settings; the
         # damper block refines them afterwards for tyre load.

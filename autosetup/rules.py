@@ -299,7 +299,14 @@ def _platform(b: _Builder, s: dict, k: dict) -> None:
     rear_rh = _num(s, "rh_min_rl", "rh_min_rr")
     bottoming = s.get("bottoming_s") or 0.0
     done = 0
-    front_low = bool(front_rh) and (bottoming > k["bottoming_s"] or min(front_rh) < k["min_ride_height_mm"])
+    pinned = bool(k.get("front_rh_at_min"))
+    if pinned:  # GT3: the front always at its lowest setting, whatever it does
+        p = b.setup.params.get(FRONT_RH[0])
+        if p is not None:
+            b.add("platform", FRONT_RH, SEMANTIC["down"](FRONT_RH[0], b.scales), p.steps,
+                  "The front ride height always runs at its minimum → down to the lowest setting", quiet=True)
+    front_low = not pinned and bool(front_rh) and (bottoming > k["bottoming_s"]
+                                                   or min(front_rh) < k["min_ride_height_mm"])
     rear_low = bool(rear_rh) and min(rear_rh) < k["min_ride_height_mm"]
     if front_low:
         steps = 2 if bottoming > 3 * k["bottoming_s"] else 1
