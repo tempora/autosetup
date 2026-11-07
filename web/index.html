@@ -228,6 +228,16 @@ main{position:relative;min-height:0}
 .panel h2{margin:0;font-size:20px;font-weight:400}
 .panel .sub{color:var(--t3);font-size:13px;margin-bottom:10px}
 .plbl{font-size:12.5px;color:var(--t2);margin:6px 0 4px}
+.fs{margin:0 0 6px}
+.fs .ends{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--t3)}
+.fs .ends .v{color:var(--t1);font-weight:600;font-size:12.5px}
+.fs .ends .v.small{color:var(--t3);font-weight:500}
+.fs input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;margin:0;background:transparent;cursor:pointer}
+.fs input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--trk)}
+.fs input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--trk)}
+.fs input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-6px;border:none;border-radius:9px;background:var(--pri);transition:border-radius 250ms var(--spring)}
+.fs input[type=range]::-moz-range-thumb{width:18px;height:18px;border:none;border-radius:9px;background:var(--pri)}
+.fs input[type=range]:active::-webkit-slider-thumb{border-radius:5px}
 .prow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;font-size:13.5px}
 .ghost{height:34px;padding:0 16px;border:1px solid var(--t3);background:none;font-size:13px;border-radius:17px;width:max-content;margin-top:8px}
 .ghost:hover{background:var(--l2)}
@@ -950,7 +960,7 @@ async function loadProposal() {
 }
 function setBusy(on) { S.proposalBusy = on; const l = document.querySelector("#panel .list"); if (l) l.classList.toggle("busy", on); const w = $("write"); if (w && on) w.disabled = true; setStatus(on ? t("setup.working") : (S.status || "")); }
 function setStatus(text, error) { const s = $("status"); if (!s) return; s.textContent = text || ""; s.classList.toggle("error", !!error); }
-const PHASES = [["entry", "phase.entry"], ["mid", "phase.mid"], ["exit", "phase.exit"]], BANDS = [["high", "band.high"], ["low", "band.low"]];
+const PHASES = [["braking", "phase.braking"], ["entry", "phase.entry"], ["mid", "phase.mid"], ["exit", "phase.exit"]], BANDS = [["high", "band.high"], ["low", "band.low"]];
 function balance(box, plan) {
  const tg = plan && plan.target || {}, cells = tg.cells || {}, tol = tg.tolerance || {}, meas = (plan && plan.measured && plan.measured.cells) || {}, pred = (plan && plan.predicted) || {};
  if (!Object.keys(cells).length) { box.append(el("div", {class: "empty"}, t("balance.none"))); return; }
@@ -965,6 +975,7 @@ function balance(box, plan) {
   wrap.append(el("div", {class: "bx-grp"}, t(bl)));
   for (const [ph, pl] of PHASES) {
    const c = `${ph}_${band}`, target = cells[c], m = meas[c] ? meas[c][0] : null, p = pred[c] ? pred[c][0] : null, B = tol[c] || 0.15;
+   if (ph === "braking" && target == null && m == null) continue;  // no braking zone measured in this band
    const row = el("div", {class: "bx-row"}), sc = el("div", {class: "bx-scale"}), txt = el("span", {class: "bx-txt"});
    row.append(el("span", {class: "bx-ph"}, t(pl)), sc, txt);
    sc.innerHTML = `<span class="bx-band" style="left:${pct(-B)};right:calc(100% - ${pct(B)})"></span><span class="bx-mid"></span>`;
@@ -1273,9 +1284,9 @@ function renderPanel(p, pr, plan) {
  if (pr && !pr.changes.length && pr.why) { const w = el("div", {class: "why"}, pr.why.text); if (pr.why.facts && pr.why.facts.length) w.setAttribute("data-tip", pr.why.facts.join(" · ")); p.append(w); }
  const tg = S.feelTarget && plan && S.feelTarget.car_key === plan.car_key ? S.feelTarget : plan && plan.target;
  if (plan && tg) {
-  p.append(el("div", {class: "plbl"}, t("feel.front")), pills(null, [-1, 0, 1], [t("feel.pointier"), t("feel.asitwas"), t("feel.lazier")], tg.front || 0, v => feel({axis: "front", value: v}), true));
-  p.append(el("div", {class: "plbl"}, t("feel.rear")), pills(null, [-1, 0, 1], [t("feel.looser"), t("feel.asitwas"), t("feel.safer")], tg.rear || 0, v => feel({axis: "rear", value: v}), true));
-  const it = el("button", {type: "button", class: "ghost", "aria-pressed": tg.anchor === "fingerprint" && !tg.front && !tg.rear, "data-tip": t("tip.thisisit")}, t("feel.thisisit"));
+  for (const [axis, neg, pos] of [["front", "feel.pointier", "feel.lazier"], ["rear", "feel.looser", "feel.safer"], ["fast", "feel.looser", "feel.planted"]])
+   p.append(el("div", {class: "plbl"}, t("feel." + axis)), feelSlider(axis, t(neg), t(pos), tg));
+  const it = el("button", {type: "button", class: "ghost", "aria-pressed": tg.anchor === "fingerprint" && !tg.front && !tg.rear && !tg.fast, "data-tip": t("tip.thisisit")}, t("feel.thisisit"));
   it.onclick = () => feel({lock: true}); p.append(it);
  }
  if (plan && plan.gap && plan.gap.length) { const g = plan.gap[0]; p.append(el("div", {class: "gap"}, t(g.axis === "rear" ? "next.gap_rear" : "next.gap_front", {s: fx(g.seconds, 1)}))); }
@@ -1313,6 +1324,27 @@ function renderPanel(p, pr, plan) {
  if (pr && pr.error) setStatus(pr.error, true); else if (S.proposalBusy) setStatus(t("setup.working"));
 }
 async function setLock(keys, locked) { const st = baseStint(); if (!st) return; try { await api("/api/locks", {stint: st.id, keys, locked}); await loadProposal(); } catch (e) { setStatus(e.message, true); } }
+// A feel slider: centred is "As it was", either end is the span (deg); the shaded middle
+// is the dead zone, a move too small for the stint's measurement to act on.
+function feelSlider(axis, neg, pos, tg) {
+ const span = tg.span || 0.5, dz = Math.min(span, (tg.deadzone || {})[axis] || 0), v0 = tg[axis] || 0;
+ const box = el("div", {class: "fs"}), ends = el("div", {class: "ends"}), val = el("span", {class: "v"});
+ const inp = el("input", {type: "range", min: -span, max: span, step: 0.025, value: v0, "aria-label": `${neg} / ${pos}`});
+ const dzp = dz / span * 50;
+ inp.style.setProperty("--trk", `linear-gradient(to right, transparent calc(50% - 1px), var(--t3) calc(50% - 1px), var(--t3) calc(50% + 1px), transparent calc(50% + 1px)), linear-gradient(to right, var(--l3) ${50 - dzp}%, var(--sel) ${50 - dzp}%, var(--sel) ${50 + dzp}%, var(--l3) ${50 + dzp}%)`);
+ const show = v => {
+  const a = Math.abs(v);
+  val.textContent = a < 1e-9 ? t("feel.asitwas") : `${v < 0 ? neg : pos} ${+a.toFixed(3)}°` + (a <= dz ? " · " + t("feel.small") : "");
+  val.classList.toggle("small", a > 1e-9 && a <= dz);
+ };
+ show(v0);
+ inp.oninput = () => show(+inp.value);
+ inp.onchange = () => feel({axis, value: +inp.value});
+ inp.ondblclick = () => { inp.value = 0; show(0); feel({axis, value: 0}); };
+ ends.append(el("span", {}, neg), val, el("span", {}, pos));
+ box.append(ends, inp);
+ return box;
+}
 let feelBusy = false;
 async function feel(body) {
  const st = baseStint(); if (!st || feelBusy) return; feelBusy = true;

@@ -565,9 +565,9 @@ class Handler(BaseHTTPRequestHandler):
                     app.store.put_setting("context", key)
                 self._json({"context": key})
             elif self.path == "/api/feedback":
-                # {stint, axis: front|rear, value: -1|0|1}: the stint's toggle on that axis
+                # {stint, axis: front|rear|fast, value: deg}: the stint's slider on that axis
                 with app.lock:
-                    self._json(app.advisor.toggle(int(body["stint"]), str(body["axis"]), int(body["value"])))
+                    self._json(app.advisor.slide(int(body["stint"]), str(body["axis"]), float(body["value"])))
             elif self.path == "/api/lock":
                 with app.lock:
                     self._json(app.advisor.lock(int(body["stint"])))

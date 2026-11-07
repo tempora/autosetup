@@ -27,4 +27,6 @@ def test_file_unsafe_names_and_laps():
     assert templates.file_safe('Spa: "GP"/Long? ') == "Spa- -GP--Long-"
     assert templates.file_safe("..Lusail.. ") == "Lusail"
     assert templates.lap_text(103.46, True) == "1-43.46" and templates.lap_text(103.46, False) == "1:43.46"
-    assert templates.feel_text(0, 0) == "As it was" and templates.feel_text(-1, -1) == "Pointier + Looser"
+    assert templates.feel_text(0, 0) == "As it was"
+    assert templates.feel_text(-0.25, -0.1) == "Pointier 0.25° + Looser 0.10°"
+    assert templates.feel_text(0, 0.05, 0.2) == "Safer 0.05° + Planted 0.20°"

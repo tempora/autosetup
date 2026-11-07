@@ -70,8 +70,10 @@ NAMES = {"wing": "Rear wing", "front_wing": "Front wing", "rh_rear": "Rear ride 
          "front_diff_preload": "Front diff preload"}
 DAMPER_BAND_LOSS = 0.2
 MAX_RH_MM = 5.0  # a ride height moves at most this much in one proposal
+MAX_BB_PCT = 1.0  # brake bias moves at most this much (% front) in one proposal, whatever its click size
 SLOW_BALANCE = ("slow_bump_front", "slow_rebound_front", "slow_bump_rear", "slow_rebound_rear")  # priors.py
 SLOW_REACH = 2  # clicks a slow damper moves for balance in one proposal
+TC_MIN_WEIGHT = 0.1  # exits of a speed band with less of the layout than this don't move TC
 TC_KEYS = ("VM_TRACTIONCONTROLMAP", "VM_TRACTIONCONTROLPOWERCUTMAP", "VM_TRACTIONCONTROLSLIPANGLEMAP")
 THIRD_REACH = 2  # clicks a third spring moves in one proposal
 TOE_COST_S = 0.05  # per toe setting moved: toe only when it's clearly better
@@ -82,8 +84,13 @@ CHANGE_COST = {"rh_": 0.005, "wing": 0.01, "front_wing": 0.01, "spring_": 0.01, 
                "slow_": 0.01, "arb_": 0.02, "diff_": 0.02, "front_diff_": 0.02, "brake_bias": 0.02,
                "toe_": TOE_COST_S}
 # Clicks a setting may move in one proposal (a backstop: the model sizes the moves).
-REACH = {"arb_": 1, "wing": 1, "front_wing": 1, "toe_": 1, "diff_power": 1, "diff_coast": 1, "front_diff_": 1,
-         "brake_bias": 2}
+REACH = {"arb_": 1, "wing": 1, "front_wing": 1, "toe_": 1, "diff_power": 1, "diff_coast": 1, "front_diff_": 1}
+
+
+def _bb_reach(d: Dim, scales: CarScales) -> int:
+    """Clicks of brake bias in MAX_BB_PCT: 4 on a car with 0.25 % clicks, 1 with 1 % ones."""
+    step = scales[d.keys[0]].per_step if scales is not None else None
+    return max(1, round(MAX_BB_PCT / abs(step))) if step else 2
 
 
 def _by_kind(table: dict, name: str):
@@ -139,7 +146,7 @@ def why_nothing(pr: Proposal, plan: Plan, locked: int) -> dict | None:
     hover, and for debugging). None when there are changes."""
     if pr.changes:
         return None
-    asked = bool(plan.target.front or plan.target.rear)
+    asked = plan.target.moved
     facts = [f"solver: {plan.reason}", f"balance from: {SOURCE_TEXT.get(plan.balance_source, plan.balance_source)}",
              f"lap model: {'yes' if plan.lap else 'none here yet'}"]
     if plan.searched is not None:
@@ -201,10 +208,11 @@ def _traction(setup, scales: CarScales, summary: dict, tgt: feel.Target, m_now, 
              tc_event_long_s); down when TC is on a lot in short events with stable exits
       slip   up when you countersteer on exit (over countersteer_per_lap); down when you
              don't (under countersteer_none_per_lap) and TC is still on a lot
-    The rear feel moves the band, so it's in here through the band. A linked slip map
+    The rear feel moves the band, so it's in here through the band; the fast-corner slider
+    isn't (a planted rear at speed is aero and platform, not traction). A linked slip map
     follows the TC map and isn't moved; locked settings aren't either."""
     exits = [c for c in tgt.cells if c.startswith("exit_") and c in m_now.cells
-             and tgt.weights.get(c, 0.5) >= bo.MIN_WEIGHT]
+             and tgt.weights.get(c, 0.5) >= TC_MIN_WEIGHT and not (c.endswith("_high") and tgt.fast)]
     over = any(m_now.cells[c].mean < tgt.cells[c] - tgt.tolerance[c] for c in exits)
     stable = bool(exits) and not over
     cs, tc_s, events = summary.get("cs_exit"), summary.get("tc_s"), summary.get("tc_events")
@@ -351,10 +359,12 @@ class Advisor:
         return min(flagged) - 1 if flagged else None
 
     # -- feel ------------------------------------------------------------------------
-    def toggle(self, stint: int, axis: str, value: int) -> dict:
+    def slide(self, stint: int, axis: str, value: float) -> dict:
+        """Set a feel slider on the stint a proposal is built from (deg, clamped to its span)."""
         stint = self.base_of(stint)[0]
         key, cls = recording_car(self.store, stint)
-        feel.toggle(self.store, key, cls, stint, axis, value)
+        step = float(load_knowledge(cls)["feel_step_deg"])
+        feel.set_slider(self.store, key, cls, stint, axis, value, feel.RANGE_STEPS * step)
         return self.target_json(stint)
 
     def lock(self, stint: int) -> dict:
@@ -449,9 +459,9 @@ class Advisor:
         plan.settings = _settings_state(setup, locks)
         dbase = {d.name: d.index(setup) for d in ddims}
 
-        balance = self._balance_model(rec, setup, dims + kept, k, scales, layout, car_key, car_class)
+        balance = self._balance_model(rec, setup, dims + kept, k, scales, layout, car_key, car_class, m_now.usage)
         plan.balance_source = balance.source
-        if tgt.anchor in ("current", "toggled") and tgt.anchor_stint is not None and balance.offset:
+        if tgt.anchor in ("current", "moved") and tgt.anchor_stint is not None and balance.offset:
             self._model_anchor(tgt, balance, dims + kept, k)
         for tc in _traction(setup, scales, summary, tgt, m_now, k, locks):
             pr.changes.append(tc)
@@ -501,6 +511,7 @@ class Advisor:
                  for d in dims if d.name.startswith("rh_")}
         toe = [d for d in dims if d.name in ("toe_front", "toe_rear")]
         reach.update({d.name: _by_kind(REACH, d.name) for d in dims if _by_kind(REACH, d.name) is not None})
+        reach.update({d.name: _bb_reach(d, scales) for d in dims if d.name == "brake_bias"})
         reach.update({d.name: SLOW_REACH for d in slow})
         reach.update({d.name: THIRD_REACH for d in dims if d.name.startswith("third_spring")})
         avoid = {}
@@ -552,7 +563,8 @@ class Advisor:
                 pred = balance.predict({**x_main, **{d.name: d.x(idx[d.name]) for d in ddims}})
                 return 1.0 if bo.p_in_band(pred, band) >= (1 - DAMPER_BAND_LOSS) * p_main else 0.0
 
-            dc = dampers.choose(dmodel, ddims, dbase, x_main, balance_ok)
+            # Damper experiments get stints of their own: not while the balance is being moved.
+            dc = dampers.choose(dmodel, ddims, dbase, x_main, balance_ok, explore=not choice.moves)
             plan.dampers = {"contact": list(dc.contact), "contact_base": list(dc.contact_base),
                             "kerbs": dc.kerbs, "exploring": dc.exploring, "stints": dmodel.stints,
                             "settings": dmodel.settings}
@@ -578,21 +590,23 @@ class Advisor:
         """A target anchored on a stint (not a locked fingerprint) starts from the balance
         model's estimate at that stint's setup: its own measurement pooled with every other
         setup driven here. One short outing alone is noisy; aiming at its noise would
-        chase it. The toggles are put back on top; the band is the estimate's own doubt,
-        narrowed where a toggle moved it."""
+        chase it. The sliders are put back on top; the band is the estimate's own doubt,
+        narrowed where a slider moved it past what the estimate resolves."""
         s = self.store.setup_of(tgt.anchor_stint)
         x = {d.name: d.x(d.index(s)) for d in dims if all(key in s.params for key in d.keys)}
         pred = balance.predict(x)
         floor = float(k["feel_tolerance_deg"])
-        tgt.cells = feel.shifted({c: m for c, (m, _) in pred.items()}, tgt.front, tgt.rear, float(k["feel_step_deg"]))
-        step = float(k["feel_step_deg"])
-        tgt.tolerance = feel.narrowed({c: max(floor, 2.0 * float(np.sqrt(v))) for c, (_, v) in pred.items()},
-                                      tgt.front, tgt.rear, step)
+        res = {c: max(feel.RES_MIN, float(np.sqrt(v))) for c, (_, v) in pred.items()}
+        tgt.cells = feel.shifted({c: m for c, (m, _) in pred.items()}, **tgt.moves)
+        tgt.tolerance = feel.narrowed({c: max(floor, 2.0 * float(np.sqrt(v))) for c, (_, v) in pred.items()}, res,
+                                      **tgt.moves)
+        tgt.deadzone = feel.deadzones(res)
         mix = {c.split("_")[1]: w for c, w in tgt.weights.items()}
-        tgt.weights = {c: mix.get(c.split("_")[1], 0.5) for c in tgt.cells}
+        tgt.weights = feel.weights_for(tgt.cells, mix, tgt.fast)
 
-    def _balance_model(self, rec, setup, dims: list[Dim], k, scales, layout, car_key, car_class) -> BalanceModel:
-        slopes = sensitivities(dims, k, scales)
+    def _balance_model(self, rec, setup, dims: list[Dim], k, scales, layout, car_key, car_class,
+                       usage: dict | None = None) -> BalanceModel:
+        slopes = sensitivities(dims, k, scales, usage)
         # Every build's stints: an update (BoP, physics) shifts the balance a little, so older
         # builds' count with more doubt (OLDER_BUILD_SD), but what a setup did then still says
         # where to start from.
@@ -735,7 +749,7 @@ class Advisor:
             if tgt.cells:
                 m = measured(self.store, [nxt.id]).mean()
                 inside = all(abs(m[c] - tgt.cells[c]) <= tgt.tolerance[c] for c in m if c in tgt.cells
-                             and tgt.weights.get(c, 0.5) >= bo.MIN_WEIGHT)
+                             and tgt.weights.get(c, 0.5) > 0)
             radius = bo.next_radius(radius, nxt.summary["median"] < prev.summary["median"] and inside)
         return radius
 
@@ -802,7 +816,7 @@ class Advisor:
                 if lap["complete"] and not lap["in_pits"] and lap["time"]]
         best = min(laps) if laps else None
         return {"stint": n, "lap": templates.lap_text(best, True), "lap_notes": templates.lap_text(best, False),
-                "feel": templates.feel_text(plan.target.front, plan.target.rear),
+                "feel": templates.feel_text(plan.target.front, plan.target.rear, plan.target.fast),
                 "changes": "; ".join(f"{c.name} {c.before_text} → {'≈ ' if c.approx else ''}{c.after_text}"
                                      + (f": {c.reason}" if c.reason else "") for c in pr.changes)}
 
