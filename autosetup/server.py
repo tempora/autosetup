@@ -323,7 +323,8 @@ class App:
         with self.lock:
             recordings, laps = self.store.con.execute(
                 "select (select count(*) from recordings), (select count(*) from laps where complete)").fetchone()
-        return {"version": __version__, "metrics_version": METRICS_VERSION, "database": str(self.store.path),
+        return {"version": __version__, "build": os.environ.get("AUTOSETUP_BUILD"),  # set by a debug build's shell
+                "metrics_version": METRICS_VERSION, "database": str(self.store.path),
                 "recordings": recordings, "laps": laps}
 
     def driver(self) -> dict:

@@ -1527,7 +1527,7 @@ async function pollRecompute() { await loadSettings(); if (S.settings && S.setti
 async function openAbout() {
  $("about").hidden = false; $("about-close").focus();
  const b = $("about-body"); b.replaceChildren();
- try { const a = await api("/api/about"); for (const [k, v] of [["about.version", a.version], ["about.metrics", a.metrics_version], ["about.database", a.database], ["about.recordings", a.recordings], ["about.laps", a.laps]]) b.append(el("dt", {}, t(k)), el("dd", {}, String(v ?? "–"))); }
+ try { const a = await api("/api/about"); for (const [k, v] of [["about.version", a.build ? `${a.version} (${a.build})` : a.version], ["about.metrics", a.metrics_version], ["about.database", a.database], ["about.recordings", a.recordings], ["about.laps", a.laps]]) b.append(el("dt", {}, t(k)), el("dd", {}, String(v ?? "–"))); }
  catch (e) { b.append(el("dd", {}, e.message)); }
 }
 $("about-close").onclick = () => { $("about").hidden = true; };
