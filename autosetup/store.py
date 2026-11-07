@@ -128,7 +128,7 @@ create table if not exists corner_passes (
     recording_id  integer,
     seq           integer,
     corner        integer,
-    phase         varchar,               -- entry | mid | exit
+    phase         varchar,               -- braking | entry | mid | exit
     band          varchar,               -- low | high
     n             integer,
     v_min         double,
@@ -186,6 +186,9 @@ create table if not exists sim_traps (
     d             double,
     v             double
 );
+alter table corner_passes add column if not exists brake double;     -- mean brake pedal over the phase
+alter table corner_passes add column if not exists throttle double;
+alter table corner_passes add column if not exists coast double;
 alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed
 alter table recordings add column if not exists rh_rear_fast double;
 create table if not exists kerb_events (
@@ -411,10 +414,10 @@ class Store:
         ids = self.canonical_corners(layout, obs.corners)
         self._insert("corner_passes", ("INTEGER", "INTEGER", "INTEGER", "VARCHAR", "VARCHAR", "INTEGER", "DOUBLE",
                                        "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE",
-                                       "DOUBLE", "DOUBLE", "BOOLEAN"),
+                                       "DOUBLE", "DOUBLE", "BOOLEAN", "DOUBLE", "DOUBLE", "DOUBLE"),
                      [(rid, seq, ids[o.corner], o.phase, o.band, o.n, o.v_min, o.v_mean, o.a_lat, o.ua, o.ua_var,
                        _num(o.yaw_err), o.steer_rate, o.throttle_rate, o.countersteer_s, o.turnin_gain, o.slip_fr,
-                       o.kerb) for seq, o in obs.passes if o.corner in ids])
+                       o.kerb, o.brake, o.throttle, o.coast) for seq, o in obs.passes if o.corner in ids])
         rows = []
         for ls in obs.suspension:
             nz = np.flatnonzero(ls.hist)

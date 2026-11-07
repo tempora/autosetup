@@ -262,11 +262,13 @@ def _reach(d: Dim) -> int:
 
 
 def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: dict[str, float],
-           balance_ok) -> DamperChoice:
+           balance_ok, explore: bool = True) -> DamperChoice:
     """Best damper moves (whole clicks): the most predicted gain in contact score and
     weighted kerb numbers, kerbs within margin, the balance band holding (``balance_ok``:
     indices of these dims → probability). A move of a setting driven at fewer than
-    EXPLORE_VALUES values also counts what it would teach (EXPLORE)."""
+    EXPLORE_VALUES values also counts what it would teach (EXPLORE), unless ``explore``
+    is off (a stint that changes the balance isn't also a damper experiment: what changed
+    on track couldn't be told apart)."""
     def x_of(idx):
         return {**x_main, **{d.name: d.x(idx[d.name]) for d in dims}}
 
@@ -276,7 +278,7 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
         """(value, gain, sd of the gain, new): value adds the teaching bonus to the gain."""
         cm, km, v = model.change(x_of(idx), xb)
         gain, sd = -(cm + KERB_WEIGHT * km), math.sqrt(v)
-        new = any(idx[n] != base[n] and model.tried.get(n, 0) < EXPLORE_VALUES for n in idx)
+        new = explore and any(idx[n] != base[n] and model.tried.get(n, 0) < EXPLORE_VALUES for n in idx)
         return gain + (EXPLORE * sd if new else 0.0), gain, sd, new
 
     def allowed(idx):

@@ -140,7 +140,7 @@ def lock(store, rid: int, knowledge: dict) -> Fingerprint:
          json.dumps(tol), json.dumps(platform_of(store, rid, setup)), json.dumps(settings)]).fetchone()[0]
     store.con.execute("insert into feel_events (car_key, car_class, kind, recording_id, fingerprint, happened_at) "
                       "values (?, ?, 'lock', ?, ?, ?)", [car_key, car_class, rid, fid, now])
-    store.con.execute("delete from feel_toggles where recording_id = ?", [rid])
+    store.con.execute("delete from feel_sliders where recording_id = ?", [rid])
     return own(store, car_key)
 
 

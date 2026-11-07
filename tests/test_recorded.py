@@ -29,7 +29,7 @@ def test_corner_passes_cover_every_lap_and_phase(read):
     assert 8 <= len(rec.obs.corners) <= 15
     laps = {seq for seq, _ in rec.obs.passes}
     assert len(laps) >= 3  # partial laps outside the pits count too
-    assert {o.phase for _, o in rec.obs.passes} == {"entry", "mid", "exit"}
+    assert {o.phase for _, o in rec.obs.passes} == {"braking", "entry", "mid", "exit"}
     assert {o.band for _, o in rec.obs.passes} == {"low", "high"}
 
 
@@ -57,10 +57,11 @@ def test_suspension_histograms_are_plausible(read):
 
 
 def test_stiffer_rear_bar_reads_less_exit_understeer(read):
-    """Rear anti-roll bar P3 → P5, nothing else changed: low-speed exits rotate more."""
-    soft = _cells(read("interlagos_arb_r3"))[("exit", "low")]
-    stiff = _cells(read("interlagos_arb_r5"))[("exit", "low")]
-    assert soft.mean - stiff.mean > 1.5 * np.hypot(soft.se, stiff.se)
+    """Rear anti-roll bar P3 → P5, nothing else changed: slow corners rotate more from
+    mid-corner out, where a rear bar works (each cell more, and together clearly)."""
+    soft, stiff = _cells(read("interlagos_arb_r3")), _cells(read("interlagos_arb_r5"))
+    z = [(soft[k].mean - stiff[k].mean) / np.hypot(soft[k].se, stiff[k].se) for k in (("mid", "low"), ("exit", "low"))]
+    assert all(x > 1.0 for x in z) and sum(z) / np.sqrt(len(z)) > 2.0
 
 
 def test_less_rear_wing_reads_less_understeer(read):

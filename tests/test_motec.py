@@ -9,18 +9,23 @@ HEADER_SIZE = motec._HEADER.size
 CHANNEL_SIZE = motec._CHANNEL.size
 
 
-def write_ld(path, channels: dict[str, tuple[int, np.ndarray, str]], venue: str = "Test Raceway") -> None:
-    """A minimal .ld: header, linked channel metadata, float32 data (DAM's layout)."""
+def write_ld(path, channels: dict[str, tuple], venue: str = "Test Raceway") -> None:
+    """A minimal .ld: header, linked channel metadata, float32 data (DAM's layout). A channel
+    is (freq, values, unit), or (freq, raw int16 values, unit, (shift, mul, scale, dec)) for
+    DAM's scaled integer channels."""
     names = list(channels)
     meta_at = HEADER_SIZE
     data_at = meta_at + CHANNEL_SIZE * len(names)
     blobs, metas, offset = [], [], data_at
     for i, name in enumerate(names):
-        freq, values, unit = channels[name]
-        raw = np.asarray(values, dtype="<f4").tobytes()
+        freq, values, unit, *enc = channels[name]
+        if enc:
+            raw, kind, conv = np.asarray(values, dtype="<i2").tobytes(), (0x03, 2), enc[0]
+        else:
+            raw, kind, conv = np.asarray(values, dtype="<f4").tobytes(), (0x07, 4), (0, 1, 1, 0)
         prev = meta_at + CHANNEL_SIZE * (i - 1) if i else 0
         nxt = meta_at + CHANNEL_SIZE * (i + 1) if i + 1 < len(names) else 0
-        metas.append(motec._CHANNEL.pack(prev, nxt, offset, len(values), 0, 0x07, 4, freq, 0, 1, 1, 0,
+        metas.append(motec._CHANNEL.pack(prev, nxt, offset, len(values), 0, *kind, freq, *conv,
                                          name.encode(), name[:8].encode(), unit.encode()))
         blobs.append(raw)
         offset += len(raw)
@@ -41,6 +46,28 @@ def test_read_channels_and_clock(tmp_path):
     assert log.clock_span() == (1000.0, 1059.0)
     tt, v = log.channel("Tyre Load FL")
     assert len(v) == 600 and np.allclose(v, 3200.0) and tt[0] == 1000.0 and abs(tt[1] - tt[0] - 0.1) < 1e-9
+
+
+def test_scaled_integer_channel_adds_shift_after_mul(tmp_path):
+    """DAM's int16 channels: value = raw / scale * 10^-dec * mul + shift (shift not scaled by mul).
+    Ground Speed as DAM encodes it: shift 641, mul 2, dec 2, so raw -32050 is 0 km/h."""
+    raw = np.array([-32050, -24550, -17050])
+    write_ld(tmp_path / "z.ld", {motec.CLOCK: (1, np.array([0.0, 1.0, 2.0]), "s"),
+                                 "Ground Speed": (1, raw, "km/h", (641, 2, 1, 2))})
+    v = motec.MotecLog(tmp_path / "z.ld").values("Ground Speed")
+    assert np.allclose(v, [0.0, 150.0, 300.0])
+
+
+def test_blank_channels_are_left_out(tmp_path):
+    """LMU writes zero tyre load for GT3s: that's no data, not zero load."""
+    n = 100
+    chans = {motec.CLOCK: (10, np.floor(500 + np.arange(n) / 10), "s"), "Drag": (10, np.zeros(n), "N")}
+    for w in motec.WHEELS:
+        chans[f"Tyre Load {w}"] = (10, np.zeros(n), "N")
+        chans[f"Lat Ground Vel {w}"] = (10, np.linspace(-2, 2, n), "m/s")
+    write_ld(tmp_path / "g.ld", chans)
+    out = motec.resample(motec.MotecLog(tmp_path / "g.ld"), np.linspace(501, 508, 50))
+    assert set(out) == {"lat_ground_vel"}
 
 
 def test_whole_second_clock_is_refined_from_ground_speed(tmp_path):

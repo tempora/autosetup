@@ -10,10 +10,12 @@ Tiebreaker: contact-patch quality (the damper module's score).
 
 The search is a trust region around the setup you drove, in click indices: single and
 double moves of each setting, random points changing up to MAX_CHANGES settings, and
-any extra candidates (the fingerprint's own setup on a new track). The drag level comes
-first: the rear wing goes where the lap model is fastest within the region, then the
-balance is solved with the rest of the settings around it. Candidates are scored on the
-models; only the chosen one is sent to the car.
+any extra candidates (the fingerprint's own setup on a new track). The rear wing is
+searched with everything else: its lap time (physics and your laps) and its balance
+(rear grip at speed, against rake) are weighed together, so more wing with more rake is
+a move it can find. Candidates are scored on the models; only the chosen one is sent to
+the car. Every cell counts by its weight (its speed band's share of the layout): none is
+dropped for being a small share.
 
 If the fastest point needs a balance outside the band, the band wins; the gap says what
 it costs ("0.3 s available with more rotation").
@@ -34,7 +36,6 @@ from autosetup.opt.space import Dim, aero_wing
 
 P_EXTRA = 0.5  # chance the other constraints (platform, kerbs) need to hold
 BAND_COST_S = 0.2  # of two setups in the band, the surer one, at this much per unit of doubt
-MIN_WEIGHT = 0.1  # cells of a speed band with less of the layout than this don't constrain
 MIN_GAIN_S = 0.03  # predicted gain worth changing the car for
 CHANGE_COST_S = 0.01  # per setting changed, unless Problem.cost says otherwise: of two equal setups, the one closer to yours
 TIE_S = 0.02  # within this, contact patch decides
@@ -50,7 +51,7 @@ class TargetBand:
     cells: dict[str, float]
     tolerance: dict[str, float]
     weights: dict[str, float]
-    step: float  # deg per button press
+    step: float  # deg: one feel step (a slider's end is two)
 
 
 @dataclass
@@ -117,7 +118,7 @@ def cell_probs(pred: dict[str, tuple[float, float]], target: TargetBand | None) 
         return out
     for c, t in target.cells.items():
         w = target.weights.get(c, 0.5)
-        if w < MIN_WEIGHT or c not in pred:
+        if w <= 0 or c not in pred:
             continue
         m, var = pred[c]
         sd = math.sqrt(max(var, 1e-9))
@@ -179,7 +180,6 @@ def _region(prob: Problem, d: Dim) -> int:
 
 def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> list[dict[str, int]]:
     dims = {d.name: d for d in prob.dims}
-    drag = aero_wing(prob.dims)
     out = [dict(start)]
     for d in free:
         r = _region(prob, d)
@@ -197,8 +197,7 @@ def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> l
             cand[d.name] = d.clamp(start[d.name] + int(rng.integers(-r, r + 1)))
         out.append(cand)
     for c in prob.candidates:  # e.g. the fingerprint's setup: allowed past the region, a jump you asked for
-        out.append({**start, **{k: (dims[k].clamp(v) if k in dims else v) for k, v in c.items()
-                                if k in start and (drag is None or k != drag.name)}})
+        out.append({**start, **{k: (dims[k].clamp(v) if k in dims else v) for k, v in c.items() if k in start}})
     return [c for c in out if not avoided(prob, c)]
 
 
@@ -223,30 +222,24 @@ def solve(prob: Problem) -> Choice:
     rng = np.random.default_rng(prob.seed)
     score = _Scorer(prob)
     base = score(prob.base)
-    dims = {d.name: d for d in prob.dims}
     start = dict(prob.base)
     wing_info = None
-    # The drag level first: the aero wing (rear, or front on a car without a rear one) where
-    # the lap is fastest within the region.
+    # What the wing alone does to the lap, for showing (it's searched with the rest).
     drag = aero_wing(prob.dims)
-    w0 = drag.name if drag is not None else None
     if drag is not None:
-        r = _region(prob, drag)
-        laps = {w: prob.lap({**start, w0: w})[0] for w in range(drag.clamp(start[w0] - r), drag.clamp(start[w0] + r) + 1)
-                if not avoided(prob, {**start, w0: w})}
-        best_w = min(laps, key=lambda w: (laps[w] + change_cost(prob, {**start, w0: w}), abs(w - start[w0])))
-        start[w0] = best_w
-        wing_info = {"index": best_w, "by_index": laps}
-    free = [d for d in prob.dims if d.name != w0]
-    pool = [score(c) for c in _candidates(prob, start, free, rng)]
-    # Without a feasible point at the chosen wing, look back towards the wing you had.
-    if drag is not None and start[w0] != prob.base[w0] and not any(e.feasible for e in pool):
-        start = {**start, w0: prob.base[w0]}
-        pool += [score(c) for c in _candidates(prob, start, free, rng)]
+        w0, r = drag.name, _region(prob, drag)
+        laps = {w: prob.lap({**start, w0: w})[0] for w in range(drag.clamp(start[w0] - r), drag.clamp(start[w0] + r) + 1)}
+        wing_info = {"by_index": laps}
+    pool = [score(c) for c in _candidates(prob, start, list(prob.dims), rng)]
     choice = _pick(pool, base, prob)
+    if wing_info is not None:
+        wing_info["index"] = choice.best.indices[drag.name]
     choice.wing = wing_info
     if prob.target is not None and choice.feasible:
-        choice.gap = _gaps(prob, score, pool, choice)
+        # The gap also looks around the chosen setup: the wing is searched with everything
+        # else, so the pool around yours alone can miss what a looser band would allow.
+        around = [score(c) for c in _candidates(prob, choice.best.indices, list(prob.dims), rng)]
+        choice.gap = _gaps(prob, score, pool + around, choice)
     return choice
 
 
@@ -257,7 +250,7 @@ def violation(ev: Evaluated, target: TargetBand | None) -> float:
     total = 0.0
     for c, t in target.cells.items():
         w = target.weights.get(c, 0.5)
-        if w >= MIN_WEIGHT and c in ev.balance:
+        if w > 0 and c in ev.balance:
             total += w * max(0.0, abs(ev.balance[c][0] - t) - target.tolerance[c])
     return total
 
@@ -280,14 +273,13 @@ def _pick(pool: list[Evaluated], base: Evaluated, prob: Problem) -> Choice:
 
 
 def _gaps(prob: Problem, score: _Scorer, pool: list[Evaluated], choice: Choice) -> list[dict]:
-    """Time the band costs: the best lap if the target allowed one or two presses more
+    """Time the band costs: the best lap if the target allowed one or two steps more
     rotation on an axis."""
     out = []
     t = prob.target
     for axis in ("rear", "front"):
         for n in (1, 2):
-            front, rear = (0, -n) if axis == "rear" else (-n, 0)
-            moved = TargetBand(shifted(t.cells, front, rear, t.step), t.tolerance, t.weights, t.step)
+            moved = TargetBand(shifted(t.cells, **{axis: -n * t.step}), t.tolerance, t.weights, t.step)
             alt = [score(e.indices, moved) for e in pool]
             ok = [e for e in alt if e.feasible]
             if not ok:

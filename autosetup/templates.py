@@ -55,6 +55,8 @@ def lap_text(seconds: float | None, for_file: bool) -> str:
     return f"{int(m)}{'-' if for_file else ':'}{s:05.2f}"
 
 
-def feel_text(front: int, rear: int) -> str:
-    parts = [p for p in ({-1: "Pointier", 1: "Lazier"}.get(front), {-1: "Looser", 1: "Safer"}.get(rear)) if p]
+def feel_text(front: float, rear: float, fast: float = 0.0) -> str:
+    """The sliders in words, with how far each went (deg): 'Pointier 0.20° + Safer 0.10°'."""
+    names = (("Pointier", "Lazier", front), ("Looser", "Safer", rear), ("Fast looser", "Planted", fast))
+    parts = [f"{neg if v < 0 else pos} {abs(v):.2f}°" for neg, pos, v in names if abs(v) > 1e-9]
     return " + ".join(parts) or "As it was"

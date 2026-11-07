@@ -1,9 +1,11 @@
 """The balance a stint (or several on one setup) measured.
 
-Cells are phase × speed band ('entry_low' … 'exit_high'), understeer angle in degrees
-(+ understeer), pooled from the corner passes (metrics/balance.py). Two extras go with
-them: turn-in response (median |yaw| / |r_ref| over the first 0.4 s of turn-in) and
-countersteer (seconds per lap, the rear's snap margin).
+Cells are phase × speed band ('braking_low' … 'exit_high'), understeer angle in degrees
+(+ understeer), pooled from the corner passes (metrics/balance.py). Extras go with them:
+turn-in response (median |yaw| / |r_ref| over the first 0.4 s of turn-in), countersteer
+(seconds per lap, the rear's snap margin) and how you use the pedals in each cell
+(``usage``: mean brake, throttle and coasting), which sizes what brake bias and the diff
+ramps do there.
 """
 
 from __future__ import annotations
@@ -30,18 +32,32 @@ class Measured:
     countersteer: float | None = None  # s per lap
     mix: dict[str, float] = field(default_factory=lambda: {b: 0.5 for b in BANDS})  # cornering time per band
     passes: int = 0
+    usage: dict[str, dict[str, float]] = field(default_factory=dict)  # cell → {brake, throttle, coast}
 
     def mean(self) -> dict[str, float]:
         return {c: v.mean for c, v in self.cells.items()}
 
     def to_json(self) -> dict:
         return {"cells": {c: [v.mean, v.se, v.passes] for c, v in self.cells.items()}, "turnin": self.turnin,
-                "countersteer": self.countersteer, "mix": self.mix, "passes": self.passes}
+                "countersteer": self.countersteer, "mix": self.mix, "passes": self.passes, "usage": self.usage}
 
     @classmethod
     def from_json(cls, d: dict) -> "Measured":
         return cls({c: Cell(*v) for c, v in d["cells"].items()}, d.get("turnin"), d.get("countersteer"),
-                   d.get("mix") or {b: 0.5 for b in BANDS}, d.get("passes", 0))
+                   d.get("mix") or {b: 0.5 for b in BANDS}, d.get("passes", 0), d.get("usage") or {})
+
+
+def usage_of(obs: list[PhaseObs]) -> dict[str, dict[str, float]]:
+    """Per cell, how you use the pedals there: mean brake, throttle and coasting, by time."""
+    out = {}
+    for c in CELLS:
+        ph, b = cell_parts(c)
+        sel = [o for o in obs if o.phase == ph and o.band == b and o.brake is not None]
+        if sel:
+            n = np.array([max(o.n, 1) for o in sel], float)
+            out[c] = {k: float(np.average([getattr(o, k) or 0.0 for o in sel], weights=n))
+                      for k in ("brake", "throttle", "coast")}
+    return out
 
 
 def passes_of(store, rids: list[int]) -> list[tuple[int, int, PhaseObs]]:
@@ -68,7 +84,8 @@ def measured(store, rids: list[int]) -> Measured:
     gains = [o.turnin_gain for o in obs if o.turnin_gain is not None and np.isfinite(o.turnin_gain)]
     laps = {(rid, seq) for rid, seq, _ in rows}
     cs = sum(o.countersteer_s for o in obs) / max(len(laps), 1)
-    return Measured(c, float(np.median(gains)) if gains else None, float(cs), corner_mix(obs), len(obs))
+    return Measured(c, float(np.median(gains)) if gains else None, float(cs), corner_mix(obs), len(obs),
+                    usage_of(obs))
 
 
 def same_setup_stints(store, rid: int) -> list[int]:

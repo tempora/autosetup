@@ -238,12 +238,14 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
         _, t = call(base, f"/api/target?stint={stint}")
         assert t["target"]["anchor"] == "current" and t["measured"]["cells"]
         before = t["target"]["cells"]["entry_low"]
-        _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -1})
-        assert t["target"]["front"] == -1 and t["target"]["anchor"] == "toggled"
-        assert t["target"]["cells"]["entry_low"] < before
+        _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -0.25})
+        assert t["target"]["front"] == -0.25 and t["target"]["anchor"] == "moved"
+        assert t["target"]["cells"]["entry_low"] < before and t["target"]["deadzone"]["front"] > 0
         _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": 0})
         assert t["target"]["front"] == 0 and t["target"]["anchor"] == "current"
-        assert call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -2})[0] == 400
+        _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -2})
+        assert t["target"]["front"] == -t["target"]["span"]  # past the end: the end
+        call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": 0})
         assert call(base, "/api/feedback", {"stint": stint, "axis": "faster", "value": 1})[0] == 400
         _, pr = call(base, f"/api/proposal?stint={stint}")
         assert set(pr["plan"]["target"]["cells"]) and pr["plan"]["lap"] is not None

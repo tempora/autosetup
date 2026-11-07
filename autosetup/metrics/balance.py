@@ -55,6 +55,9 @@ class PhaseObs:
     turnin_gain: float | None = None  # entry: |r| / |r_ref| over the first TURN_IN_S of turn-in
     slip_fr: float | None = None  # deg, |front slip| − |rear slip| (DAM)
     kerb: bool = False
+    brake: float | None = None  # mean brake pedal (0..1) over the phase: how you drive it
+    throttle: float | None = None  # mean throttle (0..1)
+    coast: float | None = None  # mean of (1 − brake)·(1 − throttle): off both pedals
     ua_adj: float | None = None  # ua after normalise()
 
     @property
@@ -83,48 +86,65 @@ def sample_metrics(sig: Signals, geometry: tuple[float, float, float]) -> dict[s
             "counter": counter}
 
 
-def _median_var(x: np.ndarray) -> float:
+def _median_var(x: np.ndarray, w: np.ndarray | None = None) -> float:
     """Variance of a median: (1.4826·MAD)² · π/2 / n_eff, floored. Neighbouring samples
-    of a smooth signal aren't independent: n_eff counts one per CORR_S."""
-    mad = float(np.median(np.abs(x - np.median(x)))) * 1.4826
-    n_eff = max(1.0, len(x) / (CORR_S * GRID_HZ))
+    of a smooth signal aren't independent: n_eff counts one per CORR_S (of weight)."""
+    if w is None:
+        w = np.ones(len(x))
+    med = _wmedian(x, w)
+    mad = _wmedian(np.abs(x - med), w) * 1.4826
+    n_eff = max(1.0, float(w.sum()) / (CORR_S * GRID_HZ))
     return max(mad ** 2 * np.pi / 2 / n_eff, NOISE_FLOOR)
+
+
+def _wmedian(x: np.ndarray, w: np.ndarray) -> float:
+    """Weighted median."""
+    order = np.argsort(x)
+    xs, cw = x[order], np.cumsum(w[order])
+    return float(xs[min(int(np.searchsorted(cw, 0.5 * cw[-1])), len(xs) - 1)])
 
 
 def observe(sig: Signals, per: dict[str, np.ndarray], p: Pass, kerb: np.ndarray | None = None,
             slip_fr: np.ndarray | None = None) -> list[PhaseObs]:
-    """One observation per phase of a pass that has at least MIN_PHASE_SAMPLES of it.
+    """One observation per phase of a pass that has at least MIN_PHASE_SAMPLES of it (by
+    weight: a sample shared between two phases counts in both, by its weight in each).
     ``per``: sample_metrics of the same Signals; ``kerb``: per-sample kerb flag."""
     out = []
     dt = 1.0 / GRID_HZ
     throttle_rate = np.gradient(sig.throttle, dt) if len(sig.throttle) > 1 else np.zeros_like(sig.throttle)
     for ph in PHASES:
-        sel = p.idx[p.phase == ph]
-        sel = sel[np.isfinite(per["ua"][sel])]
-        if len(sel) < MIN_PHASE_SAMPLES:
+        wp = p.weight(ph)
+        keep = (wp > 0) & np.isfinite(per["ua"][p.idx])
+        sel, w = p.idx[keep], wp[keep]
+        if w.sum() < MIN_PHASE_SAMPLES:
             continue
         ua = per["ua"][sel]
         opening = throttle_rate[sel][throttle_rate[sel] > 0.05]
         ye = per["yaw_err"][sel]
-        ye = ye[np.isfinite(ye)]
+        ok = np.isfinite(ye)
         gain = None
         if ph == "entry":
             gain = _turnin_gain(sig, per, p)
         sf = None
         if slip_fr is not None:
-            s = slip_fr[sel]
-            s = s[np.isfinite(s)]
-            sf = float(np.median(s)) if len(s) >= MIN_PHASE_SAMPLES else None
+            s_ = slip_fr[sel]
+            fin = np.isfinite(s_)
+            sf = _wmedian(s_[fin], w[fin]) if w[fin].sum() >= MIN_PHASE_SAMPLES else None
+        brake = np.clip(np.nan_to_num(sig.brake[sel]), 0.0, 1.0)
+        throttle = np.clip(np.nan_to_num(sig.throttle[sel]), 0.0, 1.0)
         out.append(PhaseObs(
-            corner=p.corner.id, phase=ph, band=p.band, n=len(sel), v_min=p.v_min,
-            v_mean=float(np.mean(sig.speed[sel])), a_lat=float(np.mean(np.abs(sig.a_lat[sel]))),
-            ua=float(np.median(ua)), ua_var=_median_var(ua),
-            yaw_err=float(np.median(ye)) if len(ye) else float("nan"),
-            steer_rate=float(np.median(np.abs(per["steer_rate"][sel]))),
+            corner=p.corner.id, phase=ph, band=p.band, n=int(round(w.sum())), v_min=p.v_min,
+            v_mean=float(np.average(sig.speed[sel], weights=w)),
+            a_lat=float(np.average(np.abs(sig.a_lat[sel]), weights=w)),
+            ua=_wmedian(ua, w), ua_var=_median_var(ua, w),
+            yaw_err=_wmedian(ye[ok], w[ok]) if ok.any() else float("nan"),
+            steer_rate=_wmedian(np.abs(per["steer_rate"][sel]), w),
             throttle_rate=float(np.median(opening)) if len(opening) >= 3 else None,
-            countersteer_s=float(per["counter"][sel].sum() * dt),
+            countersteer_s=float((per["counter"][sel] * w).sum() * dt),
             turnin_gain=gain, slip_fr=sf,
-            kerb=bool(kerb is not None and kerb[sel].any())))
+            kerb=bool(kerb is not None and kerb[sel].any()),
+            brake=float(np.average(brake, weights=w)), throttle=float(np.average(throttle, weights=w)),
+            coast=float(np.average((1.0 - brake) * (1.0 - throttle), weights=w))))
     return out
 
 
@@ -145,10 +165,15 @@ def _turnin_gain(sig: Signals, per: dict[str, np.ndarray], p: Pass) -> float | N
 
 def normalise(obs: list[PhaseObs]) -> list[PhaseObs]:
     """Take driver inputs out of the balance: within each corner × phase, passes where you
-    turned in faster or opened the throttle harder than usual for that corner read more
-    understeer / oversteer for reasons that aren't the setup. One slope per input and
+    turned in faster, opened the throttle harder or used more brake than usual for that
+    corner read more understeer / oversteer for reasons that aren't the setup (a touch of
+    brake mid-corner rotates the car: that's you, not the car). One slope per input and
     phase, pooled over corners and shrunk towards zero (RIDGE); each pass is moved to its
-    corner's usual inputs. Fewer than MIN_NORMALISE passes in a phase: left as measured."""
+    corner's usual inputs, so what's left is the car with your usual correction. Fewer
+    than MIN_NORMALISE passes in a phase: left as measured.
+
+    Experimental: you also brake more *because* the car pushes, so the brake slope mixes
+    cause and response; the ridge keeps it small unless the passes clearly show it."""
     out = list(obs)
     for ph in PHASES:
         rows = [i for i, o in enumerate(obs) if o.phase == ph]
@@ -164,8 +189,10 @@ def normalise(obs: list[PhaseObs]) -> list[PhaseObs]:
             sr = np.array([obs[i].steer_rate for i in members])
             tr = np.array([obs[i].throttle_rate if obs[i].throttle_rate is not None else np.nan for i in members])
             tr = np.where(np.isfinite(tr), tr, np.nanmedian(tr) if np.isfinite(tr).any() else 0.0)
+            br = np.array([obs[i].brake if obs[i].brake is not None else np.nan for i in members])
+            br = np.where(np.isfinite(br), br, np.nanmedian(br) if np.isfinite(br).any() else 0.0)
             ua = np.array([obs[i].ua for i in members])
-            X.append(np.column_stack([sr - np.median(sr), tr - np.median(tr)]))
+            X.append(np.column_stack([sr - np.median(sr), tr - np.median(tr), br - np.median(br)]))
             y.append(ua - np.average(ua, weights=[1 / obs[i].ua_var for i in members]))
             w.append([1 / obs[i].ua_var for i in members])
             idx += members
@@ -175,7 +202,7 @@ def normalise(obs: list[PhaseObs]) -> list[PhaseObs]:
         scale = np.maximum(X.std(0), 1e-9)
         Xs = X / scale
         W = w / w.mean()
-        A = Xs.T @ (Xs * W[:, None]) + RIDGE * np.eye(2)
+        A = Xs.T @ (Xs * W[:, None]) + RIDGE * np.eye(Xs.shape[1])
         beta = np.linalg.solve(A, Xs.T @ (W * y)) / scale
         for row, i in enumerate(idx):
             out[i] = replace(obs[i], ua_adj=float(obs[i].ua - X[row] @ beta))

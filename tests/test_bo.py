@@ -1,6 +1,7 @@
 """The constrained search and the transfer of a fingerprint (toy car, opt/bench.py)."""
 
 import numpy as np
+import pytest
 
 from autosetup.feel.measure import CELLS
 from autosetup.feel.target import shifted
@@ -24,6 +25,7 @@ def _band(cells, tol=0.15):
 
 
 FLAT = {c: 0.6 for c in CELLS}
+TURNING = {c: v for c, v in FLAT.items() if not c.startswith("braking_")}
 NO_LAP = lambda idx: (0.0, 5.0)  # noqa: E731
 
 
@@ -33,23 +35,23 @@ def test_nothing_asked_nothing_to_gain_stays():
 
 
 def test_a_pointier_target_gets_entry_rotation():
-    """One press: a setup in the new band, entries rotating more, exits where they were.
-    Two presses ask for more than the trust region reaches without moving the exits: the
+    """One step: a setup in the new band, entries rotating more, exits where they were.
+    Two steps ask for more than the trust region reaches without moving the exits: the
     closest setup, said to be the closest."""
-    one = shifted(FLAT, front=-1, rear=0, step=0.25)
+    one = shifted(FLAT, front=-0.25)
     choice = bo.solve(bo.Problem(DIMS, MID, NO_LAP, _model(FLAT), _band(one)))
     assert choice.feasible and choice.reason == "balance" and choice.moves
     pred = choice.best.balance
     assert pred["entry_low"][0] < FLAT["entry_low"] - 0.1
     assert abs(pred["exit_low"][0] - FLAT["exit_low"]) <= 0.15
-    two = shifted(FLAT, front=-2, rear=0, step=0.25)
+    two = shifted(FLAT, front=-0.5)
     choice = bo.solve(bo.Problem(DIMS, MID, NO_LAP, _model(FLAT), _band(two)))
     assert choice.moves and choice.best.off < bo.violation(choice.base, _band(two))
 
 
-def test_wing_first_then_balance_around_it():
+def test_wing_searched_with_the_balance():
     """The lap is fastest at the most wing; the wing goes there and the understeer it adds
-    in fast corners is put back with the other settings."""
+    in fast corners is put back with the other settings, in the same search."""
     def lap(idx):
         return 100.0 - 0.3 * idx["wing"], 0.02
     choice = bo.solve(bo.Problem(DIMS, MID, lap, _model(FLAT), _band(FLAT), radius=0.5))
@@ -66,8 +68,8 @@ def test_the_band_wins_and_the_gap_says_what_it_costs():
     def lap(idx):
         pred = model.predict(bo.x_of(DIMS, idx))
         return 100.0 + 0.8 * sum(pred[c][0] for c in ("mid_low", "exit_low", "mid_high", "exit_high")), 0.02
-    choice = bo.solve(bo.Problem(DIMS, MID, lap, model, _band(FLAT, tol=0.1)))
-    assert choice.feasible and bo.violation(choice.best, _band(FLAT, tol=0.1)) < 0.05
+    choice = bo.solve(bo.Problem(DIMS, MID, lap, model, _band(TURNING, tol=0.1)))
+    assert choice.feasible and bo.violation(choice.best, _band(TURNING, tol=0.1)) < 0.05
     gap = [g for g in choice.gap if g["axis"] == "rear"]
     assert gap and gap[0]["seconds"] >= 0.1 and gap[0]["steps"] in (1, 2)
 
@@ -360,7 +362,7 @@ def test_an_older_build_stint_still_counts_with_more_doubt():
     assert old_only.source == "layout"
     new_only = BalanceModel.fit(SLOPES, "L", [ev(0.6, False)])
     c = CELLS[0]
-    assert old_only.offset[c][0] == new_only.offset[c][0]
+    assert old_only.offset[c][0] == pytest.approx(new_only.offset[c][0])
     assert old_only.offset[c][1] > new_only.offset[c][1]
     both = BalanceModel.fit(SLOPES, "L", [ev(0.6, True), ev(1.0, False)])
     newer = BalanceModel.fit(SLOPES, "L", [ev(1.0, False)])

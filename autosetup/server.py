@@ -323,7 +323,8 @@ class App:
         with self.lock:
             recordings, laps = self.store.con.execute(
                 "select (select count(*) from recordings), (select count(*) from laps where complete)").fetchone()
-        return {"version": __version__, "metrics_version": METRICS_VERSION, "database": str(self.store.path),
+        return {"version": __version__, "build": os.environ.get("AUTOSETUP_BUILD"),  # set by a debug build's shell
+                "metrics_version": METRICS_VERSION, "database": str(self.store.path),
                 "recordings": recordings, "laps": laps}
 
     def driver(self) -> dict:
@@ -565,9 +566,9 @@ class Handler(BaseHTTPRequestHandler):
                     app.store.put_setting("context", key)
                 self._json({"context": key})
             elif self.path == "/api/feedback":
-                # {stint, axis: front|rear, value: -1|0|1}: the stint's toggle on that axis
+                # {stint, axis: front|rear|fast, value: deg}: the stint's slider on that axis
                 with app.lock:
-                    self._json(app.advisor.toggle(int(body["stint"]), str(body["axis"]), int(body["value"])))
+                    self._json(app.advisor.slide(int(body["stint"]), str(body["axis"]), float(body["value"])))
             elif self.path == "/api/lock":
                 with app.lock:
                     self._json(app.advisor.lock(int(body["stint"])))

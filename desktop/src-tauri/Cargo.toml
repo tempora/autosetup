@@ -6,6 +6,10 @@ description = "autosetup desktop shell: a window around the local autosetup serv
 edition = "2021"
 rust-version = "1.90"
 
+[features]
+# "autosetup debug": runs beside the installed app with its own port and database copy.
+debug-build = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

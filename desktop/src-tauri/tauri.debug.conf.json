@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "autosetup debug",
+  "identifier": "dev.autosetup.debug",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "autosetup debug",
+        "url": "index.html",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1000,
+        "minHeight": 640,
+        "backgroundColor": "#111214"
+      }
+    ]
+  }
+}

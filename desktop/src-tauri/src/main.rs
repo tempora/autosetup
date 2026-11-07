@@ -7,6 +7,11 @@
 //!
 //! The server's stdin is a pipe from this process. The server exits when that pipe
 //! closes, so it never outlives the window, even if the shell crashes.
+//!
+//! The `debug-build` feature makes "autosetup debug" (desktop\build.ps1 -Flavour debug): an
+//! experiment that runs beside the installed app. It has its own port, its own data folder
+//! (%LOCALAPPDATA%\autosetup debug) and its own database. On its first start it copies the
+//! main database, so it starts from your laps and feel without ever writing to them.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -20,14 +25,30 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewWindow};
 
+#[cfg(not(feature = "debug-build"))]
 const PORT: u16 = 8191;
+#[cfg(feature = "debug-build")]
+const PORT: u16 = 8192;
+/// The main app's port: the debug build must not copy the database while the main app has it open.
+#[cfg(feature = "debug-build")]
+const MAIN_PORT: u16 = 8191;
+#[cfg(not(feature = "debug-build"))]
+const DATA_DIR: &str = "autosetup";
+#[cfg(feature = "debug-build")]
+const DATA_DIR: &str = "autosetup debug";
+/// What this build is, shown in About (set by build.ps1, e.g. "debug balance-rework a8b9cbf").
+const BUILD: Option<&str> = option_env!("AUTOSETUP_BUILD");
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
 struct Server(Mutex<Option<Child>>);
 
 /// True when the autosetup server answers `/api/health` on the port.
 fn healthy() -> bool {
-    let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+    healthy_on(PORT)
+}
+
+fn healthy_on(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else {
         return false;
     };
@@ -42,7 +63,35 @@ fn healthy() -> bool {
 
 /// Where the server's database lives (see autosetup.store.default_db_path); its log goes next to it.
 fn data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("autosetup")
+    local_app_data().join(DATA_DIR)
+}
+
+fn local_app_data() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+}
+
+/// First start of the debug build: copy the main database (and its unflushed log, if any)
+/// into the debug folder. Later starts keep the debug copy; delete the folder to copy afresh.
+#[cfg(feature = "debug-build")]
+fn seed_database(dir: &std::path::Path) -> Result<(), String> {
+    let db = dir.join("autosetup.duckdb");
+    if db.exists() {
+        return Ok(());
+    }
+    let main = local_app_data().join("autosetup").join("autosetup.duckdb");
+    if !main.exists() {
+        return Ok(()); // nothing to copy: it imports your telemetry from scratch
+    }
+    if healthy_on(MAIN_PORT) {
+        return Err("Close autosetup first: the debug build copies its database on the first start.".into());
+    }
+    let wal = main.with_extension("duckdb.wal");
+    let tmp = dir.join("autosetup.duckdb.copying");
+    fs::copy(&main, &tmp).map_err(|e| format!("Couldn't copy {}: {e}", main.display()))?;
+    if wal.exists() {
+        fs::copy(&wal, dir.join("autosetup.duckdb.wal")).map_err(|e| format!("Couldn't copy {}: {e}", wal.display()))?;
+    }
+    fs::rename(&tmp, &db).map_err(|e| e.to_string())
 }
 
 fn spawn_server(app: &AppHandle) -> Result<Option<Child>, String> {
@@ -57,10 +106,16 @@ fn spawn_server(app: &AppHandle) -> Result<Option<Child>, String> {
         .join("autosetup-server.exe");
     let dir = data_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    #[cfg(feature = "debug-build")]
+    seed_database(&dir)?;
     let log = File::create(dir.join("server.log")).map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&exe);
-    cmd.args(["serve", "--port", &PORT.to_string(), "--exit-with-stdin"])
-        .stdin(Stdio::piped())
+    cmd.arg("--db").arg(dir.join("autosetup.duckdb"));
+    cmd.args(["serve", "--port", &PORT.to_string(), "--exit-with-stdin"]);
+    if let Some(build) = BUILD {
+        cmd.env("AUTOSETUP_BUILD", build);
+    }
+    cmd.stdin(Stdio::piped())
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
     #[cfg(windows)]
@@ -102,7 +157,8 @@ fn open_when_ready(app: AppHandle, window: WebviewWindow) {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    show_error(&window, "The autosetup server didn't start. See server.log in %LOCALAPPDATA%\\autosetup.");
+    let log = data_dir().join("server.log");
+    show_error(&window, &format!("The autosetup server didn't start. See {}", log.display()));
 }
 
 fn main() {

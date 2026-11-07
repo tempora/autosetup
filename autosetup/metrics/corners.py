@@ -8,10 +8,12 @@ braking zone in front of it as entry. Its apex is the slowest point. Corners are
 numbered by apex distance; the store keeps one map per layout so passes from every
 recording share corner ids (``remap``).
 
-Within a pass every cornering sample gets a phase, from the pedals and the apex:
-  entry  on the brakes, or before the apex and off the throttle;
-  exit   after the apex with the throttle at least half open;
-  mid    the rest.
+Within a pass the phases follow what the car does, not the pedals. Progress through a
+corner is the share of its heading change done so far (0 where the car starts turning,
+1 where it has finished), and every cornering sample belongs to the phases by soft
+weights that sum to one: entry fades out by halfway, mid peaks there, exit fades in
+from it. Trailing the brake after turn-in is then mid-corner, wherever the brake is.
+  braking  on the brakes in the braking zone, before the car starts cornering
 A pass is low or high speed by its apex speed (``band_split_kmh`` in classes.toml).
 """
 
@@ -32,7 +34,8 @@ MIN_CORNER_M = 30.0
 MAX_ENTRY_M = 250.0  # braking zone counted as entry, at most
 MIN_SPEED = 15.0  # m/s
 MATCH_M = 40.0  # apexes this close are the same corner in another recording's map
-PHASES = ("entry", "mid", "exit")
+PHASES = ("braking", "entry", "mid", "exit")
+TURNING = ("entry", "mid", "exit")  # the phases weighted by progress through the turn
 BANDS = ("low", "high")
 
 
@@ -135,9 +138,24 @@ class Pass:
 
     corner: Corner
     idx: np.ndarray  # sample indices of the pass
-    phase: np.ndarray  # per sample of idx: "entry" | "mid" | "exit" | "" (not cornering)
+    phase: np.ndarray  # per sample of idx: its strongest phase, or "" (neither cornering nor braking)
     band: str
     v_min: float
+    weights: dict[str, np.ndarray] | None = None  # phase → per-sample weight (0..1) over idx
+    progress: np.ndarray | None = None  # per sample: share of the corner's heading change done
+
+    def weight(self, phase: str) -> np.ndarray:
+        if self.weights is None:
+            return (self.phase == phase).astype(float)
+        return self.weights[phase]
+
+
+def phase_weights(progress: np.ndarray) -> dict[str, np.ndarray]:
+    """Soft weights of entry / mid / exit at each progress (0..1): they sum to one."""
+    p = np.clip(progress, 0.0, 1.0)
+    return {"entry": np.clip(1.0 - p / 0.5, 0.0, 1.0),
+            "mid": np.clip(1.0 - np.abs(p - 0.5) / 0.5, 0.0, 1.0),
+            "exit": np.clip(1.0 - (1.0 - p) / 0.5, 0.0, 1.0)}
 
 
 def passes(sig: Signals, corners: list[Corner], band_split_ms: float) -> list[Pass]:
@@ -157,12 +175,15 @@ def passes(sig: Signals, corners: list[Corner], band_split_ms: float) -> list[Pa
         sp = sig.speed[idx]
         apex = int(np.argmin(sp))
         cornering = (np.abs(sig.a_lat[idx]) > CORNER_G) & (sp > MIN_SPEED)
-        on_brake = sig.brake[idx] > 0.05
-        on_power = sig.throttle[idx] >= 0.5
-        before = np.arange(len(idx)) <= apex
-        phase = np.where(on_brake | (before & (sig.throttle[idx] < 0.2)), "entry",
-                         np.where(~before & on_power, "exit", "mid"))
-        phase = np.where(cornering, phase, "")
+        yaw = np.nan_to_num(np.abs(sig.yaw_rate[idx])) * cornering
+        turned = np.cumsum(yaw)
+        progress = turned / turned[-1] if turned[-1] > 0 else np.zeros(len(idx))
+        w = {ph: v * cornering for ph, v in phase_weights(progress).items()}
+        first = int(np.argmax(cornering)) if cornering.any() else len(idx)
+        braking = (sig.brake[idx] > 0.05) & ~cornering & (sp > MIN_SPEED) & (np.arange(len(idx)) < first)
+        w["braking"] = braking.astype(float)
+        stack = np.column_stack([w[ph] for ph in PHASES])
+        phase = np.where(stack.max(1) > 0, np.array(PHASES, dtype=object)[stack.argmax(1)], "").astype(str)
         v_min = float(sp[apex])
-        out.append(Pass(c, idx, phase, "low" if v_min < band_split_ms else "high", v_min))
+        out.append(Pass(c, idx, phase, "low" if v_min < band_split_ms else "high", v_min, w, progress))
     return out

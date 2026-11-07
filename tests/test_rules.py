@@ -9,6 +9,7 @@ from autosetup.scales import CarScales, Scale
 from tests.conftest import setup_json
 
 K = load_knowledge("GT3")
+FREE_FRONT = {**K, "front_rh_at_min": False}  # a class whose front ride height is the rules' and the optimiser's
 
 
 def _setup(extra: dict | None = None, **values) -> CarSetup:
@@ -37,8 +38,8 @@ AERO = {"VM_REAR_WING": dict(minValue=0, maxValue=10, value=6, stringValue="12.3
         "WM_RIDEHEIGHT-W_FR": dict(minValue=0, maxValue=30, value=2, stringValue="5.2 cm")}
 
 
-def run(summary=None, setup=None, **kw):
-    return propose(1, {**BASE, **(summary or {})}, setup or _setup(), "GT3", SCALES, knowledge=K, **kw)
+def run(summary=None, setup=None, knowledge=K, **kw):
+    return propose(1, {**BASE, **(summary or {})}, setup or _setup(), "GT3", SCALES, knowledge=knowledge, **kw)
 
 
 def _proto(kgf: int, abs_adjustable: bool = False) -> CarSetup:
@@ -93,7 +94,7 @@ def test_brake_ducts_open_when_hot():
 def test_ride_height_raised_when_bottoming():
     setup = _setup(extra={k: dict(minValue=0, maxValue=30, value=5, stringValue="5.5 cm")
                           for k in ("WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR")})
-    [c] = run({"bottoming_s": 0.5, "rh_min_fl": 0.5, "rh_min_fr": 1.0}, setup).changes
+    [c] = run({"bottoming_s": 0.5, "rh_min_fl": 0.5, "rh_min_fr": 1.0}, setup, knowledge=FREE_FRONT).changes
     assert c.after == {"WM_RIDEHEIGHT-W_FL": 6, "WM_RIDEHEIGHT-W_FR": 6} and "raise the front" in c.reason
 
 
@@ -139,8 +140,23 @@ def test_lowering_is_left_to_the_optimiser():
     """A car with room to spare isn't lowered by a rule (the optimiser knows what the
     downforce is worth); a bottoming one is still raised."""
     setup = _setup(extra=AERO)
-    assert run({"rh_min_fl": 27.0, "rh_min_fr": 28.0, "bottoming_s": 0.05}, setup=setup).changes == []
-    assert run({"rh_min_fl": 27.0, "rh_min_fr": 28.0, "bottoming_s": 0.5}, setup=setup).changes[0].delta == 1
+    assert run({"rh_min_fl": 27.0, "rh_min_fr": 28.0, "bottoming_s": 0.05}, setup=setup, knowledge=FREE_FRONT).changes == []
+    assert run({"rh_min_fl": 27.0, "rh_min_fr": 28.0, "bottoming_s": 0.5}, setup=setup,
+               knowledge=FREE_FRONT).changes[0].delta == 1
+
+
+def test_gt3_front_ride_height_goes_to_its_minimum():
+    """A GT3 always runs the front at its lowest setting: moved there, even when bottoming."""
+    setup = _setup(extra=AERO)  # front at index 2 of 0..29
+    for summary in ({}, {"rh_min_fl": 0.5, "rh_min_fr": 1.0, "bottoming_s": 0.5}):
+        [c] = run(summary, setup=setup).changes
+        assert c.keys == ["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"]
+        assert c.after == {"WM_RIDEHEIGHT-W_FL": 0, "WM_RIDEHEIGHT-W_FR": 0}
+
+
+def test_gt3_front_ride_height_at_minimum_stays():
+    at_min = {k: {**v, "value": 0} for k, v in AERO.items() if "RIDEHEIGHT" in k}
+    assert run({"rh_min_fl": 0.5, "rh_min_fr": 1.0, "bottoming_s": 0.5}, setup=_setup(extra=at_min)).changes == []
 
 
 def test_balance_is_not_a_rule_any_more():
