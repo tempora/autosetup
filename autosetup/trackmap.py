@@ -147,6 +147,8 @@ def lap_trace(s: Session, lap: Lap, origin: tuple[float, float] | None, length: 
         "brake": chan("Brake Pos", 0.01),
         "steer": steer_deg,
         "gear": gear,
+        "plat": chan("Path Lateral"),  # metres from the track centre, for the road's real width on the map
+        "edge": chan("Track Edge"),  # metres from the centre to the track edge
         "x": xs,
         "y": ys,
         "sectors": split,

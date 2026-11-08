@@ -43,7 +43,7 @@ def test_health_and_page(server):
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
         for id_ in (b"screen-home", b"screen-analysis", b"screen-setup", b"screen-history", b"screen-driver",
-                    b"screen-settings", b'id="map"', b'id="traces"', b'id="dock"', b'id="scrub"', b'id="tiles"',
+                    b"screen-settings", b'id="map"', b'id="deckc"', b'id="dock"', b'id="scrub"', b'id="tiles"',
                     b'id="panel"', b'id="about"'):
             assert id_ in page, id_
         for gone in (b"rate-details", b"change-size", b"/api/feel", b"car-feel-row"):

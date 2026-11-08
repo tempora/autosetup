@@ -137,28 +137,34 @@ main{position:relative;min-height:0}
 .lr.isB .dot{background:var(--t3);box-shadow:none}
 .lr .x{color:var(--t3);font-size:12px;margin-left:6px}
 .lr .bad{text-decoration:line-through;color:var(--t3)}
-.centre{display:flex;flex-direction:column;gap:8px;min-width:0}
+/* one fixed page: verdict bar; map (where) and trace deck (why) side by side; transport across the bottom */
+.centre{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px;min-width:0;height:calc(100vh - 64px);min-height:560px}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .grow{flex:1}
-.mapv{position:relative;height:640px;background:var(--l1);border-radius:14px;overflow:hidden}
-.mapv>svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab}
-.maplegend{position:absolute;top:12px;right:14px;display:flex;gap:14px;font-size:12.5px;color:var(--t2);pointer-events:none}
-.maplegend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:3px}
-.mapctl{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:2px}
-.mapctl button{width:38px;height:36px;border:none;background:var(--l2);color:var(--t1);display:flex;align-items:center;justify-content:center;border-radius:4px}
+.agap{font-size:20px;font-weight:500;padding-left:4px}
+.stage{display:grid;grid-template-columns:minmax(0,60fr) minmax(0,40fr);gap:8px;min-height:0}
+.mapv{position:relative;min-height:0;background:var(--l1);border-radius:14px 4px 4px 4px;overflow:hidden;touch-action:none}
+.mapv>canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab}
+.mapv>canvas.drag{cursor:grabbing}
+.cgap{position:absolute;left:0;top:0;transform:translate(-50%,-100%);padding:2px 8px;border-radius:8px;background:var(--l1);border:1px solid var(--bd);font-size:13px;font-weight:600;pointer-events:none;white-space:nowrap;z-index:2}
+.cgap:empty{display:none}
+.mapctl{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:2px}
+.mapctl button{width:36px;height:34px;border:none;background:var(--l2);color:var(--t1);display:flex;align-items:center;justify-content:center;border-radius:4px}
 .mapctl button:first-child{border-radius:12px 12px 4px 4px}.mapctl button:last-child{border-radius:4px 4px 12px 12px}
 .mapctl button:hover{background:var(--l3)}
 .mapctl button[aria-pressed="true"]{background:var(--sel);color:var(--onSel)}
 .wait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:15px}
-.datav{background:var(--l1);border-radius:14px;padding:12px 16px 10px}
-.datav svg{display:block;width:100%;cursor:crosshair;touch-action:none;user-select:none}
-.dock{position:static;display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--l1);border:1px solid var(--bd);border-radius:16px}
-.dock.pin{position:sticky;bottom:12px;z-index:6}
+.deck{position:relative;min-height:0;background:var(--l1);border-radius:4px 14px 4px 4px}
+.deck canvas{position:absolute;left:14px;top:12px;width:calc(100% - 28px);height:calc(100% - 22px);cursor:crosshair;touch-action:none}
+.dread{position:absolute;inset:12px 14px 10px;pointer-events:none}
+.dread span{position:absolute;transform:translateY(-50%);padding:1px 6px;border-radius:6px;background:var(--l2);font-size:11.5px;font-weight:500;white-space:nowrap}
+.dread span i{font-style:normal;color:var(--t3);font-weight:400}
+.dock{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--l1);border-radius:4px 4px 14px 14px}
 .mirror{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:stretch}
 .side{display:flex;gap:6px;min-width:0;overflow:hidden}
 .side.b{justify-content:flex-end}
 .side.off{visibility:hidden}
-.cell{display:flex;align-items:center;gap:6px;height:42px;padding:0 10px;background:var(--l2);border-radius:10px;font-size:14px;font-weight:500;white-space:nowrap}
+.cell{display:flex;align-items:center;gap:6px;height:38px;padding:0 10px;background:var(--l2);border-radius:10px;font-size:13.5px;font-weight:500;white-space:nowrap}
 .side.b .cell{color:var(--t2)}
 .cell.pd{flex:1 1 0;min-width:0}
 .cell.gr,.cell.sp{flex:none}
@@ -168,21 +174,20 @@ main{position:relative;min-height:0}
 .cell.brk .bar{direction:rtl}
 .cell small{font-size:11.5px;color:var(--t3);font-weight:400}
 .ctrl{display:flex;align-items:center;justify-content:center;padding:0 6px}
-.play{width:54px;height:42px;border:none;border-radius:21px;background:var(--pri);color:var(--onPri);display:flex;align-items:center;justify-content:center;transition:border-radius 250ms var(--spring)}
+.play{width:54px;height:38px;border:none;border-radius:19px;background:var(--pri);color:var(--onPri);display:flex;align-items:center;justify-content:center;transition:border-radius 250ms var(--spring)}
 .play:active{border-radius:12px}
 .play svg{width:20px;height:20px;fill:currentColor}
-.tl{display:flex;align-items:center;gap:12px}
-.chips{position:relative;flex:1;height:30px;cursor:pointer;touch-action:none;user-select:none}
-.chips:focus{outline:none}.chips:focus-visible{outline:2px solid var(--pri);outline-offset:3px;border-radius:8px}
-.chipset{display:flex;gap:6px;height:100%;align-items:flex-start}
-.sgrp{display:flex;flex-direction:column;gap:4px;min-width:0}
-.segs{display:flex;gap:2px;height:10px;margin-top:4px}
-.ms{display:block;min-width:0;border-radius:2px;background:var(--l3);opacity:.55;transition:opacity 120ms}
-.ms.gain{background:var(--pri)}.ms.loss{background:var(--ter)}.ms.played{opacity:1}
-.sl{font-size:10.5px;color:var(--t3);line-height:1}
-.head{position:absolute;top:1px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--t1);box-shadow:0 0 0 3px var(--l1);pointer-events:none}
-.ptime{flex:none;font-size:13px;min-width:96px;text-align:right}
-.ptime span{color:var(--t3)}
+/* timeline: time so far | the lap as one bar, sectors marked | lap time */
+.tl{position:relative;height:34px;cursor:pointer;touch-action:none;user-select:none;display:flex;align-items:flex-start;gap:12px;padding:0 4px}
+.tl:focus{outline:none}.tl:focus-visible{outline:2px solid var(--pri);outline-offset:3px;border-radius:8px}
+.tlt{flex:none;min-width:62px;line-height:22px;font-size:13px;font-weight:500;color:var(--t1)}
+.tlt.end{text-align:right;color:var(--t3);font-weight:400}
+.rail{position:relative;flex:1;height:6px;margin-top:8px;border-radius:3px;background:var(--l3)}
+.rail .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--t3)}
+.rail .sx{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;border-radius:1px;background:var(--t3)}
+.rail .sn{position:absolute;top:13px;transform:translateX(-50%);font-size:11px;color:var(--t3);line-height:1;pointer-events:none}
+.head{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--t1);box-shadow:0 0 0 3px var(--l1);pointer-events:none;z-index:1}
+@media (max-width:1100px){.centre{height:auto}.stage{grid-template-columns:minmax(0,1fr);grid-template-rows:56vh 600px}.mapv,.deck{border-radius:4px}}
 
 /* ---- setup ---- */
 /* the setup screen fills the window and never scrolls: balance takes what it needs, the car drawings and the
@@ -369,29 +374,25 @@ main{position:relative;min-height:0}
     </aside>
     <div class="centre">
      <div class="bar">
-      <div class="seg" id="views" role="group" data-tt="views.label"></div>
+      <span class="agap" id="agap"></span>
       <span class="grow"></span>
-      <span class="kq" id="linek" data-t="line.label"></span><div class="seg" id="linemode" role="group" data-tt="line.label"></div>
-      <span class="kq" id="modek" data-t="mode.label"></span><div class="seg" id="mode" role="group" data-tt="mode.label"></div>
+      <div class="seg" id="linemode" role="group" data-tt="line.label"></div>
      </div>
-     <div id="mapview">
-      <div class="mapv" id="mapt"><svg id="map" role="img" data-tt="map.label"></svg><div class="maplegend" id="legend"></div>
+     <div class="stage">
+      <div class="mapv" id="mapt"><canvas id="map" role="img" data-tt="map.label"></canvas><div class="cgap" id="cgap"></div>
        <div class="wait" id="wait" hidden></div>
        <div class="mapctl" role="group">
         <button type="button" id="zin" data-tt="map.zoomin"><svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
         <button type="button" id="zout" data-tt="map.zoomout"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
-        <button type="button" id="follow" aria-pressed="false" data-tt="map.follow"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
         <button type="button" id="fit" data-tt="map.fit"><svg class="ico" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button type="button" id="follow" aria-pressed="false" data-tt="map.follow"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3l6 16-6-4-6 4z"/></svg></button>
        </div>
       </div>
-     </div>
-     <div class="datav" id="dataview" hidden>
-      <div class="th"><h3 data-t="data.title"></h3><span class="x" data-t="data.hint"></span><button type="button" class="tb" id="whole" hidden data-t="data.whole"></button></div>
-      <svg id="traces" role="img" data-tt="data.title"></svg>
+      <div class="deck" id="deck"><canvas id="deckc" role="img" data-tt="deck.label"></canvas><div class="dread" id="dread"></div></div>
      </div>
      <div class="dock" id="dock">
       <div class="mirror"><div class="side a" id="sideA"></div><div class="ctrl"><button type="button" class="play" id="pp"></button></div><div class="side b" id="sideB"></div></div>
-      <div class="tl"><div class="chips" id="scrub" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" data-tt="play.position"><div class="chipset" id="chipset"></div><div class="head" id="phead"></div></div><span class="ptime" id="ptime"></span></div>
+      <div class="tl" id="scrub" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" data-tt="play.position"><span class="tlt" id="tnow"></span><div class="rail" id="rail"><i class="fill" id="tfill"></i><span class="head" id="phead"></span></div><span class="tlt end" id="tend"></span></div>
      </div>
     </div>
    </div>
@@ -472,8 +473,8 @@ const showError = msg => { $("err").textContent = msg || ""; $("err").title = ms
 
 // ---------- state ----------
 const S = {screen: "home", prev: null, state: null, live: {state: "off"}, history: false, session: null, stints: [], open: new Set(),
- a: null, b: null, lapA: null, lapB: null, delta: null, map: null, mapCtx: null, view: "map", line: "pedals", mode: "dist",
- t: 0, play: false, follow: false, zoom: null, proposal: null, proposalBusy: false, written: new Set(), hist: {kerbs: "off"}, hists: {},
+ a: null, b: null, lapA: null, lapB: null, delta: null, map: null, mapCtx: null, line: "pedals",
+ t: 0, play: false, follow: false, proposal: null, proposalBusy: false, written: new Set(), hist: {kerbs: "off"}, hists: {},
  settings: null, feelTarget: null, hq: "", hcls: "all", hsort: "recent", hopen: new Set()};
 
 // ---------- pills: one shape, the chosen option is a pill that morphs between options ----------
@@ -562,7 +563,7 @@ async function openSession(id, history) {
  const sessions = (await api("/api/sessions")).sessions;
  S.session = sessions.find(s => s.id === id) || null;
  S.history = history && !!S.session;
- S.a = S.b = null; S.proposal = null; S.open = new Set(); S.zoom = null; S.t = 0; setPlay(false); MV.k = 1; MV.cx = MV.cy = null;
+ S.a = S.b = null; S.proposal = null; S.open = new Set(); S.t = 0; setPlay(false); S.follow = false;
  renderNav();
  await loadStints(false);
 }
@@ -681,6 +682,7 @@ async function loadLaps() {
  S.lapA = a; S.lapB = b;
  S.delta = a && b ? a.trace.distance.map((d, i) => a.trace.time[i] == null ? null : a.trace.time[i] - timeAt(b, d)) : null;
  S.t = clamp(S.t, 0, lapT());
+ buildGeo(); if (!S.follow) fitNow();
  renderAnalysisBar(); drawAnalysis();
 }
 const compare = () => !!(S.lapA && S.lapB);
@@ -704,186 +706,300 @@ function distAt(L, s) {
 const lapT = () => S.lapA ? S.lapA.time : 0;
 const lapLen = () => S.map ? S.map.length : S.lapA ? S.lapA.trace.distance.at(-1) : 1;
 const dA = () => distAt(S.lapA, S.t);
-const dB = d => S.mode === "time" ? distAt(S.lapB, S.t) : d;
 
-// ---------- lap analysis: bar ----------
+// ---------- lap analysis: one page. The map shows where, the trace deck why; one cursor (S.t, lap A's time) drives both ----------
+const LA = {win: 200, hov: null, dirty: true, K: {}, G: null, wh: [1, 1], dw: [1, 1], fitS: 1, drag: null};
+const dB = d => d;  // lap B's values are read at the same point on track
+const lapLabel = L => L ? t("lap.n", {n: L.lap}) : "";
+function readK() { for (const k of ["l1", "l2", "l3", "bd", "t1", "t2", "t3", "green", "red", "pri", "ter"]) LA.K[k] = css("--" + k); LA.dirty = true; }
+function mix(c1, c2, f) { const h = c => c.length === 4 ? [1, 2, 3].map(i => parseInt(c[i] + c[i], 16)) : [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), a = h(c1), b = h(c2); return "rgb(" + a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(",") + ")"; }
+const smoothW = (arr, w) => arr.map((_, i) => { let s = 0, n = 0; for (let k = -w; k <= w; k++) { const j = i + k; if (j >= 0 && j < arr.length) { s += arr[j]; n++; } } return s / n; });
+
+// ---------- geometry for the loaded laps: driven lines, road centre and real width, zones ----------
+function buildGeo() {
+ LA.G = null; const A = S.lapA, B = S.lapB; if (!A) return;
+ const ta = A.trace, tb = B && B.trace, STEP = ta.step_m, N = tb ? Math.min(ta.distance.length, tb.distance.length) : ta.distance.length;
+ if (N < 8) return;
+ // gaps filled by straight lines; null when the channel is missing altogether
+ const fill = arr => { if (!arr) return null; const out = arr.slice(0, N); let last = -1;
+  for (let i = 0; i < N; i++) if (out[i] != null) { if (last < 0) for (let j = 0; j < i; j++) out[j] = out[i]; else for (let j = last + 1; j < i; j++) out[j] = out[last] + (out[i] - out[last]) * (j - last) / (i - last); last = i; }
+  if (last < 0) return null; for (let j = last + 1; j < N; j++) out[j] = out[last]; return out; };
+ // GPS at 5 m steps is slightly jittery: smooth the driven lines (binomial 1-4-6-4-1, two passes) so lines and cars run smoothly
+ const bin = a => { let s = a; for (let p = 0; p < 2; p++) { const src = s; s = src.map((_, i) => { let v = 0, w = 0; for (const [o, c] of [[-2, 1], [-1, 4], [0, 6], [1, 4], [2, 1]]) { const j = i + o; if (j >= 0 && j < N) { v += src[j] * c; w += c; } } return v / w; }); } return s; };
+ const mp = S.map && S.map.points;
+ const fromMap = (d, k) => { let lo = 0, hi = mp.length - 1; if (d <= mp[0][0]) return mp[0][k]; if (d >= mp[hi][0]) return mp[hi][k];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (mp[m][0] <= d) lo = m; else hi = m; } return mp[lo][k] + (mp[hi][k] - mp[lo][k]) * (d - mp[lo][0]) / ((mp[hi][0] - mp[lo][0]) || 1); };
+ const line = tr => { let x = fill(tr.x), y = fill(tr.y);
+  if (!x || !y) { if (!mp || !mp.length) return null; x = []; y = []; for (let i = 0; i < N; i++) { x.push(fromMap(i * STEP, 1)); y.push(fromMap(i * STEP, 2)); } }
+  return {x: bin(x), y: bin(y)}; };
+ const la = line(ta), lb = tb ? line(tb) : null; if (!la) return;
+ const Mn = Array.from({length: N}, (_, i) => lb ? [(la.x[i] + lb.x[i]) / 2, (la.y[i] + lb.y[i]) / 2] : [la.x[i], la.y[i]]);
+ const nL = Mn.map((_, i) => { const a = Mn[Math.max(0, i - 3)], b = Mn[Math.min(N - 1, i + 3)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [-dy / l, dx / l]; });
+ // road centre from Path Lateral: positive is right of the centre, and nL points left, so centre = line + nL · lateral
+ const pa = fill(ta.plat), pb = tb ? fill(tb.plat) : null;
+ const centre = (l, p) => Array.from({length: N}, (_, i) => [l.x[i] + nL[i][0] * p[i], l.y[i] + nL[i][1] * p[i]]);
+ let Cx, Cy;
+ if (pa) { const ca = centre(la, pa), cb = lb && pb ? centre(lb, pb) : ca; Cx = smoothW(ca.map((p, i) => (p[0] + cb[i][0]) / 2), 3); Cy = smoothW(ca.map((p, i) => (p[1] + cb[i][1]) / 2), 3); }
+ else { Cx = Mn.map(p => p[0]); Cy = Mn.map(p => p[1]); }
+ // half width from Track Edge, both laps averaged; 6 m where the channel is missing
+ const ea = fill(ta.edge), eb = tb ? fill(tb.edge) : null;
+ const HW = smoothW(Array.from({length: N}, (_, i) => !ea ? 6 : clamp(eb ? (Math.abs(ea[i]) + Math.abs(eb[i])) / 2 : Math.abs(ea[i]), 5, 14)), 6);
+ const EL = Cx.map((x, i) => [x + nL[i][0] * HW[i], Cy[i] + nL[i][1] * HW[i]]), ER = Cx.map((x, i) => [x - nL[i][0] * HW[i], Cy[i] - nL[i][1] * HW[i]]);
+ const xs = [...EL, ...ER].map(p => p[0]), ys = [...EL, ...ER].map(p => p[1]);
+ const BX = {x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys)};
+ // pedals, speed and gear for the deck; gear 0 is a shift in progress, so the last gear carries through it
+ const lap = (L, l) => { const tr = L.trace, g = []; for (let i = 0; i < N; i++) g.push(tr.gear[i] > 0 ? tr.gear[i] : i ? g[i - 1] : 1);
+  return {L, tr, x: l.x, y: l.y, t: tr.time.slice(0, N), v: tr.speed.slice(0, N).map(v => cv("speed", v ?? 0)), th: tr.throttle.slice(0, N).map(v => v || 0), br: tr.brake.slice(0, N).map(v => v || 0), g}; };
+ const GA = lap(A, la), GB = B ? lap(B, lb) : null;
+ for (const Q of [GA, GB]) if (Q) { const ts = (r) => Array.from({length: N}, (_, i) => { const a = Math.max(0, i - r), b = Math.min(N - 1, i + r), dx = Q.x[b] - Q.x[a], dy = Q.y[b] - Q.y[a], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; }); Q.TS = ts(2); Q.TL = ts(9); }
+ const dt = GB && S.delta ? Array.from({length: N}, (_, i) => S.delta[i] ?? 0) : null;
+ const rate = dt ? dt.map((_, i) => { const a = Math.max(0, i - 4), b = Math.min(N - 1, i + 4); return (dt[b] - dt[a]) / ((b - a) * STEP) * 100; }) : null;
+ const RATEMAX = rate ? (() => { const s = rate.map(Math.abs).sort((a, b) => a - b); return s[Math.floor(s.length * .95)] || 1; })() : 1;
+ const onsets = Q => { const o = []; for (let i = 1; i < N; i++) if (Q.br[i] >= .1 && Q.br[i - 1] < .1) o.push(i); return o; };
+ const ON = {A: onsets(GA), B: GB ? onsets(GB) : []};
+ const LEN = (N - 1) * STEP;
+ // braking zones: 60 m before lap A's brake point to 40 m after it is back on full throttle; close zones merge
+ const ZONES = [];
+ for (const i of ON.A) { let j = i; while (j < N - 1 && !(GA.th[j] >= .9 && GA.br[j] < .05) && (j - i) * STEP < 380) j++;
+  const d0 = Math.max(0, i * STEP - 60), d1 = Math.min(LEN, j * STEP + 40);
+  if (ZONES.length && d0 <= ZONES[ZONES.length - 1].d1) { ZONES[ZONES.length - 1].d1 = Math.max(ZONES[ZONES.length - 1].d1, d1); continue; }
+  ZONES.push({i, d0, d1}); }
+ const cross = (Q, i) => { const a = Q.br[i - 1] || 0, b = Q.br[i] || 0; return (i - 1 + clamp((.1 - a) / ((b - a) || 1), 0, 1)) * STEP; };  // 10 % crossing between samples
+ for (const z of ZONES) {
+  z.i0 = Math.round(z.d0 / STEP); z.i1 = Math.min(N - 1, Math.round(z.d1 / STEP));
+  const near = ON.B.filter(i => Math.abs(i - z.i) <= 16).sort((a, b) => Math.abs(a - z.i) - Math.abs(b - z.i))[0];
+  z.bpA = cross(GA, z.i); z.bpB = near == null ? null : cross(GB, near);
+  let mB = 1e9; if (GB) for (let k = z.i0; k <= z.i1; k++) mB = Math.min(mB, GB.v[k]); z.minB = mB;
+ }
+ const all = GB ? [...GA.v, ...GB.v] : GA.v, VMIN = Math.min(...all), VMAX = Math.max(...all);
+ let dm = .05; if (dt) for (const v of dt) dm = Math.max(dm, Math.abs(v));
+ const dst = dm > .5 ? .25 : dm > .2 ? .1 : .05;
+ const SEC = [0, ...(S.map ? S.map.sectors || [] : [])].map(d => Math.round(d / STEP)).filter(i => i < N);
+ LA.G = {N, STEP, LEN, A: GA, B: GB, nL, HW, EL, ER, BX, EXT: Math.max(BX.x1 - BX.x0, BX.y1 - BX.y0), dt, rate, RATEMAX, ON, ZONES, SEC,
+  SPD: [Math.floor((VMIN - 10) / 50) * 50, Math.ceil((VMAX + 5) / 50) * 50], DMAX: Math.ceil(dm * 1.1 / dst) * dst, GMAX: Math.max(1, ...GA.g, ...(GB ? GB.g : []))};
+}
+// position and heading of a lap at a time; the long tangent gives the follow camera a calm heading
+function carAt(Q, s, wide) {
+ const G = LA.G, ts = Q.t; let lo = 0, hi = G.N - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ts[m] != null && ts[m] <= s) lo = m; else hi = m; }
+ const f = clamp((s - ts[lo]) / ((ts[hi] - ts[lo]) || 1), 0, 1), T = wide ? Q.TL : Q.TS, hx = T[lo][0] + (T[hi][0] - T[lo][0]) * f, hy = T[lo][1] + (T[hi][1] - T[lo][1]) * f, l = Math.hypot(hx, hy) || 1;
+ return {x: Q.x[lo] + (Q.x[hi] - Q.x[lo]) * f, y: Q.y[lo] + (Q.y[hi] - Q.y[lo]) * f, fx: hx / l, fy: hy / l};
+}
+const idxNow = () => LA.G ? clamp(Math.round(dA() / LA.G.STEP), 0, LA.G.N - 1) : 0;
+
+// ---------- header bar ----------
 function renderAnalysisBar() {
- pills("views", ["map", "data"], [t("views.map"), t("views.data")], S.view, v => { S.view = v; $("dock").classList.toggle("pin", v === "data"); renderAnalysisBar(); drawAnalysis(); });
- pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; drawMap(); placeMarkers(); });
- pills("mode", ["dist", "time"], [t("mode.dist"), t("mode.time")], S.mode, v => { S.mode = v; tick0(); });
- const mv = S.view === "map";
- $("mapview").hidden = !mv; $("dataview").hidden = mv;
- $("linek").hidden = $("linemode").hidden = !mv || false;
- $("modek").hidden = $("mode").hidden = !compare();
  if (!compare() && S.line === "delta") S.line = "pedals";
- $("linemode").querySelector('[aria-pressed="true"]') || pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; drawMap(); placeMarkers(); });
+ pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; LA.dirty = true; });
  $("linemode").querySelectorAll("button")[1].disabled = !compare();
+ const g = $("agap"), d = compare() ? S.lapA.time - S.lapB.time : null;
+ g.textContent = d == null ? "" : signed(d, 3) + " s"; g.style.color = d < 0 ? "var(--pri)" : "var(--ter)";
 }
 function drawAnalysis() {
  if (S.screen !== "analysis") return;
  const waiting = !S.history && S.live.state === "live" && !S.stints.length;
  $("wait").hidden = !waiting; $("wait").textContent = waiting ? t("analysis.waiting") : "";
- if (S.view === "map") drawMap(); else drawTraces();
- buildDock(); tick0();
+ readK(); buildDock(); LA.dirty = true;
  requestAnimationFrame(refreshThumbs);
 }
 function redraw() { if (S.screen === "analysis") drawAnalysis(); if (S.screen === "setup") renderSetup(); if (S.screen === "driver") loadDriver(); }
 
-// ---------- map: pedal or gain/loss colours, braking points, zoom, pan, follow ----------
-const MV = {k: 1, cx: null, cy: null};
-let mapP = null, mapWH = [1, 1];
-function mix(c1, c2, f) { const h = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), a = h(c1), b = h(c2); return "#" + a.map((v, k) => Math.round(v + (b[k] - v) * f).toString(16).padStart(2, "0")).join(""); }
+// ---------- map camera: a flat top view that pans, zooms and turns; follow keeps the car pointing up ----------
+const cam = {x: 0, y: 0, s: 1, r: 0}, goal = {...cam};
+function proj() { const [W, H] = LA.wh, c = Math.cos(cam.r), sn = Math.sin(cam.r), s = cam.s;
+ return {P: (x, y) => { const dx = x - cam.x, dy = y - cam.y; return [W / 2 + (dx * c + dy * sn) * s, H / 2 - (-dx * sn + dy * c) * s]; },
+  ground: (sx, sy) => { const u = (sx - W / 2) / s, v = -(sy - H / 2) / s; return [cam.x + u * c - v * sn, cam.y + u * sn + v * c]; }}; }
+function fitGoal() {
+ const G = LA.G, [W, H] = LA.wh; if (!G) return;
+ const s = Math.min((W - 120) / ((G.BX.x1 - G.BX.x0) || 1), (H - 70) / ((G.BX.y1 - G.BX.y0) || 1));
+ Object.assign(goal, {x: (G.BX.x0 + G.BX.x1) / 2, y: (G.BX.y0 + G.BX.y1) / 2, s: Math.max(.01, s), r: 0}); LA.fitS = goal.s;
+}
+function fitNow() { fitGoal(); Object.assign(cam, goal); LA.dirty = true; }
+function setFollow(on) { S.follow = on; $("follow").setAttribute("aria-pressed", on); if (on) goal.s = Math.max(goal.s, Math.min(...LA.wh) / 320); }
+const zoomAt = (f, sx, sy) => {
+ const {ground} = proj(), g0 = sx != null ? ground(sx, sy) : null;
+ goal.s = clamp(goal.s * f, LA.fitS * .6, 40);
+ if (g0 && !S.follow) { cam.s = goal.s; const g1 = proj().ground(sx, sy); goal.x = cam.x += g0[0] - g1[0]; goal.y = cam.y += g0[1] - g1[1]; }
+ LA.dirty = true;
+};
+
+// ---------- map drawing (canvas) ----------
 function drawMap() {
- const svg = $("map"), box = $("mapt").getBoundingClientRect();
- svg.replaceChildren(); $("legend").replaceChildren(); mapP = null;
- if (!S.map || !box.width) return;
- const W = box.width, H = box.height; mapWH = [W, H]; svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
- const pts = S.map.points, xs = pts.map(p => p[1]), ys = pts.map(p => -p[2]);
- const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), pad = 50, top = 40, bot = 30;
- const k = Math.min((W - 2 * pad) / ((x1 - x0) || 1), (H - top - bot) / ((y1 - y0) || 1)), ox = (W - (x1 - x0) * k) / 2, oy = top + (H - top - bot - (y1 - y0) * k) / 2;
- mapP = (x, y) => [ox + (x - x0) * k, oy + (-y - y0) * k];
- const NS_ = {"vector-effect": "non-scaling-stroke"};
- svg.append(sv("path", {d: pts.map((p, i) => (i ? "L" : "M") + mapP(p[1], p[2]).map(v => v.toFixed(1)).join(",")).join("") + "Z", fill: "none", stroke: css("--l3"), "stroke-width": 22, "stroke-linejoin": "round", ...NS_}));
- const A = S.lapA;
- if (A) {
-  const tr = A.trace, n = tr.distance.length, pri = css("--pri"), ter = css("--ter"), neu = css("--t3"), GREEN = css("--green"), RED = css("--red");
-  const g = sv("g", {"stroke-linecap": "round"});
-  for (let i = 0; i < n - 1; i++) {
-   if (tr.x[i] == null || tr.x[i + 1] == null) continue;
-   let c, op = 1;
-   if (S.line === "delta" && S.delta) {
-    const j0 = Math.max(0, i - 2), j1 = Math.min(n - 1, i + 3), dd = (S.delta[j1] ?? 0) - (S.delta[j0] ?? 0), rate = dd / ((tr.distance[j1] - tr.distance[j0]) || 1) * 100;
-    c = rate < -0.012 ? pri : rate > 0.012 ? ter : neu;
-   } else { const br = tr.brake[i] || 0, th = tr.throttle[i] || 0; if (br > 0.05) { c = RED; op = .45 + .55 * br; } else if (th > 0.05) { c = GREEN; op = .3 + .7 * th; } else { c = neu; op = .6; } }
-   const [ax, ay] = mapP(tr.x[i], tr.y[i]), [bx, by] = mapP(tr.x[i + 1], tr.y[i + 1]);
-   g.append(sv("line", {x1: ax.toFixed(1), y1: ay.toFixed(1), x2: bx.toFixed(1), y2: by.toFixed(1), stroke: c, "stroke-opacity": op, "stroke-width": 7, ...NS_}));
-  }
-  svg.append(g);
-  const labels = sv("g", {id: "maplabels"});
-  const tick = (L, i, col, len, w) => { const q = L.trace, j = Math.min(q.x.length - 1, i + 2), kk = Math.max(0, i - 2); if (q.x[i] == null || q.x[j] == null || q.x[kk] == null) return;
-   const [px, py] = mapP(q.x[i], q.y[i]), [qx, qy] = mapP(q.x[j], q.y[j]), [rx, ry] = mapP(q.x[kk], q.y[kk]); let nx = -(qy - ry), ny = qx - rx; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
-   labels.append(sv("line", {x1: px - nx * len, y1: py - ny * len, x2: px + nx * len, y2: py + ny * len, stroke: col, "stroke-width": w, "stroke-linecap": "round"})); };
-  const onsets = L => { const b = L.trace.brake, out = []; for (let i = 1; i < b.length; i++) if ((b[i] || 0) >= 0.1 && (b[i - 1] || 0) < 0.1) out.push(i); return out; };
-  if (S.line === "pedals") { if (S.lapB) onsets(S.lapB).forEach(i => tick(S.lapB, i, neu, 9, 2.5)); onsets(A).forEach(i => tick(A, i, RED, 12, 3)); }
-  const near = d => { let best = pts[0]; for (const p of pts) if (Math.abs(p[0] - d) < Math.abs(best[0] - d)) best = p; return best; };
-  [0, ...(S.map.sectors || [])].forEach((d, si) => {
-   const p = near(d), q = near(Math.min(lapLen() - 1, d + 25)), [ax, ay] = mapP(p[1], p[2]), [bx, by] = mapP(q[1], q[2]);
-   const nx = -(by - ay), ny = bx - ax, nl = Math.hypot(nx, ny) || 1, ux = nx / nl, uy = ny / nl;
-   labels.append(sv("line", {x1: ax - ux * 14, y1: ay - uy * 14, x2: ax + ux * 14, y2: ay + uy * 14, stroke: css("--t1"), "stroke-width": d === 0 ? 3 : 1.5}));
-   const tx = sv("text", {x: ax + ux * 32, y: ay + uy * 32 + 4, "text-anchor": "middle", fill: css("--t2"), "font-size": 12.5, "font-weight": 600, "font-family": "inherit"}, t("sector.n", {n: si + 1}));
-   const sa = A.trace.sectors && A.trace.sectors[si], sb = S.lapB && S.lapB.trace.sectors && S.lapB.trace.sectors[si];
-   if (sa != null && sb != null) tx.append(sv("tspan", {fill: sa - sb < 0 ? pri : ter, "font-weight": 500, dx: 5}, signed(sa - sb, 3)));
-   labels.append(tx);
-  });
-  svg.append(labels);
-  const L = $("legend"), li = (col, txt, style = "") => { const s = el("span"); s.innerHTML = `<i style="background:${col};${style}"></i>`; s.append(txt); L.append(s); };
-  if (S.line === "pedals") { li(GREEN, t("legend.throttle")); li(RED, t("legend.brake")); li(neu, t("legend.coast")); li(RED, t("legend.brakepoint"), "width:3px;height:12px;vertical-align:-2px"); }
-  else { li(pri, t("legend.gain", {lap: lapLabel(S.lapA)})); li(ter, t("legend.gain", {lap: lapLabel(S.lapB)})); li(neu, t("legend.even")); }
+ const g = LA.ctx, K = LA.K, G = LA.G, [W, H] = LA.wh; if (!g) return;
+ g.clearRect(0, 0, W, H); g.lineCap = "round"; g.lineJoin = "round";
+ if (!G) { $("cgap").textContent = ""; return; }
+ const {P} = proj(), N = G.N, nL = G.nL, z = clamp(Math.sqrt(cam.s / LA.fitS), 1, 2.2);
+ const quad = (a, b, c, d) => { g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(c[0], c[1]); g.lineTo(d[0], d[1]); g.closePath(); };
+ const across = (x, y, i, half) => { const n = nL[i]; return [P(x + n[0] * half, y + n[1] * half), P(x - n[0] * half, y - n[1] * half)]; };
+ // ground dots every 100 m, once they are far enough apart to read as a grid
+ if (cam.s * 100 >= 14) { g.fillStyle = K.bd; for (let x = Math.floor((G.BX.x0 - 300) / 100) * 100; x <= G.BX.x1 + 300; x += 100) for (let y = Math.floor((G.BX.y0 - 300) / 100) * 100; y <= G.BX.y1 + 300; y += 100) { const p = P(x, y); if (p[0] > -4 && p[0] < W + 4 && p[1] > -4 && p[1] < H + 4) g.fillRect(p[0] - .7, p[1] - .7, 1.4, 1.4); } }
+ // road surface at real width
+ const L = G.EL.map(p => P(p[0], p[1])), R = G.ER.map(p => P(p[0], p[1]));
+ g.lineWidth = 1; g.fillStyle = g.strokeStyle = K.l3;
+ for (let i = 0; i < N - 1; i++) { quad(L[i], L[i + 1], R[i + 1], R[i]); g.fill(); g.stroke(); }
+ // paint on the tarmac: braking (pedals) or where time changes hands (gain/loss); each 5 m piece blends start to end shade
+ const paintAt = i => {
+  if (S.line === "pedals" || !G.rate) { const br = G.A.br[i]; return br > .05 ? [K.red, .12 + .4 * br] : null; }
+  const r = G.rate[i], m = Math.abs(r) / G.RATEMAX; return m > .08 ? [r < 0 ? K.pri : K.ter, clamp(.1 + .5 * m, 0, .6)] : null;
+ };
+ const PA = Array.from({length: N}, (_, i) => paintAt(i));
+ for (let i = 0; i < N - 1; i++) {
+  const p0 = PA[i], p1 = PA[i + 1]; if (!p0 && !p1) continue;
+  const col = (p0 || p1)[0], c0 = mix(K.l3, col, p0 && p0[0] === col ? p0[1] : 0), c1 = mix(K.l3, col, p1 && p1[0] === col ? p1[1] : 0);
+  const m0 = [(L[i][0] + R[i][0]) / 2, (L[i][1] + R[i][1]) / 2], m1 = [(L[i + 1][0] + R[i + 1][0]) / 2, (L[i + 1][1] + R[i + 1][1]) / 2];
+  const gr = g.createLinearGradient(m0[0], m0[1], m1[0], m1[1]); gr.addColorStop(0, c0); gr.addColorStop(1, c1);
+  g.fillStyle = g.strokeStyle = gr; quad(L[i], L[i + 1], R[i + 1], R[i]); g.fill(); g.stroke();
  }
- svg.append(sv("g", {id: "markers"}));
- placeMarkers();
-}
-const lapLabel = L => L ? t("lap.n", {n: L.lap}) : "";
-function viewBoxNow(ax, ay) { const [W, H] = mapWH, k = S.follow ? Math.max(MV.k, 2.5) : MV.k, cx = S.follow ? ax : (MV.cx ?? W / 2), cy = S.follow ? ay : (MV.cy ?? H / 2); return {k, x: cx - W / k / 2, y: cy - H / k / 2, w: W / k, h: H / k}; }
-function carXY(L, d) { const x = at(L, "x", d), y = at(L, "y", d); return x == null ? null : mapP(x, y); }
-function placeMarkers() {
- const svg = $("map"), g = $("markers"); if (!g || !mapP || !S.lapA) return; g.replaceChildren();
- const d = dA(), pa = carXY(S.lapA, d); if (!pa) return;
- const v = viewBoxNow(pa[0], pa[1]), z = v.k;
- svg.setAttribute("viewBox", z <= 1.001 ? `0 0 ${mapWH[0]} ${mapWH[1]}` : `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`);
- const lab = $("maplabels"); if (lab) lab.style.display = z > 1.6 ? "none" : "";
- if (S.lapB) { const pb = carXY(S.lapB, dB(d)); if (pb) g.append(sv("circle", {cx: pb[0], cy: pb[1], r: 7 / z, fill: css("--t3"), stroke: css("--l1"), "stroke-width": 2.5 / z})); }
- g.append(sv("circle", {cx: pa[0], cy: pa[1], r: 8.5 / z, fill: css("--t1"), stroke: css("--l1"), "stroke-width": 2.5 / z}));
-}
-function zoomBy(f, px, py) {
- if (!mapP || !S.lapA) return;
- const pa = carXY(S.lapA, dA()) || [mapWH[0] / 2, mapWH[1] / 2], v = viewBoxNow(pa[0], pa[1]), k2 = clamp((S.follow ? Math.max(MV.k, 2.5) : MV.k) * f, 1, 10);
- if (!S.follow) { const cx = v.x + v.w / 2, cy = v.y + v.h / 2, qx = px ?? cx, qy = py ?? cy, r = v.k / k2; MV.cx = qx - (qx - cx) * r; MV.cy = qy - (qy - cy) * r; if (k2 <= 1.001) MV.cx = MV.cy = null; }
- MV.k = k2; placeMarkers();
-}
-function fitMap() { MV.k = 1; MV.cx = MV.cy = null; S.follow = false; $("follow").setAttribute("aria-pressed", "false"); placeMarkers(); }
-(() => {
- const svg = $("map");
- const toMap = e => { const r = svg.getBoundingClientRect(), pa = (S.lapA && mapP && carXY(S.lapA, dA())) || [mapWH[0] / 2, mapWH[1] / 2], v = viewBoxNow(pa[0], pa[1]); return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h, v]; };
- $("mapt").addEventListener("wheel", e => { if (e.target.closest(".mapctl")) return; e.preventDefault(); const [px, py] = toMap(e); zoomBy(e.deltaY < 0 ? 1.25 : 0.8, px, py); }, {passive: false});
- let pan = null;
- svg.addEventListener("pointerdown", e => { if (S.follow || MV.k <= 1.001) return; pan = {x: e.clientX, y: e.clientY, cx: MV.cx, cy: MV.cy}; svg.setPointerCapture(e.pointerId); });
- svg.addEventListener("pointermove", e => { if (!pan) return; const r = svg.getBoundingClientRect(), [, , v] = toMap(e); MV.cx = pan.cx - (e.clientX - pan.x) / r.width * v.w; MV.cy = pan.cy - (e.clientY - pan.y) / r.height * v.h; placeMarkers(); });
- svg.addEventListener("pointerup", () => { pan = null; });
- svg.addEventListener("dblclick", fitMap);
- $("zin").onclick = () => zoomBy(1.4); $("zout").onclick = () => zoomBy(1 / 1.4); $("fit").onclick = fitMap;
- $("follow").onclick = () => { S.follow = !S.follow; $("follow").setAttribute("aria-pressed", S.follow); placeMarkers(); };
-})();
-new ResizeObserver(() => { if (S.screen === "analysis") drawAnalysis(); }).observe($("mapt"));
-
-// ---------- data view: every channel at full scale, drag to zoom ----------
-let tr = null;
-function drawTraces() {
- const svg = $("traces"), A = S.lapA, B = S.lapB; svg.replaceChildren(); tr = null;
- $("whole").hidden = !S.zoom;
- if (!A) return;
- const W = svg.getBoundingClientRect().width || 900, ml = 96, mr = 8, [z0, z1] = S.zoom || [0, lapLen()], GREEN = css("--green"), RED = css("--red");
- const lanes = [...(S.delta ? [{k: "delta", h: 120}] : []), {k: "speed", h: 220}, {k: "throttle", h: 140, col: GREEN, pct: true}, {k: "brake", h: 140, col: RED, pct: true}, {k: "steer", h: 140}, {k: "gear", h: 100}];
- const gap = 26, H = lanes.reduce((s, l) => s + l.h + gap, 26) + 4;
- svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
- const X = d => ml + (d - z0) / ((z1 - z0) || 1) * (W - ml - mr);
- const defs = sv("defs"), cp = sv("clipPath", {id: "plot"}); cp.append(sv("rect", {x: ml, y: 0, width: W - ml - mr, height: H})); defs.append(cp); svg.append(defs);
- const sec = [0, ...(S.map ? S.map.sectors || [] : []), lapLen()];
- for (let s = 0; s < sec.length - 1; s++) {
-  const a = Math.max(sec[s], z0), b = Math.min(sec[s + 1], z1);
-  if (b > a) svg.append(sv("text", {x: (X(a) + X(b)) / 2, y: 13, "text-anchor": "middle", fill: css("--t3"), "font-size": 12, "font-weight": 600}, t("sector.n", {n: s + 1})));
-  if (s && sec[s] > z0 && sec[s] < z1) svg.append(sv("line", {x1: X(sec[s]), x2: X(sec[s]), y1: 20, y2: H - 18, stroke: css("--bd")}));
- }
- const inRange = (L, i) => L.trace.distance[i] >= z0 - 20 && L.trace.distance[i] <= z1 + 20;
- const plot = sv("g", {"clip-path": "url(#plot)"});
- let y = 26;
- lanes.forEach((ln, li) => {
-  const top = y, h = ln.h, unit = ln.k === "speed" ? UNIT.speed : t("unit." + ln.k);
-  if (li) svg.append(sv("line", {x1: 0, x2: W, y1: top - gap / 2, y2: top - gap / 2, stroke: css("--l3")}));
-  svg.append(sv("text", {x: 0, y: top + 15, fill: css("--t1"), "font-size": 14, "font-weight": 600}, t("trace." + ln.k, {lap: lapLabel(B)})));
-  if (unit) svg.append(sv("text", {x: 0, y: top + 32, fill: css("--t3"), "font-size": 12}, unit));
-  const src = L => ln.k === "delta" ? (L === A ? S.delta : null) : L.trace[ln.k].map(v => v == null ? null : ln.pct ? v * 100 : ln.k === "speed" ? cv("speed", v) : v);
-  const sa = src(A), sb = B ? src(B) : null;
-  let lo, hi;
-  if (ln.pct) { lo = 0; hi = 100; }
-  else {
-   const vals = []; sa.forEach((v, i) => { if (v != null && inRange(A, i)) vals.push(v); }); if (sb) sb.forEach((v, i) => { if (v != null && inRange(B, i)) vals.push(v); });
-   lo = vals.length ? Math.min(...vals) : 0; hi = vals.length ? Math.max(...vals) : 1;
-   if (ln.k === "delta" || ln.k === "steer") { const m = Math.max(Math.abs(lo), Math.abs(hi), ln.k === "delta" ? 0.05 : 5); lo = -m; hi = m; }
-   if (ln.k === "gear") { lo = Math.max(0, Math.floor(lo) - .3); hi = Math.ceil(hi) + .3; }
-   if (ln.k === "speed") { const p = (hi - lo) * .08; lo -= p; hi += p; }
-  }
-  const Y = v => top + h - (v - lo) / ((hi - lo) || 1) * h;
-  let ticks;
-  if (ln.pct) ticks = [0, 50, 100];
-  else if (ln.k === "speed") { const st = (hi - lo) > 120 ? 50 : (hi - lo) > 50 ? 20 : 10; ticks = []; for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) ticks.push(v); }
-  else if (ln.k === "gear") { ticks = []; for (let v = Math.ceil(lo); v <= hi; v++) ticks.push(v); }
-  else ticks = [lo, 0, hi];
-  ticks.forEach(v => { const yy = Y(v); svg.append(sv("line", {x1: ml, x2: W - mr, y1: yy, y2: yy, stroke: css("--l3"), "stroke-width": v === 0 ? 1.2 : .8}));
-   svg.append(sv("text", {x: ml - 10, y: yy + 4, "text-anchor": "end", fill: css("--t3"), "font-size": 11.5}, ln.k === "delta" ? signed(v, 2) : ln.k === "steer" ? Math.round(v) : v)); });
-  const line = (arr, L, col, w, op) => { let d = ""; arr.forEach((v, i) => { if (v == null || !inRange(L, i)) return; d += (d ? "L" : "M") + X(L.trace.distance[i]).toFixed(1) + "," + Y(clamp(v, lo, hi)).toFixed(1); });
-   plot.append(sv("path", {d, fill: "none", stroke: col, "stroke-width": w, "stroke-opacity": op, "stroke-linejoin": "round"})); };
-  if (sb) line(sb, B, ln.col || css("--t3"), 1.3, ln.col ? .45 : 1);
-  line(sa, A, ln.col || (ln.k === "delta" ? css("--pri") : css("--t1")), 1.8, 1);
-  y += h + gap;
- });
- svg.append(plot, sv("rect", {id: "sel", x: 0, y: 20, width: 0, height: H - 40, fill: css("--pri"), "fill-opacity": .12, visibility: "hidden"}), sv("line", {id: "cur", y1: 20, y2: H - 18, stroke: css("--pri"), "stroke-width": 1.5}));
- tr = {X, ml, mr, W, z0, z1};
+ g.strokeStyle = K.bd; g.lineWidth = 1;
+ for (const E of [L, R]) { g.beginPath(); E.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); }
+ // start/finish and sector lines across the road
+ const labels = [];
+ G.SEC.forEach((i, s) => { g.strokeStyle = K.t1; g.lineWidth = (s ? 1.4 : 2.6) * z; g.beginPath(); g.moveTo(L[i][0], L[i][1]); g.lineTo(R[i][0], R[i][1]); g.stroke(); labels.push([P(G.EL[i][0] + nL[i][0] * 26, G.EL[i][1] + nL[i][1] * 26), s]); });
+ // each driven line is stroked in runs of one colour, so joins are clean
+ const runs = (Q, styleOf, w) => { let run = null;
+  const flush = () => { if (run && run.pts.length > 1) { g.strokeStyle = run.c; g.globalAlpha = run.a; g.lineWidth = w * z; g.beginPath(); run.pts.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); } run = null; };
+  for (let i = 0; i < N; i++) { const p = P(Q.x[i], Q.y[i]), [c, a0] = styleOf(Math.min(i, N - 2)), a = Math.round(a0 * 5) / 5;
+   if (!run || run.c !== c || run.a !== a || run.pts.length > 14) { const last = run && run.pts[run.pts.length - 1]; flush(); run = {c, a, pts: last ? [last] : []}; }
+   run.pts.push(p); }
+  flush(); g.globalAlpha = 1; };
+ const brakeMarks = (Q, list, col, w) => list.forEach(i => { const [a, b] = across(Q.x[i], Q.y[i], i, G.HW[i] * .9); g.strokeStyle = col; g.lineWidth = w * z; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); });
+ if (G.B) { runs(G.B, () => [K.t3, .85], 1.4); brakeMarks(G.B, G.ON.B, K.t3, 2); }
+ runs(G.A, i => { const br = G.A.br[i], th = G.A.th[i]; return br > .05 ? [K.red, .55 + .45 * br] : th > .05 ? [K.green, .35 + .65 * th] : [K.t3, .7]; }, 2.6);
+ brakeMarks(G.A, G.ON.A, K.red, 2.6);
+ // sector names, with lap A's sector time against lap B's
+ g.font = `600 12.5px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = "left";
+ const sa = S.lapA.trace.sectors || [], sb = S.lapB ? S.lapB.trace.sectors || [] : [];
+ for (const [o, s] of labels) { const d = sa[s] != null && sb[s] != null ? sa[s] - sb[s] : null, name = t("sector.n", {n: s + 1}), dl = d == null ? "" : "  " + signed(d, 3);
+  const w1 = g.measureText(name).width, w2 = g.measureText(dl).width, x0 = o[0] - (w1 + w2) / 2;
+  g.fillStyle = K.t2; g.fillText(name, x0, o[1] + 4); if (dl) { g.fillStyle = d < 0 ? K.pri : K.ter; g.fillText(dl, x0 + w1, o[1] + 4); } }
+ // the cars: a circle each, lap A light and lap B grey, ringed in the tile colour; both at the same time in the lap
+ const dot = (Q, col, r) => { const c = carAt(Q, S.t), q = P(c.x, c.y); g.beginPath(); g.arc(q[0], q[1], r, 0, Math.PI * 2); g.lineWidth = 3; g.strokeStyle = K.l1; g.stroke(); g.fillStyle = col; g.fill(); return q; };
+ if (G.B) dot(G.B, K.t3, 6.5);
+ const pa = dot(G.A, K.t1, 7.5);
+ // the gap to lap B, just above lap A's circle
+ const el = $("cgap");
+ if (G.dt && pa[1] > 0 && pa[1] < H) { const gp = G.dt[idxNow()]; el.textContent = signed(gp, 3) + " s"; el.style.color = gp < 0 ? "var(--pri)" : gp > 0 ? "var(--ter)" : "var(--t2)"; el.style.left = pa[0] + "px"; el.style.top = (pa[1] - 14) + "px"; }
+ else el.textContent = "";
 }
 (() => {
- const svg = $("traces"); let drag = null;
- const toD = e => { const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * (tr.W / r.width); return clamp(tr.z0 + (px - tr.ml) / (tr.W - tr.ml - tr.mr) * (tr.z1 - tr.z0), 0, lapLen()); };
- svg.addEventListener("pointerdown", e => { if (!tr) return; drag = {d: toD(e), moved: false}; svg.setPointerCapture(e.pointerId); });
- svg.addEventListener("pointermove", e => { if (!drag || !tr) return; const d = toD(e); if (Math.abs(d - drag.d) > (tr.z1 - tr.z0) * 0.01) drag.moved = true;
-  const r = $("sel"); if (drag.moved && r) { const a = tr.X(Math.min(d, drag.d)), b = tr.X(Math.max(d, drag.d)); r.setAttribute("x", a); r.setAttribute("width", b - a); r.setAttribute("visibility", "visible"); } });
- svg.addEventListener("pointerup", e => { if (!drag || !tr) return; const d = toD(e), a = Math.min(d, drag.d), b = Math.max(d, drag.d), moved = drag.moved; drag = null;
-  if (moved && b - a > 40) { S.zoom = [a, b]; drawTraces(); tick0(); } else { S.t = timeAt(S.lapA, d) ?? 0; setPlay(false); tick0(); } });
- svg.addEventListener("dblclick", () => { S.zoom = null; drawTraces(); tick0(); });
- $("whole").onclick = () => { S.zoom = null; drawTraces(); tick0(); };
+ const cvs = $("map");
+ cvs.addEventListener("contextmenu", e => e.preventDefault());
+ cvs.addEventListener("pointerdown", e => { const r = cvs.getBoundingClientRect(); LA.drag = {turn: e.button === 2 || e.shiftKey, x: e.clientX, g: proj().ground(e.clientX - r.left, e.clientY - r.top), r: goal.r}; cvs.setPointerCapture(e.pointerId); cvs.classList.add("drag"); });
+ cvs.addEventListener("pointermove", e => { const d = LA.drag; if (!d) return; const r = cvs.getBoundingClientRect();
+  if (d.turn) { goal.r = cam.r = d.r - (e.clientX - d.x) * .006; LA.dirty = true; return; }
+  if (S.follow) setFollow(false);
+  const g1 = proj().ground(e.clientX - r.left, e.clientY - r.top); goal.x = cam.x += d.g[0] - g1[0]; goal.y = cam.y += d.g[1] - g1[1]; LA.dirty = true; });
+ const up = () => { LA.drag = null; cvs.classList.remove("drag"); };
+ cvs.addEventListener("pointerup", up); cvs.addEventListener("pointercancel", up);
+ cvs.addEventListener("wheel", e => { e.preventDefault(); const r = cvs.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX - r.left, e.clientY - r.top); }, {passive: false});
+ cvs.addEventListener("dblclick", () => { setFollow(false); fitGoal(); });
+ $("zin").onclick = () => zoomAt(1.35); $("zout").onclick = () => zoomAt(1 / 1.35);
+ $("fit").onclick = () => { setFollow(false); fitGoal(); };
+ $("follow").onclick = () => { setFollow(!S.follow); if (!S.follow) fitGoal(); };
+ new ResizeObserver(() => { const r = $("mapt").getBoundingClientRect(), dpr = devicePixelRatio || 1; if (r.width < 10 || r.height < 10) return;
+  LA.wh = [r.width, r.height]; cvs.width = Math.round(r.width * dpr); cvs.height = Math.round(r.height * dpr); LA.ctx = cvs.getContext("2d"); LA.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (S.follow) goal.s = Math.max(goal.s, Math.min(...LA.wh) / 320); else fitNow(); LA.dirty = true; }).observe($("mapt"));
 })();
-function cursor() { const c = $("cur"); if (!c || !tr) return; const d = dA(), x = tr.X(d); c.setAttribute("x1", x); c.setAttribute("x2", x); c.style.visibility = d >= tr.z0 && d <= tr.z1 ? "" : "hidden"; }
 
-// ---------- bottom bar: mirrored live pedals, play, mini-sector timeline ----------
+// ---------- trace deck: delta, speed, throttle, brake and gear on one distance axis, centred on the cursor ----------
+const whole = () => !LA.G || LA.win >= LA.G.LEN / 2;
+function deckWindow() { if (whole()) return [0, LA.G ? LA.G.LEN : 1]; const c = dA(); return [c - LA.win, c + LA.win]; }
+function deckLayout() {
+ const [, DH] = LA.dw, gap = 8, axis = 16, avail = DH - axis - gap;
+ let lanes = [["d", 100], ["v", 170], ["th", 110], ["br", 110], ["g", 66]].filter(l => (LA.G && LA.G.dt) || l[0] !== "d");
+ const sum = ls => ls.reduce((s, l) => s + l[1], 0) + gap * (ls.length - 1);
+ if (sum(lanes) > avail) lanes = lanes.filter(l => l[0] !== "g");  // gear goes first on short screens
+ const k = (avail - gap * (lanes.length - 1)) / lanes.reduce((s, l) => s + l[1], 0), out = {lanes: {}, axisY: DH - axis}; let y = 2;
+ for (const [key, h] of lanes) { out.lanes[key] = [y, h * k]; y += h * k + gap; }
+ return out;
+}
+const laneName = k => k === "d" ? t("trace.delta", {lap: lapLabel(S.lapB)}) : t({v: "trace.speed", th: "trace.throttle", br: "trace.brake", g: "trace.gear"}[k]);
+function drawDeck() {
+ const g = LA.dctx, K = LA.K, G = LA.G, [DW, DH] = LA.dw; if (!g) return;
+ g.clearRect(0, 0, DW, DH); if (DW < 20 || !G) return;
+ g.lineJoin = "round"; g.lineCap = "round";
+ const font = getComputedStyle(document.body).fontFamily, Lo = deckLayout(), [d0, d1] = deckWindow(), X = d => (d - d0) / (d1 - d0) * DW, STEP = G.STEP;
+ const lo = clamp(Math.floor(d0 / STEP) - 1, 0, G.N - 1), hi = clamp(Math.ceil(d1 / STEP) + 1, 0, G.N - 1), PADT = 20, PADB = 6, secs = S.map ? S.map.sectors || [] : [];
+ // each lane is its own panel with its name, a fixed scale and quiet gridlines
+ const panel = (key, ticks, fmt) => {
+  const [y, h] = Lo.lanes[key], py = y + PADT, ph = h - PADT - PADB;
+  g.fillStyle = K.l2; g.beginPath(); g.roundRect(0, y, DW, h, 6); g.fill();
+  g.font = "600 11px " + font; g.fillStyle = K.t2; g.textAlign = "left"; g.fillText(laneName(key), 8, y + 14);
+  g.font = "11px " + font; g.textAlign = "right";
+  for (const [v, yy] of ticks) { g.strokeStyle = K.l3; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yy + .5); g.lineTo(DW, yy + .5); g.stroke(); g.fillStyle = K.t3; g.fillText(fmt(v), DW - 6, yy - 3); }
+  g.strokeStyle = K.l3; for (const d of secs) if (d > d0 && d < d1) { g.beginPath(); g.moveTo(X(d), py); g.lineTo(X(d), py + ph); g.stroke(); }
+  return [y, h];
+ };
+ const clip = (y, h, fn) => { g.save(); g.beginPath(); g.rect(0, y - 3, DW, h + 6); g.clip(); fn(); g.restore(); };
+ const series = (arr, Y, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); for (let i = lo; i <= hi; i++) { const px = X(i * STEP), py = Y(arr[i]); i === lo ? g.moveTo(px, py) : g.lineTo(px, py); } g.stroke(); g.setLineDash([]); };
+ // Δ: fixed scale for the lap, coloured by its trend
+ if (Lo.lanes.d) {
+  const [y0, h0] = Lo.lanes.d, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph / 2 - v / G.DMAX * ph / 2;
+  const [y, h] = panel("d", [[G.DMAX, Y(G.DMAX)], [0, Y(0)], [-G.DMAX, Y(-G.DMAX)]], v => v ? signed(v, 2) : "0");
+  const colAt = i => Math.abs(G.rate[i]) < G.RATEMAX * .12 ? K.t1 : G.rate[i] < 0 ? K.pri : K.ter;
+  clip(y, h, () => { g.lineWidth = 2; let i0 = lo; while (i0 < hi) { const c = colAt(i0); let i1 = i0; while (i1 < hi && colAt(i1) === c) i1++; g.strokeStyle = c; g.beginPath(); for (let i = i0; i <= i1; i++) { const px = X(i * STEP), qy = Y(G.dt[i]); i === i0 ? g.moveTo(px, qy) : g.lineTo(px, qy); } g.stroke(); i0 = i1; } });
+ }
+ // speed: lap A light, lap B grey dashed; each zone's minimum labelled
+ if (Lo.lanes.v) {
+  const [y0, h0] = Lo.lanes.v, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - (v - G.SPD[0]) / (G.SPD[1] - G.SPD[0]) * ph, tk = [];
+  for (let v = G.SPD[0] + 50; v < G.SPD[1]; v += 50) tk.push([v, Y(v)]);
+  const [y, h] = panel("v", tk, v => v);
+  clip(y, h, () => { if (G.B) series(G.B.v, Y, K.t3, 1.5, [5, 4]); series(G.A.v, Y, K.t1, 2); });
+  for (const z of G.ZONES) {
+   let im = z.i0; for (let k = z.i0; k <= z.i1; k++) if (G.A.v[k] < G.A.v[im]) im = k;
+   const px = X(im * STEP); if (px < 20 || px > DW - 40) continue;
+   const qy = Y(G.A.v[im]), tA = String(Math.round(G.A.v[im])), tB = G.B ? " · " + Math.round(z.minB) : "";
+   g.font = "600 11.5px " + font; const w1 = g.measureText(tA).width; g.font = "11.5px " + font; const w2 = g.measureText(tB).width, x0 = px - (w1 + w2) / 2, ty = Math.min(y + h - 2, qy + 18);
+   g.textAlign = "left"; g.font = "600 11.5px " + font; g.fillStyle = K.t1; g.fillText(tA, x0, ty); if (tB) { g.font = "11.5px " + font; g.fillStyle = K.t3; g.fillText(tB, x0 + w1, ty); }
+  }
+ }
+ // throttle and brake: lap A in its colour, lap B grey dashed; brake points ticked on the brake lane
+ for (const [key, col] of [["th", K.green], ["br", K.red]]) {
+  if (!Lo.lanes[key]) continue;
+  const [y0, h0] = Lo.lanes[key], py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - clamp(v, 0, 1) * ph;
+  const [y, h] = panel(key, [[.5, Y(.5)]], () => "50 %");
+  clip(y, h, () => { if (G.B) series(G.B[key], Y, K.t3, 1.4, [5, 4]); series(G.A[key], Y, col, 2); });
+  if (key === "br") for (const z of G.ZONES) { const tick = (d, c) => { const px = X(d); if (px < 0 || px > DW) return; g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.moveTo(px, py + ph - 6); g.lineTo(px, py + ph + 4); g.stroke(); }; if (z.bpB != null) tick(z.bpB, K.t3); tick(z.bpA, K.t1); }
+ }
+ // gear, stepped
+ if (Lo.lanes.g) {
+  const [y0, h0] = Lo.lanes.g, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - ((v || 1) - 1) / Math.max(1, G.GMAX - 1) * ph;
+  const [y, h] = panel("g", [], v => v);
+  const step = (Q, c, w, dash) => { g.strokeStyle = c; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); for (let i = lo; i <= hi; i++) { const px = X(i * STEP), qy = Y(Q.g[i]); if (i === lo) g.moveTo(px, qy); else { g.lineTo(px, Y(Q.g[i - 1])); g.lineTo(px, qy); } } g.stroke(); g.setLineDash([]); };
+  clip(y, h, () => { if (G.B) step(G.B, K.t3, 1.4, [5, 4]); step(G.A, K.t1, 1.8); });
+ }
+ // distance axis: sector names for the whole lap, metres from the cursor otherwise
+ g.font = "11px " + font; g.fillStyle = K.t3; g.textAlign = "center";
+ if (whole()) { const b = [0, ...secs, G.LEN]; for (let s = 0; s < b.length - 1; s++) g.fillText(t("sector.n", {n: s + 1}), X((b[s] + b[s + 1]) / 2), DH - 2); }
+ else { const c = dA(), px = DW / (2 * LA.win), st = [25, 50, 100, 200, 500].find(v => v * px >= 70) || 500; for (let r = -Math.floor(LA.win / st) * st; r <= LA.win; r += st) { const qx = X(c + r); if (r && qx > 26 && qx < DW - 26) g.fillText((r > 0 ? "+" : "−") + Math.abs(r) + " m", qx, DH - 2); } }
+ // the cursor, and the hover line
+ const bot = Lo.axisY - 4, xc = X(dA());
+ g.strokeStyle = K.t1; g.lineWidth = 1.5; g.beginPath(); g.moveTo(xc, 0); g.lineTo(xc, bot); g.stroke();
+ if (LA.hov != null) { const xh = X(LA.hov); g.strokeStyle = K.t2; g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(xh, 0); g.lineTo(xh, bot); g.stroke(); g.setLineDash([]); }
+}
+// values at the pointer: one small tag per lane, lap A then lap B
+function readout() {
+ const el = $("dread"), G = LA.G; el.replaceChildren(); if (LA.hov == null || !G) return;
+ const DW = LA.dw[0], Lo = deckLayout(), [d0, d1] = deckWindow(), x = (LA.hov - d0) / (d1 - d0) * DW, i = clamp(Math.round(LA.hov / G.STEP), 0, G.N - 1), left = x > DW - 120;
+ const tag = (lane, a, b) => { if (!Lo.lanes[lane]) return; const [y, h] = Lo.lanes[lane], s = document.createElement("span"); s.textContent = a; if (G.B && b != null) { const k = document.createElement("i"); k.textContent = " " + b; s.append(k); }
+  s.style.top = (y + h / 2) + "px"; if (left) s.style.right = (DW - x + 8) + "px"; else s.style.left = (x + 8) + "px"; el.append(s); };
+ if (G.dt) tag("d", signed(G.dt[i], 3) + " s", null);
+ tag("v", Math.round(G.A.v[i]) + " " + UNIT.speed, G.B && Math.round(G.B.v[i]));
+ tag("th", Math.round(G.A.th[i] * 100) + " %", G.B && Math.round(G.B.th[i] * 100));
+ tag("br", Math.round(G.A.br[i] * 100) + " %", G.B && Math.round(G.B.br[i] * 100));
+ tag("g", t("dock.gear") + " " + G.A.g[i], G.B && G.B.g[i]);
+}
+function setDist(d) { if (!S.lapA || !LA.G) return; S.t = clamp(timeAt(S.lapA, clamp(d, 0, LA.G.LEN - 1)) ?? 0, 0, lapT()); setPlay(false); LA.dirty = true; }
+(() => {
+ const c = $("deckc"), at = e => e.clientX - c.getBoundingClientRect().left;
+ const dOf = x => { const [d0, d1] = deckWindow(); return d0 + x / LA.dw[0] * (d1 - d0); };
+ c.addEventListener("pointerdown", e => { c.setPointerCapture(e.pointerId); setDist(dOf(at(e))); LA.hov = null; readout(); });
+ c.addEventListener("pointermove", e => { if (e.buttons & 1) { setDist(dOf(at(e))); return; } LA.hov = clamp(dOf(at(e)), 0, LA.G ? LA.G.LEN : 0); readout(); LA.dirty = true; });
+ c.addEventListener("pointerleave", () => { LA.hov = null; readout(); LA.dirty = true; });
+ c.addEventListener("wheel", e => { e.preventDefault(); if (!LA.G) return; LA.win = clamp((whole() ? LA.G.LEN / 2 : LA.win) * (e.deltaY > 0 ? 1.2 : 1 / 1.2), 50, LA.G.LEN / 2); LA.hov = null; readout(); LA.dirty = true; }, {passive: false});
+ new ResizeObserver(() => { const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1; LA.dw = [r.width, r.height]; c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr)); LA.dctx = c.getContext("2d"); LA.dctx.setTransform(dpr, 0, 0, dpr, 0, 0); LA.dirty = true; }).observe(c);
+})();
+
+// ---------- bottom bar: mirrored live pedals, play, and the lap as one bar ----------
 const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 function sideCells(cl) {
@@ -893,23 +1009,19 @@ function sideCells(cl) {
  const spd = `<div class="cell sp"><span id="sp${cl}"></span><small>${UNIT.speed}</small></div>`;
  return cl === "a" ? thr + brk + gear + spd : spd + gear + thr + brk;
 }
-let SEGS = [];
 function buildDock() {
  $("sideA").innerHTML = S.lapA ? sideCells("a") : "";
  $("sideB").innerHTML = S.lapB ? sideCells("b") : "";
  $("sideB").classList.toggle("off", !S.lapB);
  $("pp").disabled = !S.lapA;
- const cs = $("chipset"); cs.replaceChildren(); SEGS = [];
+ // the bar runs in lap A's time, so the sector marks sit where lap A crossed each line
+ const rail = $("rail"); rail.querySelectorAll(".sx,.sn").forEach(e => e.remove());
+ $("tend").textContent = S.lapA ? fmtLap(lapT()) : "";
  if (!S.lapA) return;
- const b = [0, ...(S.map ? S.map.sectors || [] : []), lapLen()], PER = 8, delta = d => S.delta ? at({trace: {...S.lapA.trace, v: S.delta}}, "v", d) : null;
+ const T = lapT(), b = [0, ...(S.map ? S.map.sectors || [] : []).map(d => timeAt(S.lapA, d) ?? 0), T], pc = s => clamp(s / T, 0, 1) * 100 + "%";
  for (let s = 0; s < b.length - 1; s++) {
-  const grp = el("div", {class: "sgrp"}), segs = el("div", {class: "segs"}); let w = 0;
-  for (let k = 0; k < PER; k++) {
-   const d0 = b[s] + (b[s + 1] - b[s]) * k / PER, d1 = b[s] + (b[s + 1] - b[s]) * (k + 1) / PER, t0 = timeAt(S.lapA, d0) ?? 0, t1 = s === b.length - 2 && k === PER - 1 ? lapT() : timeAt(S.lapA, d1) ?? 0;
-   const dd = S.delta ? (delta(d1) ?? 0) - (delta(d0) ?? 0) : 0, i = el("i", {class: "ms" + (!S.delta || Math.abs(dd) < 0.01 ? "" : dd < 0 ? " gain" : " loss")});
-   i.style.flex = Math.max(0.001, t1 - t0).toFixed(3); w += t1 - t0; segs.append(i); SEGS.push({t1, el: i});
-  }
-  grp.style.flex = Math.max(0.001, w).toFixed(2); grp.append(segs, el("span", {class: "sl"}, t("sector.n", {n: s + 1}))); cs.append(grp);
+  if (s) { const x = el("span", {class: "sx"}); x.style.left = pc(b[s]); rail.append(x); }
+  const n = el("span", {class: "sn"}, t("sector.n", {n: s + 1})); n.style.left = pc((b[s] + b[s + 1]) / 2); rail.append(n);
  }
 }
 function pedals() {
@@ -923,23 +1035,46 @@ function pedals() {
  });
 }
 function playerUI() {
- const T = lapT(), p = T ? S.t / T * 100 : 0;
- $("phead").style.left = p + "%"; $("scrub").setAttribute("aria-valuenow", p.toFixed(0));
- for (const s of SEGS) s.el.classList.toggle("played", s.t1 <= S.t + 1e-6);
- $("ptime").innerHTML = T ? `${fmtT(S.t)}<span> / ${fmtT(T)}</span>` : "";
+ const T = lapT(), p = T ? clamp(S.t / T, 0, 1) * 100 : 0;
+ $("phead").style.left = p + "%"; $("tfill").style.width = p + "%"; $("scrub").setAttribute("aria-valuenow", p.toFixed(0));
+ $("tnow").textContent = T ? fmtLap(S.t) : "";
  $("pp").innerHTML = S.play ? PAUSE : PLAY; $("pp").setAttribute("aria-label", S.play ? t("play.pause") : t("play.play")); $("pp").title = $("pp").getAttribute("aria-label");
 }
-function tick0() { placeMarkers(); pedals(); cursor(); playerUI(); }
-let last = 0;
-function frame(now) { if (!S.play) return; const dt = last ? (now - last) / 1000 : 0; last = now; S.t += dt; if (S.t >= lapT()) S.t -= lapT(); tick0(); requestAnimationFrame(frame); }
-function setPlay(on) { S.play = !!on && !!S.lapA; last = 0; if (S.play) requestAnimationFrame(frame); if ($("pp")) playerUI(); }
+const tick0 = () => { LA.dirty = true; };
+function setPlay(on) { S.play = !!on && !!S.lapA; LA.last = 0; LA.dirty = true; if ($("pp")) playerUI(); }
 $("pp").onclick = () => setPlay(!S.play);
 (() => {
- const sc = $("scrub"), to = e => { const r = sc.getBoundingClientRect(); S.t = clamp((e.clientX - r.left) / r.width, 0, 1) * lapT(); tick0(); };
- sc.addEventListener("pointerdown", e => { if (!S.lapA) return; sc.setPointerCapture(e.pointerId); to(e); });
+ const sc = $("scrub"), to = e => { const r = $("rail").getBoundingClientRect(); S.t = clamp((e.clientX - r.left) / r.width, 0, .9999) * lapT(); LA.dirty = true; };
+ sc.addEventListener("pointerdown", e => { if (!S.lapA) return; sc.setPointerCapture(e.pointerId); setPlay(false); to(e); });
  sc.addEventListener("pointermove", e => { if (e.buttons & 1 && S.lapA) to(e); });
- sc.addEventListener("keydown", e => { if (e.key === "ArrowRight") { S.t = clamp(S.t + 1, 0, lapT()); tick0(); } if (e.key === "ArrowLeft") { S.t = clamp(S.t - 1, 0, lapT()); tick0(); } });
 })();
+// keys on the analysis screen: ← → a second (Shift: a tenth), 1 2 3 deck window, F follow
+document.addEventListener("keydown", e => {
+ if (S.screen !== "analysis" || !S.lapA || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+ if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); setPlay(false); S.t = clamp(S.t + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? .1 : 1), 0, lapT() - .001); LA.dirty = true; }
+ else if (e.key === "1" || e.key === "2" || e.key === "3") { LA.win = {1: 75, 2: 150, 3: 1e9}[e.key]; LA.dirty = true; }
+ else if (e.key === "f" || e.key === "F") { setFollow(!S.follow); if (!S.follow) fitGoal(); }
+});
+
+// ---------- one loop: playback, the camera easing to its goal, and redraws when something changed ----------
+LA.last = 0;
+function lerpAng(a, b, f) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * f; }
+function loop(now) {
+ requestAnimationFrame(loop);  // first, so one bad frame never stops the loop
+ const dts = LA.last ? Math.min(.1, (now - LA.last) / 1000) : 0; LA.last = now;
+ if (S.screen !== "analysis") return;
+ if (S.play && S.lapA) { S.t += dts; if (S.t >= lapT()) S.t -= lapT(); LA.dirty = true; }
+ if (S.follow && LA.G) {
+  const c = carAt(LA.G.A, S.t, true), h = Math.atan2(c.fy, c.fx), ahead = Math.min(...LA.wh) * .2 / goal.s;
+  goal.r = h - Math.PI / 2; goal.x = c.x + c.fx * ahead; goal.y = c.y + c.fy * ahead;
+  if (S.play) { cam.x = goal.x; cam.y = goal.y; }  // while playing the camera rides with the car
+ }
+ const f = 1 - Math.pow(.0009, dts || .016); let moving = false;
+ for (const k of ["x", "y", "s"]) { const d = goal[k] - cam[k]; if (Math.abs(d) > (k === "s" ? cam.s * 1e-3 : .05)) { cam[k] += d * f; moving = true; } else cam[k] = goal[k]; }
+ const nr = lerpAng(cam.r, goal.r, f); if (Math.abs(nr - cam.r) > 1e-5) { cam.r = nr; moving = true; } else cam.r = goal.r;
+ if (moving || LA.dirty) { drawMap(); if (LA.dirty) { drawDeck(); readout(); pedals(); playerUI(); } LA.dirty = false; }
+}
+requestAnimationFrame(loop);
 
 // ---------- setup: balance, car, dampers; next setup docked on the right ----------
 let proposalTimer = null, proposalRunning = false, proposalAgain = false;
