@@ -1,10 +1,12 @@
 """Sliders, target, lock and transfer, on recorded Interlagos stints (current build)."""
 
+import json
+
 import pytest
 
 from autosetup.feel import fingerprint as fpm
 from autosetup.feel.cars import car_key, model_of
-from autosetup.feel.measure import CELLS, measured
+from autosetup.feel.measure import CELLS, Measured, measured
 from autosetup.feel.target import RANGE_STEPS, axis_weight, set_slider, sliders, target
 from autosetup.knowledge import load_knowledge
 from autosetup.store import Store
@@ -140,9 +142,21 @@ def test_fingerprint_carries_to_another_track_and_the_class(store):
 def test_profile_axes_and_summary(store):
     fp = fpm.lock(store, store.ids["interlagos_arb_r5"], K)
     base = {c: fp.cells[c] + 0.5 for c in fp.cells}  # the class understeers more than this car
-    rear, front = fpm.axes(fp, base, STEP)
-    assert rear == pytest.approx(-2.0) and front == pytest.approx(-2.0)
+    ax = fpm.axes(fp, base)
+    assert ax["front"] == pytest.approx(-0.5) and ax["rear"] == pytest.approx(-0.5)
+    assert ax["fast"] is None or ax["fast"] == pytest.approx(-0.5)
     line = fpm.summary(fp, base, STEP, usual_rake=(fp.platform["rake_fast"] or 0) - 6)
-    assert line.startswith("Very pointy entry, very loose exit") and "more rake than usual" in line
-    assert fpm.summary(fp, dict(fp.cells), STEP, None) == "Neutral entry, neutral exit"
+    assert line.startswith("Very pointy front, very loose rear") and "more rake than usual" in line
+    assert fpm.summary(fp, dict(fp.cells), STEP, None) == "Neutral front, neutral rear"
     assert set(fpm.usual(store, "GT3")) <= set(CELLS)
+    own = fpm.car_stints(store, "GT3", fp.car_key)
+    assert own and set(own) <= set(fpm.car_stints(store, "GT3"))
+    assert fpm.car_stints(store, "GT3", "No_Such_Car") == []
+
+
+def test_remeasure_follows_the_stints(store):
+    fp = fpm.lock(store, store.ids["interlagos_arb_r5"], K)
+    store.con.execute("update fingerprints set measured = ? where id = ?",
+                      [json.dumps(Measured().to_json()), fp.id])  # as if measured on an older scale
+    assert fpm.remeasure(store) >= 1
+    assert fpm.own(store, fp.car_key).cells == pytest.approx(fp.cells)

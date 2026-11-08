@@ -28,9 +28,43 @@ from autosetup.lmu.telemetry import Session
 G = 9.81
 GRID_HZ = 50
 
-# Rough wheelbases (m) by class; understeer angles are compared within one car, so a
-# wrong guess shifts every lap equally instead of corrupting comparisons.
+# Wheelbases (m). The understeer angle subtracts wheelbase × path curvature, so a car
+# longer than the figure used reads understeery and a shorter one pointy: comparing cars
+# needs each car's own. By car model (feel/cars.py keys), from published specs: ELMS's
+# 2024 LMGT3 comparison (Aston Martin, Ferrari, Lamborghini, Porsche), BMW's M4 GT3 media
+# guide, Corvette Racing / TF Sport (Z06 GT3.R), McLaren's 720S GT3, Ford's Mustang GT3.
+# A model without a figure here falls back to its class's rough one.
 WHEELBASE = {"GT3": 2.65, "GTE": 2.70, "LMP2": 3.00, "LMP3": 2.85, "Hyper": 3.15}
+MODEL_WHEELBASE = {
+    "AMR_LMGT3": 2.705,
+    "BMW_M4_LMGT3": 2.917,
+    "Corvette_Z06_LMGT3R": 2.722,
+    "Ferrari_296_LMGT3": 2.660,
+    "Ford_Mustang_LMGT3": 2.777,
+    "Lamborghini_Huracan_GT3_Evo2": 2.648,
+    "McLaren_720S_LMGT3_Evo": 2.670,
+    "Porsche_911_GT3_R_LMGT3": 2.507,
+}
+# Livery name → car model, from the saved setups the store has matched (car_classes).
+# A recording only names its livery; the store keeps this current (Store.car_models).
+_LIVERY_MODEL: dict[str, str] = {}
+
+
+def livery_models() -> dict[str, str]:
+    return dict(_LIVERY_MODEL)
+
+
+def set_car_models(models: dict[str, str]) -> None:
+    _LIVERY_MODEL.clear()
+    _LIVERY_MODEL.update(models)
+
+
+def wheelbase(car_class: str, car_name: str = "") -> float:
+    """The car's wheelbase (m): its model's when the livery is known, else its class's."""
+    wb = MODEL_WHEELBASE.get(_LIVERY_MODEL.get(car_name, ""))
+    if wb:
+        return wb
+    return next((v for k, v in WHEELBASE.items() if car_class.lower().startswith(k.lower())), 2.8)
 
 
 def smooth(x: np.ndarray, n: int) -> np.ndarray:

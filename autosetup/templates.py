@@ -17,6 +17,17 @@ NOTES = "From stint {stint} ({lap}), {feel}. {changes}"
 MODELS = {"AMR_LMGT3": "Aston Martin Vantage", "BMW_M4_LMGT3": "BMW M4",
           "Porsche_911_GT3_R_LMGT3": "Porsche 911 GT3 R", "Oreca_07": "Oreca 07"}
 CLASS_TAGS = {"lmgt3", "gt3", "lmp2", "lmp2_elms", "lmh", "lmdh", "hy", "hypercar", "gte", "lmgte", "lmp3"}
+# What a track is called for short, in setup names and on every page (served to the page in
+# /api/settings). The game's names are long ("Autódromo José Carlos Pace").
+SHORT_TRACKS = {
+    "Bahrain International Circuit": "Bahrain", "WeatherTech Raceway Laguna Seca": "Laguna Seca",
+    "Lusail International Circuit": "Lusail", "Circuit de Barcelona": "Barcelona", "Fuji Speedway": "Fuji",
+    "Circuit de Spa-Francorchamps": "Spa", "Autódromo José Carlos Pace": "Interlagos",
+    "Sebring International Raceway": "Sebring", "Circuit de la Sarthe": "Le Mans",
+    "Autodromo Enzo e Dino Ferrari": "Imola", "Autodromo Internazionale Enzo e Dino Ferrari": "Imola",
+    "Circuit of the Americas": "COTA", "Autódromo Internacional do Algarve": "Portimão",
+    "Autodromo Nazionale Monza": "Monza",
+}
 _FIELD = re.compile(r"\{(\w+)\}")
 _UNSAFE = re.compile(r'[\\/:*?"<>|]')
 
@@ -28,6 +39,11 @@ def car_name(model: str | None) -> str:
     if model in MODELS:
         return MODELS[model]
     return " ".join(w for w in model.split("_") if w and w.lower() not in CLASS_TAGS)
+
+
+def short_track(name: str | None) -> str:
+    """'Autódromo José Carlos Pace' → 'Interlagos'; a track without a short name as it is."""
+    return SHORT_TRACKS.get(name or "", name or "")
 
 
 def render(template: str, fields: dict[str, object]) -> str:

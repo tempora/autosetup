@@ -13,13 +13,14 @@ import numpy as np
 
 from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.telemetry import Lap, Session
-from autosetup.metrics.signals import GRID_HZ, WHEELBASE, Signals, load_signals, smooth
+from autosetup.metrics.signals import GRID_HZ, Signals, load_signals, smooth, wheelbase
 
-METRICS_VERSION = 11  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
+METRICS_VERSION = 12  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
 #                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs;
 #                      9: lap model data, the per speed × phase cells left to the corner passes;
 #                      10: DAM .ld offsets decoded right (slip angles), blank DAM tyre load falls back to springs;
-#                      11: phases by progress through the turn (soft), a braking phase, pedal use per phase
+#                      11: phases by progress through the turn (soft), a braking phase, pedal use per phase;
+#                      12: wheelbase per car model, steering ratios read from every steer-lock label
 PACKER_FLAT = 0.25  # past contact, deflection gains under this share of the free spring's rate
 WHEELS = ("fl", "fr", "rl", "rr")
 SECTOR_M = 100.0  # minisector length; shorter ones bias the theoretical best low (min of noise)
@@ -52,7 +53,7 @@ def compute_recording(s: Session, laps: list[Lap] | None = None, setup: CarSetup
         return []
     sig = sig if sig is not None else load_signals(s)
     setup = setup or CarSetup.from_json(s.setup_json)
-    geometry = steering_geometry(setup, s.car_class)
+    geometry = steering_geometry(setup, s.car_class, s.car_name)
     lap_len = float(np.nanmax(sig.dist)) if np.isfinite(sig.dist).any() else 0.0
     contact = _third_contacts(sig, setup)
     out = []
@@ -78,7 +79,7 @@ def _slice(sig: Signals, m: np.ndarray) -> Signals:
     return Signals(**{k: v[m] for k, v in vars(sig).items()})
 
 
-def steering_geometry(setup: CarSetup, car_class: str) -> tuple[float, float, float]:
+def steering_geometry(setup: CarSetup, car_class: str, car_name: str = "") -> tuple[float, float, float]:
     """(steering-wheel degrees at full lock one way, steering ratio, wheelbase m)."""
     lock_total, ratio = 540.0, 15.0
     p = setup.params.get("VM_STEER_LOCK")
@@ -86,8 +87,7 @@ def steering_geometry(setup: CarSetup, car_class: str) -> tuple[float, float, fl
         lock_total = p.number
     if setup.steering_ratio:
         ratio = setup.steering_ratio
-    wheelbase = next((v for k, v in WHEELBASE.items() if car_class.lower().startswith(k.lower())), 2.8)
-    return lock_total / 2.0, ratio, wheelbase
+    return lock_total / 2.0, ratio, wheelbase(car_class, car_name)
 
 
 def _runs(mask: np.ndarray, min_len: int = 1) -> int:

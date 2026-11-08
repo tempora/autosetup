@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from autosetup import analysis
 from autosetup.analysis import WHEELS
+from autosetup.feel.cars import model_of
 from autosetup.store import Store
 
 SESSION_GAP_S = 2 * 3600
@@ -49,8 +50,10 @@ def sessions(store: Store) -> list[dict]:
         if best is not None and (cur["best"] is None or best < cur["best"]):
             cur["best"] = best
         cur["_end"] = max(cur["_end"], start + duration)
+    models = {c: model_of(vc or "", "") for c, vc in store.con.execute("select car_name, vehicle_class from car_classes").fetchall()}
     for s in out:
         s["stints"] = len(s["stint_ids"])
+        s["model"] = models.get(s["car_name"])  # e.g. 'BMW_M4_LMGT3'; None until a saved setup names it
         s.pop("_end")
     return sorted(out, key=lambda s: s["stint_ids"][-1], reverse=True)
 

@@ -39,7 +39,8 @@ def call(base, path, body=None):
 
 def test_health_and_page(server):
     _, base = server
-    assert call(base, "/api/health") == (200, {"ok": True})
+    status, health = call(base, "/api/health")
+    assert status == 200 and health["ok"] and health["ui"] > 0  # the page reloads when web/ changes
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
         for id_ in (b"screen-home", b"screen-analysis", b"screen-setup", b"screen-history", b"screen-driver",

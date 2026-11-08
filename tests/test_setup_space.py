@@ -52,3 +52,10 @@ def test_steering_ratio():
 ])
 def test_parse_number(text, expected):
     assert parse_number(text) == expected
+
+
+@pytest.mark.parametrize("label,ratio", [("560 (16.5) deg", 16.5), ("516 deg(19.7 )", 19.7), ("524deg (18.5deg)", 18.5)])
+def test_steering_ratio_label_forms(label, ratio):
+    data = setup_json()
+    data["VM_STEER_LOCK"] = {**data["VM_STEER_LOCK"], "stringValue": label}
+    assert CarSetup.from_json(data).steering_ratio == ratio

@@ -11,9 +11,9 @@ you). On a track where the car hasn't been driven it's the target as it stands; 
 car of the class without one of its own, the class's fingerprints are pooled into one,
 with a wider band (how a class feels carries over; not exactly).
 
-Each fingerprint is also a point on two axes against the class's usual balance (the
-median of every stint of the class): Looser ↔ Safer from mid and exit, Pointier ↔ Lazier
-from entry, in button steps.
+Each fingerprint also sits on the three feel sliders against the car's usual balance
+(the median of every stint of that car): front, rear and fast-corner rear, in degrees,
+weighted like the sliders.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import numpy as np
 from autosetup.feel.cars import recording_car
 from autosetup.feel.measure import CELLS, Measured, cell_parts, measured, same_setup_stints
 from autosetup.feel.target import SCHEMA as EVENTS_SCHEMA
-from autosetup.feel.target import tolerance_of
+from autosetup.feel.target import AXES, axis_weight, tolerance_of
 from autosetup.lmu.builds import current_build
 from autosetup.lmu.setup_space import CarSetup
 from autosetup.opt.space import main_dims
@@ -144,6 +144,25 @@ def lock(store, rid: int, knowledge: dict) -> Fingerprint:
     return own(store, car_key)
 
 
+def remeasure(store) -> int:
+    """Measure every fingerprint again from the stints it was locked on, after the metrics
+    were recomputed: a fingerprint keeps the balance as measured when it was locked, and
+    a changed metric (a car's wheelbase, say) would leave it on the old scale while the
+    stints it is compared with move. Returns how many changed."""
+    from autosetup.knowledge import load_knowledge
+
+    _schema(store)
+    n = 0
+    for fid, car_class, stints in store.con.execute("select id, car_class, stints from fingerprints").fetchall():
+        m = measured(store, json.loads(stints))
+        if not m.cells:
+            continue
+        store.con.execute("update fingerprints set measured = ?, tolerance = ? where id = ?",
+                          [json.dumps(m.to_json()), json.dumps(tolerance_of(m, load_knowledge(car_class))), fid])
+        n += 1
+    return n
+
+
 def forget(store, car_key: str) -> int:
     """Forget a car's fingerprint: the target goes back to what
     you're driving. Returns how many were active."""
@@ -208,9 +227,20 @@ def anchor_for(store, car_key: str, car_class: str, knowledge: dict) -> Fingerpr
 
 
 # -- the driver profile -----------------------------------------------------------------
-def usual(store, car_class: str) -> dict[str, float]:
-    """The class's usual balance per cell: the median over every stint of the class."""
-    rids = [r for (r,) in store.con.execute("select id from recordings r where car_class = ?", [car_class]).fetchall()]
+def car_stints(store, car_class: str, car_key: str | None = None) -> list[int]:
+    """Every stint of the class, or only those of one car (its key, feel/cars.py)."""
+    rows = store.con.execute("select id, car_name from recordings where car_class = ?", [car_class]).fetchall()
+    if car_key is None:
+        return [rid for rid, _ in rows]
+    keys: dict[str, str] = {}
+    return [rid for rid, name in rows if keys.setdefault(name, recording_car(store, rid)[0]) == car_key]
+
+
+def usual(store, car_class: str, car_key: str | None = None) -> dict[str, float]:
+    """The usual balance per cell: the median over every stint of the car (with
+    ``car_key``) or of the whole class. Cars differ in more than setup (tyres, weight,
+    layout), so a car's feel reads against its own stints."""
+    rids = car_stints(store, car_class, car_key)
     per_cell: dict[str, list[float]] = {}
     for rid in rids:
         for c, v in measured(store, [rid]).cells.items():
@@ -218,33 +248,40 @@ def usual(store, car_class: str) -> dict[str, float]:
     return {c: float(np.median(v)) for c, v in per_cell.items()}
 
 
-def axes(fp: Fingerprint, baseline: dict[str, float], step: float) -> tuple[float, float]:
-    """(rear: − looser … + safer, front: − pointier … + lazier), in button steps from the
-    class's usual balance."""
-    def axis(phases: dict[str, float]) -> float:
+def axes(fp: Fingerprint, baseline: dict[str, float]) -> dict[str, float | None]:
+    """Where the fingerprint sits on each feel slider, in degrees from a usual balance
+    (``usual``), weighted by the cells each slider covers (target.AXIS_WEIGHT): front
+    − pointier … + lazier, rear − looser … + safer, fast − looser … + planted. None where
+    the fingerprint has no cell the slider covers."""
+    out: dict[str, float | None] = {}
+    for ax in AXES:
         num = den = 0.0
         for c, v in fp.cells.items():
-            ph, _ = cell_parts(c)
-            w = phases.get(ph, 0.0)
+            w = axis_weight(ax, c)
             if w and c in baseline:
                 num += w * (v - baseline[c])
                 den += w
-        return num / den / step if den else 0.0
-
-    return axis({"mid": 0.7, "exit": 1.0}), axis({"entry": 1.0})
+        out[ax] = num / den if den else None
+    return out
 
 
 def summary(fp: Fingerprint, baseline: dict[str, float], step: float, usual_rake: float | None) -> str:
-    """One line: 'Pointy entry, stable exit, slightly more rake than usual'."""
-    rear, front = axes(fp, baseline, step)
+    """One line: 'Pointy front, safe rear, planted in fast corners, more rake than usual'."""
+    ax = axes(fp, baseline)
 
-    def words(x: float, neg: str, pos: str, mid: str) -> str:
+    def words(x: float | None, neg: str, pos: str) -> str | None:
+        if x is None:
+            return None
+        x /= step
         if abs(x) < 0.5:
-            return mid
+            return "neutral"
         how = "very " if abs(x) >= 2 else ("" if abs(x) >= 1 else "slightly ")
         return how + (neg if x < 0 else pos)
 
-    parts = [f"{words(front, 'pointy', 'lazy', 'neutral')} entry", f"{words(rear, 'loose', 'stable', 'neutral')} exit"]
+    front, rear, fast = words(ax["front"], "pointy", "lazy"), words(ax["rear"], "loose", "safe"), words(ax["fast"], "loose", "planted")
+    parts = [f"{w} {end}" for w, end in ((front, "front"), (rear, "rear")) if w]
+    if fast and fast != "neutral":
+        parts.append(f"{fast} in fast corners")
     rake = fp.platform.get("rake_fast")
     if rake is not None and usual_rake is not None and abs(rake - usual_rake) >= 2.0:
         d = rake - usual_rake

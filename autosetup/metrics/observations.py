@@ -68,7 +68,7 @@ def observe_recording(s: Session, sig: Signals, laps: list[Lap], setup: CarSetup
     if clean is None:
         clean = {i for i, lap in enumerate(laps) if lap.complete and not lap.in_pits}
     k = load_knowledge(s.car_class)
-    geometry = steering_geometry(setup, s.car_class)
+    geometry = steering_geometry(setup, s.car_class, s.car_name)
     wheelbase = geometry[2]
     cmap = corners.corner_map(sig, laps)
     out = Observations(corners=cmap)

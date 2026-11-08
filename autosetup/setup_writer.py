@@ -95,7 +95,10 @@ def write_setup(
     if folder is None:
         raise WriteError(SAVE_FIRST)
     name_t, notes_t = names or (templates.NAME, templates.NOTES)
-    fields = {**base_fields(store, rec), "track": folder.name, **(fields or {})}
+    # {track}: the short name the pages use ("Interlagos"); a track without one keeps the
+    # game's Settings folder name, as before
+    short = templates.SHORT_TRACKS.get(rec.get("track_layout") or "") or templates.SHORT_TRACKS.get(rec.get("track") or "")
+    fields = {**base_fields(store, rec), "track": short or folder.name, **(fields or {})}
     if "changes" not in fields:  # without the proposal's labels and reasons: names and steps
         from autosetup.analysis import pretty_name
         fields["changes"] = "; ".join(f"{pretty_name(k)} {setup[k].text.strip()} {b - a:+d}" for k, (a, b) in applied.items())

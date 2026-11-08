@@ -37,6 +37,15 @@ from autosetup.setup_writer import WriteError
 from autosetup.store import Store, read_recording
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+
+def _ui_stamp() -> float:
+    """Newest change to the page or its strings: the page reloads itself when this moves,
+    so an edit to web/ shows without restarting (the debug build serves web/ from the repo)."""
+    try:
+        return max(f.stat().st_mtime for f in (WEB_DIR / "index.html", *(WEB_DIR / "i18n").glob("*.json")))
+    except (OSError, ValueError):
+        return 0.0
 DEFAULT_PORT = 8191
 # A recording must be unchanged this long before it's imported. LMU deletes the .wal only
 # after merging it, so this is a margin, not the main guard; a torn copy is retried.
@@ -286,6 +295,7 @@ class App:
             fps = fpm.active(self.store)
         return {
             "units": units.current.to_json(), "unit_choices": {k: list(v) for k, v in units.CHOICES.items()},
+            "short_tracks": templates.SHORT_TRACKS,
             "folders": [{"which": k, "path": str(v) if v else None} for k, v in self.folders().items()],
             "classes": [{"car_class": c} for c, _ in classes],
             "fingerprints": [{"car_key": f.car_key, "car_class": f.car_class, "layout": f.layout,
@@ -494,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
             elif url.path == "/api/health":
-                self._json({"ok": True})
+                self._json({"ok": True, "ui": _ui_stamp()})
             elif url.path == "/api/state":
                 self._json(self.app.state())
             elif url.path == "/api/stints":

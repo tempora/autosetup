@@ -1,9 +1,9 @@
 """The Driver screen: where your locked fingerprints sit, per car class.
 
-Each car with a fingerprint is a point on two axes, in button steps against the class's
-usual balance (the median of every stint of the class): Looser ↔ Safer
-(mid-corner and exits) and Pointier ↔ Lazier (entries), with one line about it
-("Pointy entry, stable exit, slightly more rake than usual").
+Each car with a fingerprint sits on the three feel sliders (front, rear, fast-corner
+rear), in degrees against that car's usual balance (the median of every stint of the
+car: cars differ in more than setup, so a car reads against itself), with one line about it ("Pointy front, safe rear, slightly more rake than usual").
+``span`` is the sliders' end, so the Driver screen draws them to the same scale.
 """
 
 from __future__ import annotations
@@ -11,12 +11,13 @@ from __future__ import annotations
 import numpy as np
 
 from autosetup.feel import fingerprint as fpm
+from autosetup.feel.target import RANGE_STEPS
 from autosetup.knowledge import load_knowledge
 
-def _usual_rake(store, car_class: str) -> float | None:
+def _usual_rake(store, rids: list[int]) -> float | None:
     vals = [r for (r,) in store.con.execute(
-        """select rh_rear_fast - rh_front_fast from recordings r where car_class = ?
-           and rh_front_fast is not null and rh_rear_fast is not null""", [car_class]).fetchall()]
+        """select rh_rear_fast - rh_front_fast from recordings r where id in (select unnest(?::INTEGER[]))
+           and rh_front_fast is not null and rh_rear_fast is not null""", [rids]).fetchall()] if rids else []
     return float(np.median(vals)) if vals else None
 
 
@@ -35,12 +36,11 @@ def profile(store) -> dict:
         step = float(load_knowledge(car_class)["feel_step_deg"])
         cars = []
         if fps:
-            usual = fpm.usual(store, car_class)
-            rake = _usual_rake(store, car_class)
             for fp in fps:
-                rear, front = fpm.axes(fp, usual, step)
-                cars.append({"car_key": fp.car_key, "rear": rear, "front": front, "layout": fp.layout,
+                usual = fpm.usual(store, car_class, fp.car_key)
+                rake = _usual_rake(store, fpm.car_stints(store, car_class, fp.car_key))
+                cars.append({"car_key": fp.car_key, **fpm.axes(fp, usual), "layout": fp.layout,
                              "created_at": fp.created_at, "line": fpm.summary(fp, usual, step, rake),
                              "fingerprint": fp.to_json()})
-        out.append({"car_class": car_class, "laps": int(laps), "cars": cars})
+        out.append({"car_class": car_class, "laps": int(laps), "span": RANGE_STEPS * step, "step": step, "cars": cars})
     return {"classes": out}

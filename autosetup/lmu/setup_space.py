@@ -126,7 +126,8 @@ class CarSetup:
 
     @property
     def steering_ratio(self) -> float | None:
-        """Steering ratio from the steer-lock label, e.g. '560 (16.5) deg' → 16.5."""
+        """Steering ratio from the steer-lock label: '560 (16.5) deg', '516 deg(19.7 )' and
+        '524deg (18.5deg)' all give the number in brackets."""
         p = self.params.get("VM_STEER_LOCK")
-        m = re.search(r"\(([\d.]+)\)", p.text) if p else None
+        m = re.search(r"\(\s*([\d.]+)\s*(?:deg)?\s*\)", p.text) if p else None
         return float(m.group(1)) if m else None
