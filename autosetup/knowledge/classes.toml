@@ -142,10 +142,18 @@ model_min_setups = 3
 front_rh_at_min = true  # a GT3 always runs the front at the minimum
 
 [Hyper]
-brake_temp = [400.0, 1000.0]
+# Rough: from 7 laps of one car at one track (Genesis, Lusail), on a published setup.
+# Its brakes peak cooler than a GT3's: front p10–p90 ~430–520, rear ~370–450.
+brake_temp = [350.0, 1000.0]
+# Everyone runs about −1.0° of front camber: front spread p10–p90 ~3–10.
+spread_front = [3.0, 10.0]
+# Traction control works more on every lap (p10 ~5, median ~11, p90 ~12 s).
+tc_s_per_lap = 12.0
 fuel_s_per_l = 0.035
 brake_pressure_pct = [93.0, 100.0]  # depends on the car; "too much brake pressure" finds where
-full_throttle_ref = 0.48  # a guess from one partial lap (Spa); your own median takes over at 3 tracks
+# Lusail gave 0.48, and Lusail is the lowest of the GT3 tracks too (0.55 against its 0.60).
+full_throttle_ref = 0.52
+band_split_kmh = 150.0  # more downforce: its fast corners start higher (as LMP2)
 drag_k_typ = 9e-4
 lift_c_typ = 1.5e-4
 
