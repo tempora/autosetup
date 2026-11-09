@@ -10,8 +10,7 @@ a = Analysis(
     [str(root / "desktop" / "server_main.py")],
     pathex=[str(root)],
     datas=[
-        (str(root / "web" / "index.html"), "web"),  # server.WEB_DIR: <bundle>/web
-        (str(root / "web" / "i18n"), "web/i18n"),  # UI strings, one JSON file per language
+        (str(root / "web"), "web"),  # server.WEB_DIR: <bundle>/web (HTML, CSS, JS modules, fonts, i18n)
         (str(root / "autosetup" / "knowledge" / "classes.toml"), "autosetup/knowledge"),
     ],
     excludes=["tkinter", "_tkinter", "pytest", "IPython", "matplotlib", "PIL"],

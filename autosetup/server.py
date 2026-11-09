@@ -1,8 +1,8 @@
 """Dashboard server: ``autosetup serve``.
 
-Standard-library HTTP server. It binds 0.0.0.0 so a phone on the LAN can open it, serves
-``web/index.html`` and a small JSON API, and runs a watcher thread that imports recordings
-once the game has finished writing them.
+Standard-library HTTP server. It binds 127.0.0.1 by default (or 0.0.0.0 when Phone access
+is enabled in Settings), serves ``web/`` and a small JSON API, and runs a watcher thread
+that imports recordings once the game has finished writing them.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from autosetup import __version__, analysis, driver, screens, templates, trackmap, units
 from autosetup.live import LiveFeed
@@ -36,13 +36,21 @@ from autosetup.setup_writer import WriteError
 from autosetup.store import Store, read_recording
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".woff2": "font/woff2",
+}
 
 
 def _ui_stamp() -> float:
-    """Newest change to the page or its strings: the page reloads itself when this moves,
-    so an edit to web/ shows without restarting (the debug build serves web/ from the repo)."""
+    """Newest change to the page, its modules, stylesheet or strings: the page reloads
+    itself when this moves, so an edit to web/ shows without restarting (the debug build
+    serves web/ from the repo)."""
     try:
-        return max(f.stat().st_mtime for f in (WEB_DIR / "index.html", *(WEB_DIR / "i18n").glob("*.json")))
+        return max(f.stat().st_mtime for f in WEB_DIR.rglob("*") if f.is_file() and f.suffix != ".woff2")
     except (OSError, ValueError):
         return 0.0
 DEFAULT_PORT = 8191
@@ -121,6 +129,7 @@ class App:
         self.advisor = Advisor(store, paths)
         self.live = LiveFeed()
         self._traces: dict[tuple, dict] = {}  # (stint, seq, file size) -> lap json, small LRU
+        self._trace_lock = threading.Lock()
         self.lock = threading.RLock()
         self.status = {"importing": False, "last_import": None, "last_error": None, "imported": 0, "waiting": [],
                        "recomputing": False, "recomputed": None}
@@ -131,8 +140,11 @@ class App:
         self._svms: tuple[int, float] | None = None  # saved setups: (count, newest mtime)
         self.game_running = game_running  # injectable for tests
         self._stop = threading.Event()
+        self.port = DEFAULT_PORT
+        self._rebind = None
         with self.lock:
             units.set_current(units.Units.from_json(store.get_setting("units")))
+            self.phone_access = bool(store.get_setting("phone_access", False))
             note_build(store, paths)
 
     # -- watcher ---------------------------------------------------------------------
@@ -215,6 +227,7 @@ class App:
                    order by file_mtime desc limit ?""", [RELINK_RECENT]).fetchall()]
             n = self.store.learn_links(self.paths.telemetry, self.paths.settings, only=names) if names else 0
         if n:
+            self.advisor.invalidate()
             self.status["last_import"] = time.time()
         return n
 
@@ -351,11 +364,13 @@ class App:
             "fingerprints": [{"car_key": f.car_key, "car_class": f.car_class, "layout": f.layout,
                               "created_at": f.created_at} for f in fps],
             "recomputing": self.status["recomputing"], "recomputed": self.status["recomputed"],
+            "phone_access": self.phone_access, "phone_url": f"http://{lan_ip()}:{self.port}",
             "templates": {**(self.store.get_setting("templates", {}) or {}),
                           "default_name": templates.NAME, "default_notes": templates.NOTES},
         }
 
     def put_settings(self, body: dict) -> dict:
+        rebind = None
         with self.lock:
             if "units" in body:
                 u = units.Units.from_json({**units.current.to_json(), **(body["units"] or {})})
@@ -364,6 +379,14 @@ class App:
             if "templates" in body:
                 t = {**(self.store.get_setting("templates", {}) or {}), **(body["templates"] or {})}
                 self.store.put_setting("templates", {k: str(t[k]).strip() for k in ("name", "notes") if t.get(k)})
+            if "phone_access" in body:
+                on = bool(body["phone_access"])
+                self.store.put_setting("phone_access", on)
+                if on != self.phone_access:
+                    self.phone_access = on
+                    rebind = on
+        if rebind is not None and self._rebind is not None:
+            self._rebind(rebind)
         return self.settings()
 
     def open_folder(self, which: str) -> str:
@@ -394,11 +417,12 @@ class App:
     # -- laps ------------------------------------------------------------------------
     def lap(self, rid: int, seq: int) -> dict:
         """One lap's trace (5 m grid in the track map's frame), sector times, metrics and
-        clean-lap status. Traces are read from the recording and cached."""
+        clean-lap status. Traces are read from the recording and cached; a finished
+        recording is read in place without copying, and all its racing laps are built in one
+        open so laps A and B from the same stint never open or copy it twice."""
         with self.lock:
             rec = self.store.recording(rid)
             layout = rec["track_layout"] or rec["track"]
-            tmap = trackmap.track_map(self.store, layout, self.paths.telemetry if self.paths else None)
             laps = {lap["seq"]: lap for lap in analysis._laps(self.store, rid)}
             metrics = dict(self.store.con.execute(
                 "select name, value from lap_metrics where recording_id = ? and seq = ?", [rid, seq]).fetchall())
@@ -409,18 +433,29 @@ class App:
         if self.paths is None:
             raise ValueError("LMU install not found")
         f = self.paths.telemetry / rec["file_name"]
-        key = (rid, seq, f.stat().st_size if f.exists() else 0)
+        size = f.stat().st_size if f.exists() else 0
+        key = (rid, seq, size)
         trace = self._traces.get(key)
         if trace is None:
-            with Session.open(f) as s:
-                session_laps = s.laps()
-                if seq >= len(session_laps):
-                    raise KeyError(f"stint {rid} has no lap {seq}")
-                trace = trackmap.lap_trace(s, session_laps[seq], tuple(tmap["origin"]) if tmap else None,
-                                           tmap["length"] if tmap else None, tmap["sectors"] if tmap else None)
-            self._traces[key] = trace
-            while len(self._traces) > 48:
-                self._traces.pop(next(iter(self._traces)))
+            with self._trace_lock:
+                trace = self._traces.get(key)
+                if trace is None:
+                    with Session.open(f, copy=in_progress(f)) as s:
+                        with self.lock:
+                            tmap = trackmap.track_map(self.store, layout, self.paths.telemetry, session=(f.name, s))
+                        origin = tuple(tmap["origin"]) if tmap else None
+                        length = tmap["length"] if tmap else None
+                        sectors = tmap["sectors"] if tmap else None
+                        session_laps = s.laps()
+                        if seq >= len(session_laps):
+                            raise KeyError(f"stint {rid} has no lap {seq}")
+                        seqs = {seq} | {i for i, lp in laps.items()
+                                        if lp["complete"] and not lp["in_pits"] and i < len(session_laps)}
+                        for i in sorted(seqs):
+                            self._traces[(rid, i, size)] = trackmap.lap_trace(s, session_laps[i], origin, length, sectors)
+                    while len(self._traces) > 64:
+                        self._traces.pop(next(iter(self._traces)))
+                    trace = self._traces[key]
         info = laps[seq]
         name = svm[0].replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".svm") if svm else None
         return {"stint": rid, "seq": seq, "lap": info["lap"], "time": info["time"], "clean": info["clean"],
@@ -445,11 +480,6 @@ class App:
         out["session"] = latest["id"] if latest else None
         return out
 
-    def setup_diff(self, a: int, b: int) -> list[dict]:
-        """What changed in the setup going from stint b to stint a."""
-        with self.lock:
-            return analysis.setup_diff(self.store.setup_of(b), self.store.setup_of(a))
-
     # -- API -------------------------------------------------------------------------
     def context_key(self, requested: str | None) -> str | None:
         with self.lock:
@@ -463,15 +493,10 @@ class App:
         return keys[0] if keys else None
 
     def state(self) -> dict:
-        with self.lock:  # the page asks every second: the contexts are read once, not twice
-            ctxs = analysis.contexts(self.store)
-            context = self._pick_context(ctxs, None)
         return {
-            "contexts": [dict(key=c.key, car_name=c.car_name, car_class=c.car_class, track=c.track,
-                              layout=c.layout, stints=c.stints, last_recorded=c.last_recorded) for c in ctxs],
-            "context": context,
-            "objectives": [dict(key=k, label=label, unit=unit) for k, label, unit in analysis.OBJECTIVES],
+            "ui": _ui_stamp(),
             "watcher": dict(self.status, watching=self.paths is not None),
+            "live": self.open_session(),
         }
 
     def stints(self, key: str | None, session: int | None = None) -> dict:
@@ -490,17 +515,6 @@ class App:
             items = [st for st in items if st.id in set(sess["stint_ids"])]
         return {"context": key, "session": session, "stints": [st.to_json() for st in items]}
 
-    def table(self, session: int, by: str) -> dict:
-        with self.lock:
-            sess = screens.session(self.store, session)
-            return {"session": session, **screens.setup_table(self.store, sess["stint_ids"], by)}
-
-    def pareto(self, key: str | None) -> dict:
-        data = self.stints(key)
-        points = [dict(id=st["id"], pareto=st["pareto"], **{k: st["summary"].get(k) for k, _, _ in analysis.OBJECTIVES})
-                  for st in data["stints"]]
-        return {"context": data["context"], "points": points}
-
 
 class Handler(BaseHTTPRequestHandler):
     app: App  # set by serve()
@@ -508,6 +522,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):  # keep the console quiet
         pass
+
+    def _client_allowed(self) -> bool:
+        return self.client_address[0] in ("127.0.0.1", "::1") or self.app.phone_access
 
     def _json(self, payload, status: int = 200) -> None:
         body = json.dumps(payload, default=str).encode()
@@ -521,6 +538,28 @@ class Handler(BaseHTTPRequestHandler):
         if dt > SLOW_S:
             log(f"slow request: {self.command} {self.path} took {dt:.1f} s")
 
+    def _static(self, raw_path: str) -> bool:
+        if raw_path.startswith("/i18n/"):
+            name = raw_path[len("/i18n/"):]
+            if not re.fullmatch(r"[A-Za-z_-]{2,20}\.json", name):
+                return False
+        rel = Path("index.html" if raw_path == "/" else unquote(raw_path).lstrip("/"))
+        if ".." in rel.parts:
+            return False
+        root = WEB_DIR.resolve()
+        f = (root / rel).resolve()
+        ctype = CONTENT_TYPES.get(f.suffix)
+        if ctype is None or not f.is_relative_to(root) or not f.is_file():
+            return False
+        body = f.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "max-age=86400" if f.suffix == ".woff2" else "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
         if not n:
@@ -532,46 +571,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._t0 = time.perf_counter()
+        if not self._client_allowed():
+            return self._json({"error": "phone access is off"}, 403)
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
-            if url.path in ("/", "/index.html"):
-                body = (WEB_DIR / "index.html").read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            elif url.path.startswith("/i18n/"):
-                # UI strings: one plain JSON file per language in web/i18n, editable without a rebuild
-                name = url.path[len("/i18n/"):]
-                f = WEB_DIR / "i18n" / name
-                if not re.fullmatch(r"[A-Za-z_-]{2,20}\.json", name) or not f.is_file():
-                    return self._json({"error": "not found"}, 404)
-                body = f.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            if not url.path.startswith("/api/"):
+                if not self._static(url.path):
+                    self._json({"error": "not found"}, 404)
             elif url.path == "/api/health":
                 self._json({"ok": True, "ui": _ui_stamp()})
             elif url.path == "/api/state":
                 self._json(self.app.state())
             elif url.path == "/api/stints":
                 self._json(self.app.stints(q.get("context"), int(q["session"]) if q.get("session") else None))
-            elif url.path == "/api/pareto":
-                self._json(self.app.pareto(q.get("context")))
             elif url.path == "/api/sessions":
                 with self.app.lock:
                     self._json({"sessions": screens.sessions(self.app.store)})
             elif url.path == "/api/welcome":
                 with self.app.lock:
                     self._json({"fact": screens.fun_fact(self.app.store)})
-            elif url.path == "/api/table":
-                self._json(self.app.table(int(q["session"]), q.get("by", "stint")))
             elif url.path == "/api/live":
                 self._json(self.app.open_session())
             elif url.path == "/api/trackmap":
@@ -588,14 +607,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"layout": layout, "map": data, "reference": ref})
             elif url.path == "/api/lap":
                 self._json(self.app.lap(int(q["stint"]), int(q["seq"])))
-            elif url.path == "/api/setup-diff":
-                self._json({"changes": self.app.setup_diff(int(q["a"]), int(q["b"]))})
             elif url.path == "/api/proposal":
-                with self.app.lock:
-                    self._json(self.app.advisor.proposal_json(int(q["stint"])))
-            elif url.path == "/api/target":
-                with self.app.lock:
-                    self._json(self.app.advisor.target_json(int(q["stint"])))
+                self._json(self.app.advisor.proposal_json(int(q["stint"])))
             elif url.path == "/api/histograms":
                 kerbs = {"on": True, "off": False, "both": None}[q.get("kerbs", "off")]
                 with self.app.lock:
@@ -626,24 +639,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._t0 = time.perf_counter()
+        if not self._client_allowed():
+            return self._json({"error": "phone access is off"}, 403)
         if not self._own_page():
             return self._json({"error": "cross-site request refused"}, 403)
         try:
             body = self._body()
             app = self.app
-            if self.path == "/api/context":
-                key = app.context_key(body.get("context"))
-                if key != body.get("context"):
-                    return self._json({"error": "unknown context"}, 400)
-                with app.lock:
-                    app.store.put_setting("context", key)
-                self._json({"context": key})
-            elif self.path == "/api/feedback":
+            if self.path == "/api/feedback":
                 # {stint, axis: front|rear|fast, value: deg}: the stint's slider on that axis
-                with app.lock:
+                with app.advisor._lock:
                     self._json(app.advisor.slide(int(body["stint"]), str(body["axis"]), float(body["value"])))
             elif self.path == "/api/lock":
-                with app.lock:
+                with app.advisor._lock:
                     self._json(app.advisor.lock(int(body["stint"])))
             elif self.path == "/api/forget":
                 with app.lock:
@@ -670,17 +678,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"started": app.recompute()})
             elif self.path == "/api/open-folder":
                 self._json({"opened": app.open_folder(str(body.get("which")))})
-            elif self.path == "/api/propose":
-                with app.lock:
-                    self._json(app.advisor.proposal_json(int(body["stint"])))
             elif self.path == "/api/write":
-                with app.lock:
-                    self._json(app.advisor.write(int(body["stint"]), str(body["signature"])))
+                self._json(app.advisor.write(int(body["stint"]), str(body["signature"])))
             elif self.path == "/api/locks":
                 keys = body["keys"]
                 if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
                     raise ValueError("keys must be a list of setting names")
-                with app.lock:
+                with app.advisor._lock:
                     context = analysis.context_of(app.store, int(body["stint"]))
                     locks = app.advisor.set_locks(context, keys, bool(body.get("locked", True)))
                 self._json({"context": context, "locks": sorted(locks)})
@@ -704,12 +708,14 @@ def lan_ip() -> str:
         return "127.0.0.1"
 
 
-def make_server(app: App, host: str = "0.0.0.0", port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
+def make_server(app: App, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
     handler = type("BoundHandler", (Handler,), {"app": app})
-    return ThreadingHTTPServer((host, port), handler)
+    srv = ThreadingHTTPServer((host, port), handler)
+    app.port = srv.server_address[1]
+    return srv
 
 
-def serve(store: Store, paths: LmuPaths | None, host: str = "0.0.0.0", port: int = DEFAULT_PORT,
+def serve(store: Store, paths: LmuPaths | None, host: str | None = None, port: int = DEFAULT_PORT,
           stop: threading.Event | None = None) -> None:
     """``stop``: set it to end serving (the desktop app closing); the caller then closes
     the store, so the database is left tidy rather than cut off mid-log."""
@@ -718,12 +724,25 @@ def serve(store: Store, paths: LmuPaths | None, host: str = "0.0.0.0", port: int
         app.recompute(force=False)  # after an update that changed the metrics: in the background
     app.start_watcher()
     app.live.start()
-    httpd = make_server(app, host, port)
+    bind = host or ("0.0.0.0" if app.phone_access else "127.0.0.1")
+    httpd = make_server(app, bind, port)
+    restarting = threading.Event()
+    if host is None:
+        def rebind(on: bool) -> None:
+            restarting.set()
+            threading.Thread(target=httpd.shutdown, daemon=True, name="rebind").start()
+        app._rebind = rebind
     if stop is not None:
         threading.Thread(target=lambda: (stop.wait(), httpd.shutdown()), daemon=True, name="stop").start()
-    print(f"autosetup dashboard: http://127.0.0.1:{port}  (phone: http://{lan_ip()}:{port})", flush=True)
+    print(f"autosetup dashboard: http://127.0.0.1:{app.port}  (phone: http://{lan_ip()}:{app.port})", flush=True)
     try:
-        httpd.serve_forever()
+        while True:
+            httpd.serve_forever()
+            if not restarting.is_set() or (stop is not None and stop.is_set()):
+                break
+            restarting.clear()
+            httpd.server_close()
+            httpd = make_server(app, "0.0.0.0" if app.phone_access else "127.0.0.1", port)
     except KeyboardInterrupt:
         pass
     finally:

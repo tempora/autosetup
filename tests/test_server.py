@@ -47,8 +47,14 @@ def test_health_and_page(server):
                     b"screen-settings", b'id="map"', b'id="deckc"', b'id="dock"', b'id="scrub"', b'id="tiles"',
                     b'id="panel"', b'id="about"'):
             assert id_ in page, id_
-        for gone in (b"rate-details", b"change-size", b"/api/feel", b"car-feel-row"):
+        for gone in (b"rate-details", b"change-size", b"/api/feel", b"car-feel-row", b"fonts.googleapis.com"):
             assert gone not in page, gone
+    for asset, ctype in (("/style.css", "text/css"), ("/app.js", "text/javascript"), ("/map.js", "text/javascript"),
+                         ("/traces.js", "text/javascript"), ("/setup.js", "text/javascript"),
+                         ("/cars.js", "text/javascript"), ("/state.js", "text/javascript"),
+                         ("/fonts/ibm-plex-sans-latin.woff2", "font/woff2")):
+        with urllib.request.urlopen(base + asset, timeout=10) as r:
+            assert r.status == 200 and ctype in r.headers["Content-Type"] and len(r.read()) > 100
     # every visible text comes from the strings file
     status, strings = call(base, "/i18n/en.json")
     assert status == 200 and strings["tab.analysis"] == "Lap Analysis"
@@ -56,31 +62,29 @@ def test_health_and_page(server):
     assert call(base, "/i18n/..%2Fserver.py")[0] == 404
 
 
-def test_import_state_stints_pareto(server):
+def test_import_state_stints(server):
     app, base = server
     status, data = call(base, "/api/state")
-    assert status == 200 and data["contexts"] == [] and data["context"] is None
+    assert status == 200 and set(data) == {"ui", "watcher", "live"}
+    assert data["ui"] > 0 and data["watcher"]["imported"] == 0 and data["live"]["state"] in {"off", "menu", "live"}
     assert call(base, "/api/import", {}) == (200, {"imported": 1})
     _, data = call(base, "/api/state")
-    key = data["context"]
-    assert key == "Test Team 2025 #1|Test Raceway"
-    assert [o["key"] for o in data["objectives"]] == ["median", "wear_per_lap", "consistency"]
+    assert data["watcher"]["imported"] == 1
+    key = "Test Team 2025 #1|Test Raceway"
     _, st = call(base, "/api/stints?context=" + urllib.request.quote(key))
     assert len(st["stints"]) == 1 and st["stints"][0]["summary"]["clean_laps"] == 2
-    _, p = call(base, "/api/pareto")
-    assert p["context"] == key and len(p["points"]) == 1
+    for unused in ("/api/pareto", "/api/table", "/api/target", "/api/setup-diff"):
+        assert call(base, unused)[0] == 404
 
 
 def test_posts_validate_input(server):
     _, base = server
     call(base, "/api/import", {})
-    # No sliders, no weights: lap time is the objective, your balance the constraint.
-    assert call(base, "/api/weights", {"pace": 1, "tyres": 0.2, "drivability": 0.5})[0] == 404
-    assert call(base, "/api/change-size", {"size": "small"})[0] == 404
-    assert call(base, "/api/feel", {"car_class": "GT3", "front": -1})[0] == 404
+    # No sliders, no weights, and no unused endpoints.
+    for unused in ("/api/weights", "/api/change-size", "/api/feel", "/api/context", "/api/propose"):
+        assert call(base, unused, {})[0] == 404
     state = call(base, "/api/state")[1]
-    assert "weights" not in state and "change_size" not in state
-    assert call(base, "/api/context", {"context": "nope"})[0] == 400
+    assert set(state) == {"ui", "watcher", "live"}
     name = "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
     status, r = call(base, "/api/rating", {"file_name": name, "lockups": True, "note": "long brakes"})
     assert status == 200 and r["rating"]["lockups"] is True and r["rating"]["note"] == "long brakes"
@@ -149,10 +153,10 @@ def test_a_backlog_is_imported_newest_first_in_rounds(tmp_path, install, monkeyp
 
 
 def test_a_broken_recording_is_tried_once_not_every_poll(tmp_path, install, monkeypatch):
-    import autosetup.server as server_mod
-
     import os
     import time
+
+    import autosetup.server as server_mod
 
     broken = install.telemetry / "broken.duckdb"
 
@@ -204,7 +208,9 @@ def test_proposal_write_and_locks(server, install):
     make_recording(rec, tyres=True)
     call(base, "/api/import", {})
     stint = call(base, "/api/stints")[1]["stints"][0]["id"]
+    assert app.advisor._lock is not app.lock
     _, pr = call(base, f"/api/proposal?stint={stint}")
+    assert len(app.advisor._proposals) == 1 and app.advisor.proposal_json(stint) == pr  # cached until invalidated
     assert pr["brake_pressure_by_feel"] is False  # not a prototype: no button
     [c] = pr["changes"]  # no corner passes on the synthetic stint: only the rules speak
     assert pr["why"] is None  # there are changes
@@ -254,9 +260,9 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
     try:
         call(base, "/api/import", {})
         stint = call(base, "/api/stints")[1]["stints"][0]["id"]
-        _, t = call(base, f"/api/target?stint={stint}")
-        assert t["target"]["anchor"] == "current" and t["measured"]["cells"]
-        before = t["target"]["cells"]["entry_low"]
+        _, pr = call(base, f"/api/proposal?stint={stint}")
+        assert pr["plan"]["target"]["anchor"] == "current" and pr["plan"]["measured"]["cells"]
+        before = pr["plan"]["target"]["cells"]["entry_low"]
         _, t = call(base, "/api/feedback", {"stint": stint, "axis": "front", "value": -0.25})
         assert t["target"]["front"] == -0.25 and t["target"]["anchor"] == "moved"
         assert t["target"]["cells"]["entry_low"] < before and t["target"]["deadzone"]["front"] > 0
@@ -281,7 +287,7 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
         assert call(base, "/api/forget", {"car_key": car["car_key"]}) == (200, {"forgotten": 1})
         assert call(base, "/api/settings")[1]["fingerprints"] == []
         assert call(base, "/api/driver")[1]["classes"][0]["cars"] == []
-        assert call(base, f"/api/target?stint={stint}")[1]["target"]["anchor"] == "current"
+        assert call(base, f"/api/proposal?stint={stint}")[1]["plan"]["target"]["anchor"] == "current"
         _, h = call(base, f"/api/histograms?stint={stint}&kerbs=off&bin=25")
         assert set(h["wheels"]) == {"fl", "fr", "rl", "rr"} and h["knee"] > 0
         fl = h["wheels"]["fl"]
@@ -292,20 +298,37 @@ def test_buttons_lock_histograms_and_driver_on_a_recorded_stint(tmp_path, record
         store.close()
 
 
-def test_lap_and_setup_diff_endpoints(server, install):
+def test_lap_loads_all_stint_laps_in_one_open_without_temp_copy(server, install, monkeypatch):
+    import os
+    import time
+
+    from autosetup.lmu.telemetry import Session
+
+    rec = install.telemetry / "Test Raceway_P_2026-01-01T10_00_00Z.duckdb"
+    os.utime(rec, (time.time() - 600, time.time() - 600))  # finished recording
     _, base = server
     call(base, "/api/import", {})
     stint = call(base, "/api/stints")[1]["stints"][0]["id"]
-    status, lap = call(base, f"/api/lap?stint={stint}&seq=1")
-    assert status == 200 and lap["lap"] == 2 and lap["clean"]
-    tr = lap["trace"]
+    opens = []
+    real_open = Session.open
+
+    def spy_open(path, *, copy=True):
+        opens.append((path.name, copy))
+        return real_open(path, copy=copy)
+
+    monkeypatch.setattr(Session, "open", spy_open)
+    status1, lap1 = call(base, f"/api/lap?stint={stint}&seq=1")
+    status2, lap2 = call(base, f"/api/lap?stint={stint}&seq=2")
+    assert status1 == 200 and lap1["lap"] == 2 and lap1["clean"]
+    assert status2 == 200 and lap2["lap"] == 3 and lap2["clean"]
+    assert opens == [(rec.name, False)]  # one open, no temp copy, both laps built
+    tr = lap1["trace"]
     assert tr["step_m"] == 5.0 and len(tr["distance"]) == len(tr["time"]) == len(tr["speed"])
-    assert "us_mid" in lap["metrics"] or "lap_time" in lap["metrics"]
+    assert "us_mid" in lap1["metrics"] or "lap_time" in lap1["metrics"]
     assert call(base, f"/api/lap?stint={stint}&seq=99")[0] == 400
-    assert call(base, f"/api/setup-diff?a={stint}&b={stint}") == (200, {"changes": []})
 
 
-def test_menu_screens(server, install):
+def test_menu_screens_and_phone_access(server, install):
     app, base = server
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
@@ -322,10 +345,11 @@ def test_menu_screens(server, install):
 
     _, s = call(base, "/api/settings")
     assert s["units"] == {"speed": "km/h", "temp": "°C", "pressure": "kPa"}
+    assert s["phone_access"] is False
     assert [f["which"] for f in s["folders"]] == ["install", "telemetry", "settings", "database"]
     assert [x["car_class"] for x in s["classes"]] == [c["car_class"]]
-    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}})
-    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h"
+    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}, "phone_access": True})
+    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h" and s["phone_access"] is True
     assert call(base, "/api/open-folder", {"which": "nowhere"})[0] == 400
 
 

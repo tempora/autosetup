@@ -181,6 +181,8 @@
   "settings.recomputing": "Recomputing…",
   "settings.recordings": "Recordings",
   "settings.uptodate": "Metrics up to date",
+  "settings.phone": "Phone access",
+  "settings.phone_sub": "This PC only",
   "settings.profile": "Driver profile",
   "settings.forget": "Forget fingerprint",
   "settings.confirmforget": "Forget it",

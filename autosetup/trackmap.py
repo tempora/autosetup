@@ -148,7 +148,8 @@ def lap_trace(s: Session, lap: Lap, origin: tuple[float, float] | None, length: 
 MAP_VERSION = 2  # 2: lap distance unwrapped before interpolating
 
 
-def track_map(store: Store, layout: str, telemetry_dir: Path | None) -> dict | None:
+def track_map(store: Store, layout: str, telemetry_dir: Path | None,
+              session: tuple[str, Session] | None = None) -> dict | None:
     """Cached outline for a layout, built on first use from the recording holding its
     fastest clean lap (any car)."""
     row = store.con.execute("select data from track_maps where layout = ?", [layout]).fetchone()
@@ -164,14 +165,17 @@ def track_map(store: Store, layout: str, telemetry_dir: Path | None) -> dict | N
            where coalesce(r.track_layout, r.track) = ? and l.complete and not l.in_pits
            group by r.file_name order by best""", [layout]).fetchall()
     for file_name, best in candidates:
-        f = telemetry_dir / file_name
-        if not f.is_file() or in_progress(f):
-            continue
-        try:
-            with Session.open(f) as s:
-                data = build_track_map(s)
-        except RecordingBusy:
-            continue
+        if session is not None and file_name == session[0]:
+            data = build_track_map(session[1])
+        else:
+            f = telemetry_dir / file_name
+            if not f.is_file() or in_progress(f):
+                continue
+            try:
+                with Session.open(f, copy=False) as s:
+                    data = build_track_map(s)
+            except RecordingBusy:
+                continue
         if data:
             data["layout"] = layout
             store.con.execute("insert or replace into track_maps values (?, ?, ?, ?)",

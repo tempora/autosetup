@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--all", action="store_true", help="recompute every recording, not just outdated ones")
     p.set_defaults(fn=cmd_recompute)
     p = sub.add_parser("serve", help="run the dashboard (and import new telemetry as it appears)")
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--host", default=None, help="address to bind (default: 127.0.0.1, or 0.0.0.0 with phone access)")
     p.add_argument("--port", type=int, default=8191)
     p.add_argument("--exit-with-stdin", action="store_true", help="stop when stdin closes (used by the desktop app)")
     p.set_defaults(fn=cmd_serve)
