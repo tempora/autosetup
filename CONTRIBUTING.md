@@ -14,6 +14,7 @@ Fork the repository and work on a branch named `type/short-description`, in keba
 | Type | For |
 |---|---|
 | `feature` | a new capability, including new UI |
+| `improve` | a refinement to existing behaviour or car data |
 | `fix` | wrong behaviour |
 | `refactor` | the same behaviour with the code restructured |
 | `perf` | speed or memory |
@@ -23,7 +24,7 @@ Fork the repository and work on a branch named `type/short-description`, in keba
 
 Use a few plain words for the description, and leave issue numbers and version numbers out of it.
 
-Examples: `fix/gt3-wheelbases`, `refactor/balance-band`, `feature/analysis-time-ledger`.
+Examples: `fix/gt3-wheelbases`, `improve/proto-update`, `refactor/balance-band`, `feature/analysis-time-ledger`.
 
 ## Commits
 
