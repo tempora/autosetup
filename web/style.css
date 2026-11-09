@@ -58,7 +58,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 button:disabled{cursor:default;opacity:.45}
 :focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .muted{color:var(--t3)}
-.g{color:var(--pri)}.l{color:var(--ter)}
+.g{color:var(--green)}.l{color:var(--red)}
 .empty{color:var(--t3);padding:24px;text-align:center}
 .ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 

@@ -469,7 +469,7 @@ class App:
         car = snap.get("car") or {}
         if out["state"] != "live":
             return out
-        out.update(vehicle=car.get("vehicle"), track=car.get("track"), session=car.get("session"),
+        out.update(vehicle=car.get("vehicle"), track=car.get("track"), session_name=car.get("session"),
                    in_garage=car.get("in_garage"), laps_completed=car.get("laps_completed"), best_lap=car.get("best_lap"))
         with self.lock:
             for c in analysis.contexts(self.store):

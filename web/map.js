@@ -114,7 +114,7 @@ export function drawMap() {
  // paint on the tarmac: braking (pedals) or where time changes hands (gain/loss); each 5 m piece blends start to end shade
  const paintAt = i => {
   if (S.line === "pedals" || !G.rate) { const br = G.A.br[i]; return br > .05 ? [K.red, .12 + .4 * br] : null; }
-  const r = G.rate[i], m = Math.abs(r) / G.RATEMAX; return m > .08 ? [r < 0 ? K.pri : K.ter, clamp(.1 + .5 * m, 0, .6)] : null;
+  const r = G.rate[i], m = Math.abs(r) / G.RATEMAX; return m > .08 ? [r < 0 ? K.green : K.red, clamp(.1 + .5 * m, 0, .6)] : null;
  };
  const PA = Array.from({length: N}, (_, i) => paintAt(i));
  for (let i = 0; i < N - 1; i++) {
@@ -126,9 +126,13 @@ export function drawMap() {
  }
  g.strokeStyle = K.bd; g.lineWidth = 1;
  for (const E of [L, R]) { g.beginPath(); E.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); }
- // start/finish and sector lines across the road
+ // start/finish and sector lines across the road; sector labels sit at each sector's midpoint outside the track edge
  const labels = [];
- G.SEC.forEach((i, s) => { g.strokeStyle = K.t1; g.lineWidth = (s ? 1.4 : 2.6) * z; g.beginPath(); g.moveTo(L[i][0], L[i][1]); g.lineTo(R[i][0], R[i][1]); g.stroke(); labels.push([P(G.EL[i][0] + nL[i][0] * 26, G.EL[i][1] + nL[i][1] * 26), s]); });
+ G.SEC.forEach((i, s) => {
+  g.strokeStyle = K.t1; g.lineWidth = (s ? 1.4 : 2.6) * z; g.beginPath(); g.moveTo(L[i][0], L[i][1]); g.lineTo(R[i][0], R[i][1]); g.stroke();
+  const m = Math.floor((i + (G.SEC[s + 1] ?? N - 1)) / 2), vx = L[m][0] - R[m][0], vy = L[m][1] - R[m][1], vl = Math.hypot(vx, vy) || 1;
+  labels.push([[L[m][0] + vx / vl * 22, L[m][1] + vy / vl * 22], s]);
+ });
  // each driven line is stroked in runs of one colour, so joins are clean
  const runs = (Q, styleOf, w) => { let run = null;
   const flush = () => { if (run && run.pts.length > 1) { g.strokeStyle = run.c; g.globalAlpha = run.a; g.lineWidth = w * z; g.beginPath(); run.pts.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); } run = null; };
@@ -137,24 +141,28 @@ export function drawMap() {
    run.pts.push(p); }
   flush(); g.globalAlpha = 1; };
  const brakeMarks = (Q, list, col, w) => list.forEach(i => { const [a, b] = across(Q.x[i], Q.y[i], i, G.HW[i] * .9); g.strokeStyle = col; g.lineWidth = w * z; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); });
- if (G.B) { runs(G.B, () => [K.t3, .85], 1.4); brakeMarks(G.B, G.ON.B, K.t3, 2); }
- runs(G.A, i => { const br = G.A.br[i], th = G.A.th[i]; return br > .05 ? [K.red, .55 + .45 * br] : th > .05 ? [K.green, .35 + .65 * th] : [K.t3, .7]; }, 2.6);
- brakeMarks(G.A, G.ON.A, K.red, 2.6);
+ const pedalsMode = S.line === "pedals" || !G.rate;
+ if (G.B) { runs(G.B, () => [K.t3, .85], 1.4); if (pedalsMode) brakeMarks(G.B, G.ON.B, K.t3, 2); }
+ runs(G.A, i => {
+  if (!pedalsMode) { const r = G.rate[i], m = Math.abs(r) / G.RATEMAX; return m > .08 ? [r < 0 ? K.green : K.red, clamp(.45 + .55 * m, 0, 1)] : [K.t3, .7]; }
+  const br = G.A.br[i], th = G.A.th[i]; return br > .05 ? [K.red, .55 + .45 * br] : th > .05 ? [K.green, .35 + .65 * th] : [K.t3, .7];
+ }, 2.6);
+ if (pedalsMode) brakeMarks(G.A, G.ON.A, K.red, 2.6);
  // sector names, with lap A's sector time against lap B's
  g.font = `600 12.5px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = "left";
  const sa = S.lapA.trace.sectors || [], sb = S.lapB ? S.lapB.trace.sectors || [] : [];
  for (const [o, s] of labels) { const d = sa[s] != null && sb[s] != null ? sa[s] - sb[s] : null, name = t("sector.n", {n: s + 1}), dl = d == null ? "" : "  " + signed(d, 3);
   const w1 = g.measureText(name).width, w2 = g.measureText(dl).width, x0 = o[0] - (w1 + w2) / 2;
-  g.fillStyle = K.t2; g.fillText(name, x0, o[1] + 4); if (dl) { g.fillStyle = d < 0 ? K.pri : K.ter; g.fillText(dl, x0 + w1, o[1] + 4); } }
+  g.fillStyle = K.t2; g.fillText(name, x0, o[1] + 4); if (dl) { g.fillStyle = d < 0 ? K.green : K.red; g.fillText(dl, x0 + w1, o[1] + 4); } }
  // the cars: a circle each with its letter, lap A light and lap B grey, ringed in the tile
  // colour; both at the same time in the lap
  const dot = (Q, col, r, ch) => { const c = carAt(Q, S.t), q = P(c.x, c.y); g.beginPath(); g.arc(q[0], q[1], r, 0, Math.PI * 2); g.lineWidth = 3; g.strokeStyle = K.l1; g.stroke(); g.fillStyle = col; g.fill();
   g.font = `600 11.5px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = "center"; g.textBaseline = "middle"; if (ch) { g.fillStyle = K.l1; g.fillText(ch, q[0], q[1] + .5); } g.textBaseline = "alphabetic"; return q; };
  if (G.B) dot(G.B, K.lapB, 9, "B");
  const pa = G.B ? dot(G.A, K.lapA, 9, "A") : dot(G.A, K.lapA, 7.5, null);
- // the gap to lap B, just above lap A's circle
- const el = $("cgap");
- if (G.dt && pa[1] > 0 && pa[1] < H) { const gp = G.dt[idxNow()]; el.textContent = signed(gp, 3) + " s"; el.style.color = gp < 0 ? "var(--pri)" : gp > 0 ? "var(--ter)" : "var(--t2)"; el.style.left = pa[0] + "px"; el.style.top = (pa[1] - 16) + "px"; }
+ // the gap to lap B, just above lap A's circle (hidden at the start line where gap is zero)
+ const el = $("cgap"), gp = G.dt ? G.dt[idxNow()] : 0;
+ if (G.dt && Math.abs(gp) >= 0.001 && pa[1] > 0 && pa[1] < H) { el.textContent = signed(gp, 3) + " s"; el.style.color = gp < 0 ? "var(--green)" : gp > 0 ? "var(--red)" : "var(--t2)"; el.style.left = pa[0] + "px"; el.style.top = (pa[1] - 16) + "px"; }
  else el.textContent = "";
 }
 
