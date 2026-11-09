@@ -90,6 +90,7 @@ class Session:
     _con: duckdb.DuckDBPyConnection = field(repr=False)
     _tmp: Path | None = field(default=None, repr=False)
     _clock: np.ndarray | None = field(default=None, repr=False)
+    _schema: dict[str, list[str]] | None = field(default=None, repr=False)
 
     # -- lifecycle ---------------------------------------------------------------
     @classmethod
@@ -163,7 +164,21 @@ class Session:
 
     @property
     def tables(self) -> set[str]:
-        return {r[0] for r in self._con.execute("select table_name from duckdb_tables()").fetchall()}
+        return set(self._table_columns())
+
+    def _table_columns(self) -> dict[str, list[str]]:
+        """Every table's columns in order, read once: asking the catalogue for each
+        channel read was a query per channel, and a recording's tables don't change."""
+        if self._schema is None:
+            schema: dict[str, list[str]] = {
+                r[0]: [] for r in self._con.execute("select table_name from duckdb_tables()").fetchall()}
+            for table, column in self._con.execute(
+                    "select table_name, column_name from information_schema.columns "
+                    "order by table_name, ordinal_position").fetchall():
+                if table in schema:
+                    schema[table].append(column)
+            self._schema = schema
+        return self._schema
 
     # -- time base ---------------------------------------------------------------
     @property
@@ -201,11 +216,7 @@ class Session:
 
     # -- data access -------------------------------------------------------------
     def _columns(self, table: str) -> list[str]:
-        rows = self._con.execute(
-            "select column_name from information_schema.columns where table_name = ? order by ordinal_position",
-            [table],
-        ).fetchall()
-        return [r[0] for r in rows]
+        return self._table_columns().get(table, [])
 
     def _values(self, table: str) -> np.ndarray:
         cols = [c for c in self._columns(table) if c != "ts"]
