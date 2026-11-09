@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from autosetup.feel.cars import car_key as key_of
 from autosetup.feel.cars import recording_car
 from autosetup.feel.measure import CELLS, Measured, measured, same_setup_stints
 from autosetup.feel.target import SCHEMA as EVENTS_SCHEMA
@@ -232,8 +233,14 @@ def car_stints(store, car_class: str, car_key: str | None = None) -> list[int]:
     rows = store.con.execute("select id, car_name from recordings where car_class = ?", [car_class]).fetchall()
     if car_key is None:
         return [rid for rid, _ in rows]
-    keys: dict[str, str] = {}
-    return [rid for rid, name in rows if keys.setdefault(name, recording_car(store, rid)[0]) == car_key]
+    keys: dict[str, str] = {}  # livery → car key, looked up once per livery (not per recording)
+    out = []
+    for rid, name in rows:
+        if name not in keys:
+            keys[name] = key_of(store, name, car_class)
+        if keys[name] == car_key:
+            out.append(rid)
+    return out
 
 
 def usual(store, car_class: str, car_key: str | None = None) -> dict[str, float]:

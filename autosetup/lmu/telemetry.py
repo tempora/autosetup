@@ -90,6 +90,9 @@ class Session:
     _con: duckdb.DuckDBPyConnection = field(repr=False)
     _tmp: Path | None = field(default=None, repr=False)
     _clock: np.ndarray | None = field(default=None, repr=False)
+    _schema: dict[str, list[str]] | None = field(default=None, repr=False)
+    _channels: dict[str, tuple[np.ndarray, np.ndarray]] = field(default_factory=dict, repr=False)
+    _events: dict[str, tuple[np.ndarray, np.ndarray]] = field(default_factory=dict, repr=False)
 
     # -- lifecycle ---------------------------------------------------------------
     @classmethod
@@ -163,7 +166,21 @@ class Session:
 
     @property
     def tables(self) -> set[str]:
-        return {r[0] for r in self._con.execute("select table_name from duckdb_tables()").fetchall()}
+        return set(self._table_columns())
+
+    def _table_columns(self) -> dict[str, list[str]]:
+        """Every table's columns in order, read once: asking the catalogue for each
+        channel read was a query per channel, and a recording's tables don't change."""
+        if self._schema is None:
+            schema: dict[str, list[str]] = {
+                r[0]: [] for r in self._con.execute("select table_name from duckdb_tables()").fetchall()}
+            for table, column in self._con.execute(
+                    "select table_name, column_name from information_schema.columns "
+                    "order by table_name, ordinal_position").fetchall():
+                if table in schema:
+                    schema[table].append(column)
+            self._schema = schema
+        return self._schema
 
     # -- time base ---------------------------------------------------------------
     @property
@@ -201,11 +218,7 @@ class Session:
 
     # -- data access -------------------------------------------------------------
     def _columns(self, table: str) -> list[str]:
-        rows = self._con.execute(
-            "select column_name from information_schema.columns where table_name = ? order by ordinal_position",
-            [table],
-        ).fetchall()
-        return [r[0] for r in rows]
+        return self._table_columns().get(table, [])
 
     def _values(self, table: str) -> np.ndarray:
         cols = [c for c in self._columns(table) if c != "ts"]
@@ -220,20 +233,24 @@ class Session:
         """Fixed-rate channel → (t, values). Four-wheel channels return shape (n, 4)."""
         if name not in self.frequencies:
             raise KeyError(f"{name!r} is not a fixed-rate channel in {self.path.name}")
-        values = self._values(name)
-        return self._sample_times(len(values), self.frequencies[name]), values
+        if name not in self._channels:
+            values = self._values(name)
+            self._channels[name] = (self._sample_times(len(values), self.frequencies[name]), values)
+        return self._channels[name]
 
     def events(self, name: str) -> tuple[np.ndarray, np.ndarray]:
         """Event channel → (ts, values), one row per change; row 0 is the initial state."""
-        cols = self._columns(name)
-        if "ts" not in cols:
-            raise KeyError(f"{name!r} is not an event channel in {self.path.name}")
-        val_cols = [c for c in cols if c != "ts"]
-        sel = ", ".join(f'"{c}"' for c in ["ts", *val_cols])
-        rows = self._con.execute(f'select {sel} from "{name}" order by ts').fetchnumpy()
-        ts = np.asarray(rows["ts"], dtype=np.float64)
-        arrays = [np.asarray(rows[c], dtype=np.float64) for c in val_cols]
-        return ts, arrays[0] if len(arrays) == 1 else np.column_stack(arrays)
+        if name not in self._events:
+            cols = self._columns(name)
+            if "ts" not in cols:
+                raise KeyError(f"{name!r} is not an event channel in {self.path.name}")
+            val_cols = [c for c in cols if c != "ts"]
+            sel = ", ".join(f'"{c}"' for c in ["ts", *val_cols])
+            rows = self._con.execute(f'select {sel} from "{name}" order by ts').fetchnumpy()
+            ts = np.asarray(rows["ts"], dtype=np.float64)
+            arrays = [np.asarray(rows[c], dtype=np.float64) for c in val_cols]
+            self._events[name] = (ts, arrays[0] if len(arrays) == 1 else np.column_stack(arrays))
+        return self._events[name]
 
     def state_at(self, name: str, t: np.ndarray | float) -> np.ndarray:
         """Value of an event channel at time(s) t (last change at or before t)."""

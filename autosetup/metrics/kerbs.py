@@ -79,10 +79,11 @@ def events(susp: Suspension, sig: Signals, yaw_error: np.ndarray, wheelbase: flo
                       if (~mask[:, i] & (susp.speed > 15.0)).any() else np.nan for i in range(4)])
     pitch, heave = pitch_heave(susp.rh, wheelbase)
     out = []
+    t = susp.t  # ascending: each event looks at its own stretch, not at masks over the recording
     for a, b in runs:
-        t0, t1 = float(susp.t[a]), float(susp.t[b])
-        win = (susp.t >= t0) & (susp.t <= t1 + AFTER_S)
-        pre = (susp.t >= t0 - BEFORE_S) & (susp.t < t0)
+        t0, t1 = float(t[a]), float(t[b])
+        win = slice(int(np.searchsorted(t, t0, "left")), int(np.searchsorted(t, t1 + AFTER_S, "right")))
+        pre = slice(int(np.searchsorted(t, t0 - BEFORE_S, "left")), win.start)
         wheels = ",".join(w for i, w in enumerate(("fl", "fr", "rl", "rr")) if mask[a:b + 1, i].any())
         peak, air = None, 0.0
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -95,7 +96,7 @@ def events(susp: Suspension, sig: Signals, yaw_error: np.ndarray, wheelbase: flo
                 low = susp.load[win, i] < UNLOADED * usual[i]
                 air = max(air, _longest(low) / susp.rate)
         p_dev = h_dev = None
-        if pre.any() and np.isfinite(pitch[pre]).any() and np.isfinite(pitch[win]).any():
+        if pre.stop > pre.start and np.isfinite(pitch[pre]).any() and np.isfinite(pitch[win]).any():
             p_dev = float(np.nanmax(np.abs(pitch[win] - np.nanmedian(pitch[pre]))))
             h_dev = float(np.nanmax(np.abs(heave[win] - np.nanmedian(heave[pre]))))
         yd = _yaw_disturbance(sig.t, yaw_error, t0, t1)
@@ -112,12 +113,13 @@ def _longest(mask: np.ndarray) -> int:
 
 
 def _yaw_disturbance(t: np.ndarray, err: np.ndarray, t0: float, t1: float) -> float | None:
-    after = (t > t1) & (t <= t1 + YAW_S) & np.isfinite(err)
-    before = (t >= t0 - YAW_S) & (t < t0) & np.isfinite(err)
-    if after.sum() < 3 or before.sum() < 3:
+    after = err[np.searchsorted(t, t1, "right"):np.searchsorted(t, t1 + YAW_S, "right")]  # t1 < t <= t1 + YAW_S
+    before = err[np.searchsorted(t, t0 - YAW_S, "left"):np.searchsorted(t, t0, "left")]  # t0 - YAW_S <= t < t0
+    after, before = after[np.isfinite(after)], before[np.isfinite(before)]
+    if len(after) < 3 or len(before) < 3:
         return None
     rms = lambda x: float(np.sqrt(np.mean(x ** 2)))  # noqa: E731
-    return rms(err[after]) - rms(err[before])
+    return rms(after) - rms(before)
 
 
 def grid_mask(susp: Suspension, mask: np.ndarray, t: np.ndarray) -> np.ndarray:

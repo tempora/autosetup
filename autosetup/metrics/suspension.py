@@ -116,23 +116,28 @@ def lap_suspension(susp: Suspension, seq: int, t0: float, t1: float, phase_at: n
                    knee_mm_s: float) -> list[LapSuspension]:
     """Per wheel, kerb and non-kerb samples of one lap while moving. ``phase_at``: the
     corner phase ("entry"/"mid"/"exit"/"") of every sample of ``susp.t``."""
-    m = (susp.t >= t0) & (susp.t < t1) & (susp.speed > MIN_SPEED)
+    # Only this lap's samples are looked at (susp.t ascends): masks over the whole
+    # recording for every lap made a long stint's import quadratic.
+    i0, i1 = (int(i) for i in np.searchsorted(susp.t, [t0, t1]))
+    m = susp.speed[i0:i1] > MIN_SPEED
     if m.sum() < 20:
         return []
+    kerb, vel, load = susp.kerb[i0:i1], susp.v[i0:i1], susp.load[i0:i1]
+    in_phase = {ph: phase_at[i0:i1] == ph for ph in ("entry", "mid", "exit")}
     out = []
     for i, w in enumerate(("fl", "fr", "rl", "rr")):
         for on_kerb in (False, True):
-            sel = m & (susp.kerb[:, i] == on_kerb)
+            sel = m & (kerb[:, i] == on_kerb)
             if sel.sum() < (5 if on_kerb else 20):
                 continue
-            v = susp.v[sel, i] * 1000.0
+            v = vel[sel, i] * 1000.0
             stats = shape(v, knee_mm_s)
             if not on_kerb:
-                cv = load_cv(susp.load[sel, i], susp.load_source)
+                cv = load_cv(load[sel, i], susp.load_source)
                 if cv is not None:
                     stats["load_cv"] = cv
-                for ph in ("entry", "mid", "exit"):
-                    cv = load_cv(susp.load[sel & (phase_at == ph), i], susp.load_source)
+                for ph, here in in_phase.items():
+                    cv = load_cv(load[sel & here, i], susp.load_source)
                     if cv is not None:
                         stats[f"load_cv_{ph}"] = cv
             out.append(LapSuspension(seq, w, on_kerb, histogram(v), int(sel.sum()), stats))

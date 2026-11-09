@@ -21,16 +21,6 @@ from autosetup.store import Store
 STEP_M = 10.0
 TRACE_STEP_M = 5.0
 EARTH_R = 6371000.0
-SCHEMA = """
-create table if not exists track_maps (
-    layout     varchar primary key,
-    file_name  varchar,
-    lap_time   double,
-    data       json
-);
-"""
-
-
 def build_track_map(s: Session) -> dict | None:
     """Outline of the fastest complete lap in a recording, or None without GPS."""
     laps = [lap for lap in s.laps() if lap.complete and not lap.in_pits]
@@ -158,10 +148,10 @@ def lap_trace(s: Session, lap: Lap, origin: tuple[float, float] | None, length: 
 MAP_VERSION = 2  # 2: lap distance unwrapped before interpolating
 
 
-def track_map(store: Store, layout: str, telemetry_dir: Path | None) -> dict | None:
+def track_map(store: Store, layout: str, telemetry_dir: Path | None,
+              session: tuple[str, Session] | None = None) -> dict | None:
     """Cached outline for a layout, built on first use from the recording holding its
     fastest clean lap (any car)."""
-    store.con.execute(SCHEMA)
     row = store.con.execute("select data from track_maps where layout = ?", [layout]).fetchone()
     if row:
         data = json.loads(row[0])
@@ -175,14 +165,17 @@ def track_map(store: Store, layout: str, telemetry_dir: Path | None) -> dict | N
            where coalesce(r.track_layout, r.track) = ? and l.complete and not l.in_pits
            group by r.file_name order by best""", [layout]).fetchall()
     for file_name, best in candidates:
-        f = telemetry_dir / file_name
-        if not f.is_file() or in_progress(f):
-            continue
-        try:
-            with Session.open(f) as s:
-                data = build_track_map(s)
-        except RecordingBusy:
-            continue
+        if session is not None and file_name == session[0]:
+            data = build_track_map(session[1])
+        else:
+            f = telemetry_dir / file_name
+            if not f.is_file() or in_progress(f):
+                continue
+            try:
+                with Session.open(f, copy=False) as s:
+                    data = build_track_map(s)
+            except RecordingBusy:
+                continue
         if data:
             data["layout"] = layout
             store.con.execute("insert or replace into track_maps values (?, ?, ?, ?)",
@@ -193,14 +186,14 @@ def track_map(store: Store, layout: str, telemetry_dir: Path | None) -> dict | N
 
 def best_clean_lap(store: Store, car_name: str, layout: str) -> dict | None:
     """The fastest clean lap of a car on a layout, with its minisector times."""
-    from autosetup.analysis import _laps
+    from autosetup.analysis import laps_of
 
     rows = store.con.execute(
         """select id from recordings where car_name = ? and coalesce(track_layout, track) = ? and duration > 30""",
         [car_name, layout]).fetchall()
     best = None
-    for (rid,) in rows:
-        for lap in _laps(store, rid):
+    for rid, laps in laps_of(store, [rid for (rid,) in rows]).items():  # every stint's laps in one query
+        for lap in laps:
             if lap["clean"] and (best is None or lap["time"] < best[2]):
                 best = (rid, lap["seq"], lap["time"], lap["lap"])
     if best is None:

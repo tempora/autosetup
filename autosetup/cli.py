@@ -119,11 +119,21 @@ def cmd_recompute(args, store: Store) -> int:
     return 0
 
 
-def _exit_with_stdin() -> None:
-    """Exit as soon as stdin closes: the desktop shell holds the other end of the pipe, so
-    the server never outlives its window, even if the shell crashes."""
+EXIT_GRACE_S = 2.0  # the desktop shell kills the server 3 s after closing the pipe
+
+
+def _exit_with_stdin():
+    """Stop as soon as stdin closes: the desktop shell holds the other end of the pipe, so
+    the server never outlives its window, even if the shell crashes. Returns the event
+    set when it closes: serving stops on it and the database is closed properly (its
+    write-ahead log folded in, so the next start has nothing to replay). Whatever is
+    still running after EXIT_GRACE_S (an import, a start that hasn't got to serving)
+    is cut off."""
     import os
     import threading
+    import time
+
+    closed = threading.Event()
 
     def watch() -> None:
         try:
@@ -131,22 +141,24 @@ def _exit_with_stdin() -> None:
                 pass
         except (OSError, ValueError, AttributeError):
             pass
+        closed.set()
+        time.sleep(EXIT_GRACE_S)
         os._exit(0)
 
     threading.Thread(target=watch, daemon=True, name="stdin-watch").start()
+    return closed
 
 
 def cmd_serve(args, store: Store) -> int:
     from autosetup.server import serve
 
-    if args.exit_with_stdin:
-        _exit_with_stdin()
+    stop = _exit_with_stdin() if args.exit_with_stdin else None
     try:
         paths = find_install()
     except FileNotFoundError as e:
         print(f"warning: {e}; serving the database without watching for new telemetry", file=sys.stderr)
         paths = None
-    serve(store, paths, args.host, args.port)  # recomputes outdated metrics in the background
+    serve(store, paths, args.host, args.port, stop)  # recomputes outdated metrics in the background
     return 0
 
 
@@ -173,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--all", action="store_true", help="recompute every recording, not just outdated ones")
     p.set_defaults(fn=cmd_recompute)
     p = sub.add_parser("serve", help="run the dashboard (and import new telemetry as it appears)")
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--host", default=None, help="address to bind (default: 127.0.0.1, or 0.0.0.0 with phone access)")
     p.add_argument("--port", type=int, default=8191)
     p.add_argument("--exit-with-stdin", action="store_true", help="stop when stdin closes (used by the desktop app)")
     p.set_defaults(fn=cmd_serve)

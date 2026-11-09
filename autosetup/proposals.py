@@ -14,8 +14,11 @@ the trust region can grow or shrink with how they paid off.
 
 from __future__ import annotations
 
+import contextlib
+import copy
 import dataclasses
 import json
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -301,10 +304,13 @@ class Advisor:
     def __init__(self, store: Store, paths: LmuPaths | None):
         self.store = store
         self.paths = paths
+        self._lock = threading.RLock()
         self.store.con.execute(SCHEMA)
+        fpm._schema(self.store)
         self._scales: dict[tuple[str, int, int], CarScales] = {}
         self._models: dict[tuple, tuple] = {}  # (car, layout, data stamp) -> (lap model, aero map)
         self._laps: dict[tuple, tuple] = {}  # (stint, settings searched) -> (lap model, lap function)
+        self._proposals: dict[tuple, tuple[Proposal, Plan]] = {}  # (stint, state stamp) -> (proposal, plan)
 
     # -- caches ----------------------------------------------------------------------
     def scales(self, car_signature: str) -> CarScales:
@@ -318,8 +324,27 @@ class Advisor:
 
     def invalidate(self) -> None:
         """New or recomputed stints: drop what was built from them."""
-        self._models.clear()
-        self._laps.clear()
+        with self._lock:
+            self._models.clear()
+            self._laps.clear()
+            self._proposals.clear()
+
+    def _stamp(self) -> tuple:
+        fpm._schema(self.store)
+        return self.store.con.execute(
+            """select (select count(*) || ':' || coalesce(max(id), 0) || ':' || coalesce(max(metrics_version), 0)
+                       || ':' || coalesce(max(game_build), '') from recordings),
+                      (select count(*) || ':' || coalesce(string_agg(file_name || '=' || svm_path, '|' order by file_name), '')
+                       from recording_setups),
+                      (select coalesce(string_agg(file_name || ':' || coalesce(lockups::varchar, '')
+                       || ':' || coalesce(undrivable::varchar, ''), '|' order by file_name), '') from ratings),
+                      (select count(*) || ':' || coalesce(max(id), 0) from proposals),
+                      (select coalesce(string_agg(id || ':' || coalesce(tolerance::varchar, ''), '|' order by id), '')
+                       from fingerprints where active),
+                      (select coalesce(string_agg(recording_id || ':' || front || ':' || rear || ':' || fast,
+                       '|' order by recording_id), '') from feel_sliders),
+                      (select coalesce(string_agg(key || '=' || value::varchar, '|' order by key), '') from settings)"""
+        ).fetchone()
 
     def layout_model(self, signature: str, layout: str, k: dict) -> tuple:
         """(lap model with trap drag, aero map), or (None, None). Fitting it is most of a
@@ -417,11 +442,19 @@ class Advisor:
         return (stint_id if good is None else good), question
 
     def plan(self, stint_id: int) -> tuple[Proposal, Plan]:
-        base, question = self.base_of(stint_id)
-        pr, plan = self._plan(base, undone=stint_id if base != stint_id else None)
-        plan.short = question
-        pr.model = plan.to_json()
-        return pr, plan
+        with getattr(self, "_lock", contextlib.nullcontext()):
+            cache = getattr(self, "_proposals", None)
+            key = (stint_id, self._stamp()) if cache is not None else None
+            if cache is not None and key in cache:
+                return copy.deepcopy(cache[key])
+            base, question = self.base_of(stint_id)
+            pr, plan = self._plan(base, undone=stint_id if base != stint_id else None)
+            plan.short = question
+            pr.model = plan.to_json()
+            if cache is not None:
+                self._proposals = {k: v for k, v in cache.items() if k[0] != stint_id}
+                self._proposals[key] = copy.deepcopy((pr, plan))
+            return pr, plan
 
     def _plan(self, stint_id: int, undone: int | None = None) -> tuple[Proposal, Plan]:
         """``undone``: a stint you couldn't drive after this one; its moves aren't repeated."""
@@ -754,50 +787,52 @@ class Advisor:
 
     # -- json / writing -------------------------------------------------------------------
     def proposal_json(self, stint_id: int) -> dict:
-        pr, plan = self.plan(stint_id)
-        stint_id = pr.stint_id  # the stint it's built from
-        out = pr.to_json()
-        out["context"] = analysis.context_of(self.store, stint_id)
-        out["locks"] = [{"key": key, "name": analysis.pretty_name(key)} for key in sorted(self.locks(out["context"]))]
-        rec = self.store.recording(stint_id)
-        out["brake_pressure_by_feel"] = manages_brake_pressure(self.store.setup_of(stint_id),
-                                                               load_knowledge(rec["car_class"]))
-        out["car_class"] = rec["car_class"]
-        out["plan"] = plan.to_json()
-        out["target"] = None
-        out["error"] = None
-        out["why"] = why_nothing(pr, plan, len(out["locks"]))
-        if pr.changes and self.paths is not None:
-            try:
-                res = write_setup(self.store, self.paths, stint_id, pr.values, dry_run=True, names=self.templates(),
-                                  fields=self._fields(pr, plan))
-                out["target"] = {"file": res.path.name, "folder": res.path.parent.name, "notes": res.notes}
-            except WriteError as e:
-                out["error"] = str(e)
-        return out
+        with getattr(self, "_lock", contextlib.nullcontext()):
+            pr, plan = self.plan(stint_id)
+            stint_id = pr.stint_id  # the stint it's built from
+            out = pr.to_json()
+            out["context"] = analysis.context_of(self.store, stint_id)
+            out["locks"] = [{"key": key, "name": analysis.pretty_name(key)} for key in sorted(self.locks(out["context"]))]
+            rec = self.store.recording(stint_id)
+            out["brake_pressure_by_feel"] = manages_brake_pressure(self.store.setup_of(stint_id),
+                                                                   load_knowledge(rec["car_class"]))
+            out["car_class"] = rec["car_class"]
+            out["plan"] = plan.to_json()
+            out["target"] = None
+            out["error"] = None
+            out["why"] = why_nothing(pr, plan, len(out["locks"]))
+            if pr.changes and self.paths is not None:
+                try:
+                    res = write_setup(self.store, self.paths, stint_id, pr.values, dry_run=True, names=self.templates(),
+                                      fields=self._fields(pr, plan))
+                    out["target"] = {"file": res.path.name, "folder": res.path.parent.name, "notes": res.notes}
+                except WriteError as e:
+                    out["error"] = str(e)
+            return out
 
     def write(self, stint_id: int, signature: str) -> dict:
         if self.paths is None:
             raise WriteError("LMU install not found; can't write setups")
-        pr, plan = self.plan(stint_id)
-        stint_id = pr.stint_id  # the stint it's built from
-        if pr.signature != signature:
-            raise ProposalConflict("The proposal changed since it was shown; check it and write again.")
-        if not pr.changes:
-            raise WriteError("Nothing to change")
-        res = write_setup(self.store, self.paths, stint_id, pr.values, names=self.templates(),
-                          fields=self._fields(pr, plan))
-        rec = self.store.recording(stint_id)
-        self.store.con.execute(
-            "insert into proposals (created_at, recording_id, base_file, context, signature, changes, svm_path) "
-            "values (?, ?, ?, ?, ?, ?, ?)",
-            [datetime.now(timezone.utc).replace(tzinfo=None), stint_id, rec["file_name"],
-             analysis.context_of(self.store, stint_id), pr.signature,
-             json.dumps([{key: getattr(c, key) for key in ("group", "keys", "before", "after", "reason")} for c in pr.changes]),
-             str(res.path)],
-        )
-        return {"file": res.path.name, "folder": res.path.parent.name, "path": str(res.path),
-                "changes": len(pr.changes)}
+        with getattr(self, "_lock", contextlib.nullcontext()):
+            pr, plan = self.plan(stint_id)
+            stint_id = pr.stint_id  # the stint it's built from
+            if pr.signature != signature:
+                raise ProposalConflict("The proposal changed since it was shown; check it and write again.")
+            if not pr.changes:
+                raise WriteError("Nothing to change")
+            res = write_setup(self.store, self.paths, stint_id, pr.values, names=self.templates(),
+                              fields=self._fields(pr, plan))
+            rec = self.store.recording(stint_id)
+            self.store.con.execute(
+                "insert into proposals (created_at, recording_id, base_file, context, signature, changes, svm_path) "
+                "values (?, ?, ?, ?, ?, ?, ?)",
+                [datetime.now(timezone.utc).replace(tzinfo=None), stint_id, rec["file_name"],
+                 analysis.context_of(self.store, stint_id), pr.signature,
+                 json.dumps([{key: getattr(c, key) for key in ("group", "keys", "before", "after", "reason")} for c in pr.changes]),
+                 str(res.path)],
+            )
+            return {"file": res.path.name, "folder": res.path.parent.name, "path": str(res.path),
+                    "changes": len(pr.changes)}
 
     def templates(self) -> tuple[str, str]:
         """(file name, description) templates from Settings, the defaults where unset."""

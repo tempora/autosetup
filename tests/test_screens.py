@@ -1,4 +1,4 @@
-"""History sessions, the Welcome fact and the Setup table (UI_LAYOUT_CONTRACT.md §2, §4, §5)."""
+"""History sessions and the Welcome fact (UI_LAYOUT_CONTRACT.md §2, §5)."""
 
 import random
 
@@ -43,22 +43,6 @@ def test_fun_fact_is_about_your_driving(tmp_path, install):
         assert fact and ("lap" in fact)
 
 
-def test_setup_table_by_stint_and_by_lap(tmp_path, install):
-    with Store(tmp_path / "db.duckdb") as store:
-        a = _import(store, install, "a.duckdb", 0)
-        b = _import(store, install, "b.duckdb", 10, VM_REAR_ANTISWAY=5)
-        st = screens.setup_table(store, [a, b], "stint")
-        assert [c["label"] for c in st["columns"]] == ["Stint 1", "Stint 2"]
-        names = [g["name"] for g in st["groups"]]
-        assert names[0] == "Pace" and names[-1] == "Setup"
-        [bar] = st["groups"][-1]["rows"]
-        assert bar["label"] == "Rear anti-roll bar" and bar["values"] == ["P4", "step 5"]
-        lt = screens.setup_table(store, [a, b], "lap")
-        assert len(lt["columns"]) == 8 and lt["columns"][0]["label"] == "1·2"
-        pace = {r["label"]: r for r in lt["groups"][0]["rows"]}
-        assert pace["Lap time"]["values"][0] is not None
-
-
 def test_screen_endpoints(server):  # noqa: F811
     app, base = server
     call(base, "/api/import", {})
@@ -68,7 +52,4 @@ def test_screen_endpoints(server):  # noqa: F811
     assert call(base, "/api/welcome")[1]["fact"]
     status, st = call(base, f"/api/stints?session={sid}")
     assert status == 200 and st["session"] == sid and len(st["stints"]) == 1
-    status, tb = call(base, f"/api/table?session={sid}&by=lap")
-    assert status == 200 and tb["by"] == "lap" and tb["columns"]
-    assert call(base, f"/api/table?session={sid}&by=week")[0] == 400
-    assert call(base, "/api/table?session=999")[0] == 400
+    assert call(base, f"/api/table?session={sid}&by=lap")[0] == 404
