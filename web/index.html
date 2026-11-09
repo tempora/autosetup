@@ -468,7 +468,6 @@ async function loadStrings() {
 const UNIT = {speed: "km/h", temp: "°C", pressure: "kPa"};
 const cv = (q, v) => v == null || !isFinite(v) ? v : q === "speed" && UNIT.speed === "mph" ? v * 0.621371 : v;
 const fmtLap = s => s == null || !isFinite(s) ? "–" : `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, "0")}`;
-const fmtT = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 const fx = (v, d = 2) => v == null || !isFinite(v) ? "–" : Number(v).toFixed(d);
 const signed = (v, d = 0) => v == null || !isFinite(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
 const when = s => { const m = String(s || "").match(/(\d{4})-(\d\d)-(\d\d)T(\d\d)_(\d\d)/); return m ? {d: t("fmt.date", {d: +m[3], m: +m[2], y: m[1]}), t: `${m[4]}:${m[5]}`, k: m.slice(1).join(""), date: new Date(+m[1], +m[2] - 1, +m[3])} : {d: String(s || ""), t: "", k: String(s || ""), date: new Date(0)}; };
@@ -716,7 +715,6 @@ function distAt(L, s) {
  return tr.distance[lo] + (s - ts[lo]) / ((ts[hi] - ts[lo]) || 1) * (tr.distance[hi] - tr.distance[lo]);
 }
 const lapT = () => S.lapA ? S.lapA.time : 0;
-const lapLen = () => S.map ? S.map.length : S.lapA ? S.lapA.trace.distance.at(-1) : 1;
 const dA = () => distAt(S.lapA, S.t);
 
 // ---------- lap analysis: one page. The map shows where, the trace deck why; one cursor (S.t, lap A's time) drives both ----------
@@ -1056,7 +1054,6 @@ function playerUI() {
  $("tnow").textContent = T ? fmtLap(S.t) : "";
  $("pp").innerHTML = S.play ? PAUSE : PLAY; $("pp").setAttribute("aria-label", S.play ? t("play.pause") : t("play.play")); $("pp").title = $("pp").getAttribute("aria-label");
 }
-const tick0 = () => { LA.dirty = true; };
 function setPlay(on) { S.play = !!on && !!S.lapA; LA.last = 0; LA.dirty = true; if ($("pp")) playerUI(); }
 $("pp").onclick = () => setPlay(!S.play);
 (() => {

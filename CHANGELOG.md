@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+### Fixes
+- The Lexus RC F GT3 and Mercedes-AMG GT3 now use their own wheelbases for understeer, instead of the GT3 class's rough figure. Existing recordings are recomputed on the next start.
+- If reading the game's live state fails, the app now shows the game as off instead of keeping the last state it saw.
+- Removed unused code and a duplicate test.
+
 ## 0.4.0
 
 ### New look

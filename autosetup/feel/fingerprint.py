@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from autosetup.feel.cars import recording_car
-from autosetup.feel.measure import CELLS, Measured, cell_parts, measured, same_setup_stints
+from autosetup.feel.measure import CELLS, Measured, measured, same_setup_stints
 from autosetup.feel.target import SCHEMA as EVENTS_SCHEMA
 from autosetup.feel.target import AXES, axis_weight, tolerance_of
 from autosetup.lmu.builds import current_build

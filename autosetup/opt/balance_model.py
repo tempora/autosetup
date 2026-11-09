@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from autosetup.feel.measure import CELLS
-from autosetup.opt.space import Dim
 
 TRACK_SD = 0.3  # deg: how differently a car sits at another track
 BETWEEN_SD = 0.15  # deg: what the slopes don't explain between two stints at one layout

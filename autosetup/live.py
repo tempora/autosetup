@@ -131,7 +131,8 @@ class LiveFeed:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                state = self.poll_once()
-            except Exception:  # never let the poller die
-                state = {"state": "off"}
+                self.poll_once()
+            except Exception:  # never let the poller die; an unknown state reads as off
+                with self._lock:
+                    self._state = {"state": "off", "updated": time.time()}
             self._stop.wait(INTERVAL)

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from autosetup.sim.lapsim import G, V_CAP, V_GRID, Car
+from autosetup.sim.lapsim import G, V_GRID, Car
 
 SLOPE_SD = 0.5  # m/s²: prior sd of a 25 m stretch's slope term
 DRAG_SD = 5e-4  # 1/m: prior sd of one stint's drag against the layout's others

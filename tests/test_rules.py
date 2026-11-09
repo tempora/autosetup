@@ -78,13 +78,6 @@ def test_pressure_is_never_raised():
     assert c.after["WM_PRESSURE-W_FL"] < 10 and "pressure down" in c.reason
 
 
-def test_pressure_is_never_raised():
-    setup = _setup(extra={"WM_PRESSURE-W_FL": dict(minValue=0, maxValue=75, value=10, stringValue="146 kPa")})
-    assert run({"t_crown_fl": -2.0}, setup).changes == []  # cool centre: stays where it is
-    [c] = run({"t_crown_fl": 12.0}, setup).changes  # hot centre: still comes down
-    assert c.after["WM_PRESSURE-W_FL"] < 10 and "pressure down" in c.reason
-
-
 def test_brake_ducts_open_when_hot():
     setup = _setup(extra={"VM_BRAKE_DUCTS": dict(minValue=0, maxValue=6, value=3, stringValue="60mm")})
     [c] = run({"brake_temp_max_fl": 1000.0, "brake_temp_max_fr": 900.0}, setup).changes

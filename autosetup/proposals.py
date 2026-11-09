@@ -30,7 +30,7 @@ from autosetup.feel.measure import measured, same_setup_stints
 from autosetup.knowledge import load_knowledge
 from autosetup.lmu.builds import current_build
 from autosetup.lmu.paths import LmuPaths
-from autosetup.lmu.setup_space import parse_number
+from autosetup.lmu.setup_space import CarSetup, parse_number
 from autosetup.lmu.svm import read_settings
 from autosetup.opt import bo, dampers
 from autosetup.opt.balance_model import BalanceModel, Evidence
@@ -399,9 +399,6 @@ class Advisor:
         return [r for (r,) in self.store.con.execute(sql, args).fetchall()]
 
     # -- the plan ----------------------------------------------------------------------
-    def proposal(self, stint_id: int) -> Proposal:
-        return self.plan(stint_id)[0]
-
     def base_of(self, stint_id: int) -> tuple[int, dict | None]:
         """(the stint a proposal is built from, the question about a short stint). A stint
         without a complete racing lap is asked about; until you say it was fine, the
