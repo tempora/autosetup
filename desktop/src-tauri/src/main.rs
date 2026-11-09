@@ -12,6 +12,10 @@
 //! experiment that runs beside the installed app. It has its own port, its own data folder
 //! (%LOCALAPPDATA%\autosetup debug) and its own database. On its first start it copies the
 //! main database, so it starts from your laps and feel without ever writing to them.
+//! It runs the server live from the repo it was built from (its .venv Python, `-m autosetup`)
+//! when that's still there: an edit to web/ shows within two seconds (the page reloads
+//! itself), a Python edit on the next start of the app. Without the repo it falls back to
+//! the bundled server like the release build.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -38,6 +42,9 @@ const DATA_DIR: &str = "autosetup";
 const DATA_DIR: &str = "autosetup debug";
 /// What this build is, shown in About (set by build.ps1, e.g. "debug balance-rework a8b9cbf").
 const BUILD: Option<&str> = option_env!("AUTOSETUP_BUILD");
+/// The repo a debug build was built from (set by build.ps1).
+#[cfg(feature = "debug-build")]
+const REPO: Option<&str> = option_env!("AUTOSETUP_REPO");
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
 struct Server(Mutex<Option<Child>>);
@@ -110,9 +117,19 @@ fn spawn_server(app: &AppHandle) -> Result<Option<Child>, String> {
     seed_database(&dir)?;
     let log = File::create(dir.join("server.log")).map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&exe);
+    let mut build = BUILD.map(str::to_string);
+    #[cfg(feature = "debug-build")]
+    if let Some(repo) = REPO.map(PathBuf::from) {
+        let python = repo.join(".venv").join("Scripts").join("python.exe");
+        if python.is_file() {
+            cmd = Command::new(python);
+            cmd.args(["-m", "autosetup"]).current_dir(&repo);
+            build = Some(format!("debug, live from {}", repo.display()));
+        }
+    }
     cmd.arg("--db").arg(dir.join("autosetup.duckdb"));
     cmd.args(["serve", "--port", &PORT.to_string(), "--exit-with-stdin"]);
-    if let Some(build) = BUILD {
+    if let Some(build) = build {
         cmd.env("AUTOSETUP_BUILD", build);
     }
     cmd.stdin(Stdio::piped())
@@ -124,7 +141,7 @@ fn spawn_server(app: &AppHandle) -> Result<Option<Child>, String> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    cmd.spawn().map(Some).map_err(|e| format!("Couldn't start {}: {e}", exe.display()))
+    cmd.spawn().map(Some).map_err(|e| format!("Couldn't start {:?}: {e}", cmd.get_program()))
 }
 
 fn show_error(window: &WebviewWindow, text: &str) {

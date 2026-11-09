@@ -27,7 +27,7 @@ from autosetup.lmu.validate import match_recordings
 from autosetup.metrics import METRICS_VERSION, compute_recording
 from autosetup.metrics.corners import Corner, remap
 from autosetup.metrics.observations import Observations, observe_recording
-from autosetup.metrics.signals import load_signals
+from autosetup.metrics.signals import livery_models, load_signals, set_car_models
 
 SCHEMA = """
 create sequence if not exists recording_id;
@@ -289,6 +289,16 @@ class Store:
         self._owner = threading.get_ident()
         self._local = threading.local()
         self._con.execute(SCHEMA)
+        self.car_models()
+
+    def car_models(self) -> dict[str, str]:
+        """Livery name → car model of every livery matched to a saved setup, handed to the
+        metrics so each car's understeer uses its own wheelbase (metrics/signals.py)."""
+        from autosetup.feel.cars import model_of
+        models = {car: m for car, vc in self.con.execute("select car_name, vehicle_class from car_classes").fetchall()
+                  if (m := model_of(vc or ""))}
+        set_car_models(models)
+        return models
 
     @property
     def con(self) -> duckdb.DuckDBPyConnection:
@@ -478,6 +488,10 @@ class Store:
                     continue
                 self._save_metrics(rid, results, obs, layout, lock)
                 done += 1
+        if done:
+            from autosetup.feel import fingerprint
+            with lock:
+                fingerprint.remeasure(self)
         return done, missing
 
     def _save_metrics(self, rid: int, results: list, obs: Observations, layout: str, lock) -> None:
@@ -560,6 +574,12 @@ class Store:
         except Exception:
             self.con.execute("rollback")
             raise
+        before = livery_models()
+        after = self.car_models()
+        if newly := [car for car, m in after.items() if before.get(car) != m]:
+            # Their metrics used the class's rough wheelbase: recompute them with the model's.
+            self.con.execute("update recordings set metrics_version = null where car_name in (select unnest(?::VARCHAR[]))",
+                             [newly])
         return len(matches)
 
     def _upsert(self, table: str, types: tuple[str, ...], rows: list[tuple]) -> None:

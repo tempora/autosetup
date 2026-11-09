@@ -105,6 +105,7 @@ def test_lap_trace_lines_up_with_the_map(tmp_path):
     assert tr["distance"][0] == 0 and tr["step_m"] == 5.0
     assert tr["time"][-1] == pytest.approx(60.0, abs=0.2)
     assert sum(tr["sectors"]) == pytest.approx(lap.time) and len(tr["sectors"]) == 3
+    assert len(tr["plat"]) == len(tr["edge"]) == len(tr["distance"])
     # The driven line sits on the outline at the same distance.
     pts = {round(p[0]): (p[1], p[2]) for p in m["points"]}
     for i in range(0, len(tr["distance"]), 40):

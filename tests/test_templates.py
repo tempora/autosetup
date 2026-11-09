@@ -30,3 +30,10 @@ def test_file_unsafe_names_and_laps():
     assert templates.feel_text(0, 0) == "As it was"
     assert templates.feel_text(-0.25, -0.1) == "Pointier 0.25° + Looser 0.10°"
     assert templates.feel_text(0, 0.05, 0.2) == "Safer 0.05° + Planted 0.20°"
+
+
+def test_short_track_names():
+    assert templates.short_track("Autódromo José Carlos Pace") == "Interlagos"
+    assert templates.short_track("Fuji Speedway") == "Fuji"
+    assert templates.short_track("Testway") == "Testway"  # no short name: as it is
+    assert templates.short_track(None) == ""
