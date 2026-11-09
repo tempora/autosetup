@@ -49,7 +49,7 @@ function renderNav() {
  $("a-model").textContent = s && s.model ? carName(s.model) : "";
  $("live").classList.toggle("on", o.state === "live");
  $("live-text").textContent = o.state === "live" ? t("nav.live", {session: o.session_name || o.track || ""}) : o.state === "menu" ? t("nav.menu_open") : t("nav.off");
- $("hist-back").hidden = !S.history;
+ $("hist-back").hidden = !(S.history && o.state === "live");
 }
 
 $("hist-back").onclick = async () => {
@@ -181,7 +181,7 @@ function renderAnalysisBar() {
  pills("linemode", ["pedals", "delta"], [t("line.pedals"), t("line.delta")], S.line, v => { S.line = v; LA.dirty = true; });
  $("linemode").querySelectorAll("button")[1].disabled = !compare();
  const g = $("agap"), d = compare() ? S.lapA.time - S.lapB.time : null;
- g.textContent = d == null ? "" : `A ${signed(d, 3)} s ${t("gap.tob")}`; g.style.color = d < 0 ? "var(--pri)" : "var(--ter)";
+ g.textContent = d == null ? "" : `A ${signed(d, 3)} s ${t("gap.tob")}`; g.style.color = d < 0 ? "var(--green)" : "var(--red)";
 }
 
 function drawAnalysis() {
@@ -240,14 +240,14 @@ async function loadHome() {
  hero.append(el("div", {class: "hello"}, t("home.hello")));
  if (fact) hero.append(el("div", {class: "fact"}, fact));
  const stat = el("div", {class: "stat"}), w = S.state && S.state.watcher;
- stat.innerHTML = `<span>${S.live.state === "live" ? t("nav.live", {session: S.live.track || ""}) : t("nav.off")}</span><span>${t("home.sessions", {n: `<b>${sessions.length}</b>`})}</span>` +
+ stat.innerHTML = `<span>${S.live.state === "live" ? t("nav.live", {session: S.live.session_name || S.live.track || ""}) : t("nav.off")}</span><span>${t("home.sessions", {n: `<b>${sessions.length}</b>`})}</span>` +
   (w && w.last_import ? `<span>${t("home.lastimport", {when: `<b>${new Date(w.last_import * 1000).toLocaleString(LANG)}</b>`})}</span>` : "");
  hero.append(stat);
  if (!live.length) hero.append(el("div", {class: "fact"}, t("home.start")));
  else {
-  const last = live[0], lw = when(last.recorded_at), best = Math.min(...live.filter(s => s.car_name === last.car_name && s.track === last.track).map(s => s.best).filter(v => v != null));
+  const last = live[0], lw = when(last.recorded_at);
   const c = el("div", {class: "cont"});
-  c.innerHTML = `<div class="k">${t("home.continue")}</div><div><div class="trk"></div><div class="car"><span class="nm"></span><span class="cls"></span></div></div><div class="lt">${fmtLap(best)}<small>${t("home.best", {date: lw.d})}</small></div>`;
+  c.innerHTML = `<div class="k">${t("home.continue")}</div><div><div class="trk"></div><div class="car"><span class="nm"></span><span class="cls"></span></div></div><div class="lt">${fmtLap(last.best)}<small>${t("home.best", {date: lw.d})}</small></div>`;
   c.querySelector(".trk").textContent = shortTrack(last.track); c.querySelector(".nm").textContent = last.car_name; c.querySelector(".cls").textContent = className(last.car_class);
   const acts = el("div", {class: "acts"}), a1 = el("button", {type: "button", class: "btnp"}, t("home.open")), a2 = el("button", {type: "button", class: "btnt"}, t("home.next"));
   a1.onclick = async () => { await openSession(last.id, true); show("analysis"); }; a2.onclick = async () => { await openSession(last.id, true); show("setup"); };

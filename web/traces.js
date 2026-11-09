@@ -3,7 +3,12 @@ import {carAt, cam, goal, fitGoal, setFollow, drawMap} from "./map.js";
 
 // ---------- trace deck: delta, speed, throttle, brake and gear on one distance axis, centred on the cursor ----------
 export const whole = () => !LA.G || LA.win >= LA.G.LEN / 2;
-export function deckWindow() { if (whole()) return [0, LA.G ? LA.G.LEN : 1]; const c = dA(); return [c - LA.win, c + LA.win]; }
+export function deckWindow() {
+ if (LA.dragWin) return LA.dragWin;
+ if (whole()) return [0, LA.G ? LA.G.LEN : 1];
+ const w = LA.win, c = clamp(dA(), w, LA.G.LEN - w);
+ return [c - w, c + w];
+}
 
 export function deckLayout() {
  const [, DH] = LA.dw, gap = 8, axis = 16, avail = DH - axis - gap;
@@ -23,31 +28,38 @@ export function drawDeck() {
  g.lineJoin = "round"; g.lineCap = "round";
  const font = getComputedStyle(document.body).fontFamily, Lo = deckLayout(), [d0, d1] = deckWindow(), X = d => (d - d0) / (d1 - d0) * DW, STEP = G.STEP;
  const lo = clamp(Math.floor(d0 / STEP) - 1, 0, G.N - 1), hi = clamp(Math.ceil(d1 / STEP) + 1, 0, G.N - 1), PADT = 20, PADB = 6, secs = S.map ? S.map.sectors || [] : [];
- // each lane is its own panel with its name, a fixed scale and quiet gridlines
- const panel = (key, ticks, fmt) => {
+ // each lane is its own panel with its name, a fixed scale and quiet gridlines; labels are drawn over the traces
+ const clip = (y, h, fn) => { g.save(); g.beginPath(); g.rect(0, y - 3, DW, h + 6); g.clip(); fn(); g.restore(); };
+ const panel = (key, ticks, fmt, draw) => {
   const [y, h] = Lo.lanes[key], py = y + PADT, ph = h - PADT - PADB;
   g.fillStyle = K.l2; g.beginPath(); g.roundRect(0, y, DW, h, 6); g.fill();
+  g.strokeStyle = K.l3; g.lineWidth = 1;
+  for (const [, yy] of ticks) { g.beginPath(); g.moveTo(0, yy + .5); g.lineTo(DW, yy + .5); g.stroke(); }
+  for (const d of secs) if (d > d0 && d < d1) { g.beginPath(); g.moveTo(X(d), py); g.lineTo(X(d), py + ph); g.stroke(); }
+  clip(y, h, draw);
   g.font = "600 11px " + font; g.fillStyle = K.t2; g.textAlign = "left"; g.fillText(laneName(key), 8, y + 14);
   g.font = "11px " + font; g.textAlign = "right";
-  for (const [v, yy] of ticks) { g.strokeStyle = K.l3; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yy + .5); g.lineTo(DW, yy + .5); g.stroke(); g.fillStyle = K.t3; g.fillText(fmt(v), DW - 6, yy - 3); }
-  g.strokeStyle = K.l3; for (const d of secs) if (d > d0 && d < d1) { g.beginPath(); g.moveTo(X(d), py); g.lineTo(X(d), py + ph); g.stroke(); }
+  for (const [v, yy] of ticks) {
+   const txt = String(fmt(v)), tw = g.measureText(txt).width;
+   g.fillStyle = K.l2; g.fillRect(DW - 8 - tw, yy - 13, tw + 4, 12);
+   g.fillStyle = K.t3; g.fillText(txt, DW - 6, yy - 3);
+  }
   return [y, h];
  };
- const clip = (y, h, fn) => { g.save(); g.beginPath(); g.rect(0, y - 3, DW, h + 6); g.clip(); fn(); g.restore(); };
  const series = (arr, Y, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); for (let i = lo; i <= hi; i++) { const px = X(i * STEP), py = Y(arr[i]); i === lo ? g.moveTo(px, py) : g.lineTo(px, py); } g.stroke(); g.setLineDash([]); };
  // Δ: fixed scale for the lap, coloured by its trend
  if (Lo.lanes.d) {
   const [y0, h0] = Lo.lanes.d, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph / 2 - v / G.DMAX * ph / 2;
-  const [y, h] = panel("d", [[G.DMAX, Y(G.DMAX)], [0, Y(0)], [-G.DMAX, Y(-G.DMAX)]], v => v ? signed(v, 2) : "0");
-  const colAt = i => Math.abs(G.rate[i]) < G.RATEMAX * .12 ? K.t1 : G.rate[i] < 0 ? K.pri : K.ter;
-  clip(y, h, () => { g.lineWidth = 2; let i0 = lo; while (i0 < hi) { const c = colAt(i0); let i1 = i0; while (i1 < hi && colAt(i1) === c) i1++; g.strokeStyle = c; g.beginPath(); for (let i = i0; i <= i1; i++) { const px = X(i * STEP), qy = Y(G.dt[i]); i === i0 ? g.moveTo(px, qy) : g.lineTo(px, qy); } g.stroke(); i0 = i1; } });
+  const colAt = i => Math.abs(G.rate[i]) < G.RATEMAX * .12 ? K.t1 : G.rate[i] < 0 ? K.green : K.red;
+  panel("d", [[G.DMAX, Y(G.DMAX)], [0, Y(0)], [-G.DMAX, Y(-G.DMAX)]], v => v ? signed(v, 2) : "0", () => {
+   g.lineWidth = 2; let i0 = lo; while (i0 < hi) { const c = colAt(i0); let i1 = i0; while (i1 < hi && colAt(i1) === c) i1++; g.strokeStyle = c; g.beginPath(); for (let i = i0; i <= i1; i++) { const px = X(i * STEP), qy = Y(G.dt[i]); i === i0 ? g.moveTo(px, qy) : g.lineTo(px, qy); } g.stroke(); i0 = i1; }
+  });
  }
  // speed: lap A light, lap B grey dashed; each zone's minimum labelled
  if (Lo.lanes.v) {
   const [y0, h0] = Lo.lanes.v, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - (v - G.SPD[0]) / (G.SPD[1] - G.SPD[0]) * ph, tk = [];
   for (let v = G.SPD[0] + 50; v < G.SPD[1]; v += 50) tk.push([v, Y(v)]);
-  const [y, h] = panel("v", tk, v => v);
-  clip(y, h, () => { if (G.B) series(G.B.v, Y, K.t3, 1.5, [5, 4]); series(G.A.v, Y, K.t1, 2); });
+  const [y, h] = panel("v", tk, v => v, () => { if (G.B) series(G.B.v, Y, K.t3, 1.5, [5, 4]); series(G.A.v, Y, K.t1, 2); });
   for (const z of G.ZONES) {
    let im = z.i0; for (let k = z.i0; k <= z.i1; k++) if (G.A.v[k] < G.A.v[im]) im = k;
    const px = X(im * STEP); if (px < 20 || px > DW - 40) continue;
@@ -60,16 +72,14 @@ export function drawDeck() {
  for (const [key, col] of [["th", K.green], ["br", K.red]]) {
   if (!Lo.lanes[key]) continue;
   const [y0, h0] = Lo.lanes[key], py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - clamp(v, 0, 1) * ph;
-  const [y, h] = panel(key, [[.5, Y(.5)]], () => "50 %");
-  clip(y, h, () => { if (G.B) series(G.B[key], Y, K.t3, 1.4, [5, 4]); series(G.A[key], Y, col, 2); });
+  panel(key, [[.5, Y(.5)]], () => "50 %", () => { if (G.B) series(G.B[key], Y, K.t3, 1.4, [5, 4]); series(G.A[key], Y, col, 2); });
   if (key === "br") for (const z of G.ZONES) { const tick = (d, c) => { const px = X(d); if (px < 0 || px > DW) return; g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.moveTo(px, py + ph - 6); g.lineTo(px, py + ph + 4); g.stroke(); }; if (z.bpB != null) tick(z.bpB, K.t3); tick(z.bpA, K.t1); }
  }
  // gear, stepped
  if (Lo.lanes.g) {
   const [y0, h0] = Lo.lanes.g, py = y0 + PADT, ph = h0 - PADT - PADB, Y = v => py + ph - ((v || 1) - 1) / Math.max(1, G.GMAX - 1) * ph;
-  const [y, h] = panel("g", [], v => v);
   const step = (Q, c, w, dash) => { g.strokeStyle = c; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); for (let i = lo; i <= hi; i++) { const px = X(i * STEP), qy = Y(Q.g[i]); if (i === lo) g.moveTo(px, qy); else { g.lineTo(px, Y(Q.g[i - 1])); g.lineTo(px, qy); } } g.stroke(); g.setLineDash([]); };
-  clip(y, h, () => { if (G.B) step(G.B, K.t3, 1.4, [5, 4]); step(G.A, K.t1, 1.8); });
+  panel("g", [], v => v, () => { if (G.B) step(G.B, K.t3, 1.4, [5, 4]); step(G.A, K.t1, 1.8); });
  }
  // distance axis: sector names for the whole lap, metres from the cursor otherwise
  g.font = "11px " + font; g.fillStyle = K.t3; g.textAlign = "center";
@@ -126,14 +136,20 @@ export function buildDock() {
  }
 }
 
+function gearAt(L, Q, dd) {
+ if (Q && LA.G) return Q.g[clamp(Math.round(dd / LA.G.STEP), 0, LA.G.N - 1)];
+ const gr = L.trace.gear || []; let i = clamp(Math.round(dd / L.trace.step_m), 0, gr.length - 1);
+ while (i > 0 && !(gr[i] > 0)) i--;
+ return gr[i] > 0 ? gr[i] : 1;
+}
+
 export function pedals() {
- const d = dA();
- [["a", S.lapA, d], ...(S.lapB ? [["b", S.lapB, dB(d)]] : [])].forEach(([cl, L, dd]) => {
+ [["a", S.lapA, LA.G && LA.G.A, dA()], ...(S.lapB ? [["b", S.lapB, LA.G && LA.G.B, dB()]] : [])].forEach(([cl, L, Q, dd]) => {
   if (!L || !$("th" + cl)) return;
   const th = clamp((at(L, "throttle", dd) || 0) * 100, 0, 100), br = clamp((at(L, "brake", dd) || 0) * 100, 0, 100);
   $("th" + cl).style.width = th + "%"; $("thv" + cl).textContent = th.toFixed(1) + "%";
   $("br" + cl).style.width = br + "%"; $("brv" + cl).textContent = br.toFixed(1) + "%";
-  $("sp" + cl).textContent = fx(cv("speed", at(L, "speed", dd)), 1); $("gr" + cl).textContent = Math.round(at(L, "gear", dd) ?? 0);
+  $("sp" + cl).textContent = fx(cv("speed", at(L, "speed", dd)), 1); $("gr" + cl).textContent = gearAt(L, Q, dd);
  });
 }
 
@@ -149,10 +165,13 @@ export function setPlay(on) { S.play = !!on && !!S.lapA; LA.last = 0; LA.dirty =
 export function initTraces() {
  const c = $("deckc"), atX = e => e.clientX - c.getBoundingClientRect().left;
  const dOf = x => { const [d0, d1] = deckWindow(); return d0 + x / LA.dw[0] * (d1 - d0); };
- c.addEventListener("pointerdown", e => { c.setPointerCapture(e.pointerId); setDist(dOf(atX(e))); LA.hov = null; readout(); });
+ c.addEventListener("pointerdown", e => { LA.dragWin = deckWindow(); c.setPointerCapture(e.pointerId); setDist(dOf(atX(e))); LA.hov = null; readout(); });
  c.addEventListener("pointermove", e => { if (e.buttons & 1) { setDist(dOf(atX(e))); return; } LA.hov = clamp(dOf(atX(e)), 0, LA.G ? LA.G.LEN : 0); readout(); LA.dirty = true; });
+ const endDrag = () => { if (LA.dragWin) { LA.dragWin = null; LA.dirty = true; } };
+ c.addEventListener("pointerup", endDrag);
+ c.addEventListener("pointercancel", endDrag);
  c.addEventListener("pointerleave", () => { LA.hov = null; readout(); LA.dirty = true; });
- c.addEventListener("wheel", e => { e.preventDefault(); if (!LA.G) return; LA.win = clamp((whole() ? LA.G.LEN / 2 : LA.win) * (e.deltaY > 0 ? 1.2 : 1 / 1.2), 50, LA.G.LEN / 2); LA.hov = null; readout(); LA.dirty = true; }, {passive: false});
+ c.addEventListener("wheel", e => { e.preventDefault(); if (!LA.G) return; LA.dragWin = null; LA.win = clamp((whole() ? LA.G.LEN / 2 : LA.win) * (e.deltaY > 0 ? 1.2 : 1 / 1.2), 50, LA.G.LEN / 2); LA.hov = null; readout(); LA.dirty = true; }, {passive: false});
  new ResizeObserver(() => { const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1; LA.dw = [r.width, r.height]; c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr)); LA.dctx = c.getContext("2d"); LA.dctx.setTransform(dpr, 0, 0, dpr, 0, 0); LA.dirty = true; }).observe(c);
 
  $("pp").onclick = () => setPlay(!S.play);

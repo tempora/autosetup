@@ -127,7 +127,7 @@ export function distAt(L, s) {
 }
 export const lapT = () => S.lapA ? S.lapA.time : 0;
 export const dA = () => distAt(S.lapA, S.t);
-export const dB = d => d;  // lap B's values are read at the same point on track
+export const dB = () => distAt(S.lapB, S.t);  // lap B at the same time in the lap as B's dot on the map
 export const lapLabel = L => L ? t("lap.n", {n: L.lap}) : "";
 export const idxNow = () => LA.G ? clamp(Math.round(dA() / LA.G.STEP), 0, LA.G.N - 1) : 0;
 export function readK() { for (const k of ["l1", "l2", "l3", "bd", "t1", "t2", "t3", "green", "red", "pri", "ter", "lapA", "lapB"]) LA.K[k] = css("--" + k); LA.dirty = true; }

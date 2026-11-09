@@ -120,8 +120,11 @@ def test_open_session_maps_to_a_context(tmp_path, install):
     with Store(tmp_path / "db.duckdb") as store:
         store.import_all(install.telemetry)
         app = App(store, install)
-        app.live.snapshot = lambda: {"state": "live", "car": {"vehicle": "Test Team 2025 #1", "track": "Test Raceway"}}
-        assert app.open_session()["context"] == "Test Team 2025 #1|Test Raceway"
+        app.live.snapshot = lambda: {"state": "live", "car": {"vehicle": "Test Team 2025 #1", "track": "Test Raceway",
+                                                              "session": "Practice"}}
+        live = app.open_session()
+        assert live["context"] == "Test Team 2025 #1|Test Raceway"
+        assert live["session_name"] == "Practice" and live["session"] == 1
         app.live.snapshot = lambda: {"state": "live", "car": {"vehicle": "Someone Else #9", "track": "Test Raceway"}}
         assert app.open_session()["context"] is None
         app.live.snapshot = lambda: {"state": "off"}
