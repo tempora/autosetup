@@ -307,7 +307,8 @@ def _platform(b: _Builder, s: dict, k: dict) -> None:
                   "The front ride height always runs at its minimum → down to the lowest setting", quiet=True)
     front_low = not pinned and bool(front_rh) and (bottoming > k["bottoming_s"]
                                                    or min(front_rh) < k["min_ride_height_mm"])
-    rear_low = bool(rear_rh) and min(rear_rh) < k["min_ride_height_mm"]
+    bottoming_rear = s.get("bottoming_rear_s") or 0.0
+    rear_low = bool(rear_rh) and (bottoming_rear > k["bottoming_s"] or min(rear_rh) < k["min_ride_height_mm"])
     if front_low:
         steps = 2 if bottoming > 3 * k["bottoming_s"] else 1
         why = (f"front bottoms {bottoming:.2f} s/lap" if bottoming > k["bottoming_s"]
@@ -316,7 +317,8 @@ def _platform(b: _Builder, s: dict, k: dict) -> None:
                  or b.add("platform", FRONT_RH, SEMANTIC["up"](FRONT_RH[0], b.scales), steps,
                           f"The {why} → raise the front", quiet=True))
     if done < budget and rear_low:
-        why = f"The rear ride height drops to {min(rear_rh):.1f} mm"
+        why = (f"The rear bottoms {bottoming_rear:.2f} s/lap" if bottoming_rear > k["bottoming_s"]
+               else f"The rear ride height drops to {min(rear_rh):.1f} mm")
         done += (_packers_in(b, s, k, "rear", why)
                  or b.add("platform", REAR_RH, SEMANTIC["up"](REAR_RH[0], b.scales), 1, f"{why} → raise the rear",
                           quiet=True))

@@ -4,8 +4,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from autosetup.metrics.compute import _third_contacts, _third_spring
+from autosetup.metrics.compute import _platform, _third_contacts, _third_spring
 from autosetup.metrics.signals import GRID_HZ
+from autosetup.opt.platform import Platform
 from autosetup.opt.space import damper_dims, main_dims
 from tests.test_rules import FREE_FRONT, _setup, run
 
@@ -56,6 +57,37 @@ def test_bottoming_without_packer_contact_adds_packer_not_ride_height():
     pr = run({"bottoming_s": 1.0, "rh_min_fl": 0.5, "rh_min_fr": 0.6, "third_packers_f": 0.4}, setup)
     [c] = [c for c in pr.changes if c.group == "platform"]
     assert c.keys == ["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"]
+
+
+def test_rear_bottoming_adds_rear_packer():
+    low_front = {"rh_min_fl": 12.0, "rh_min_fr": 12.0, "rh_min_rl": 14.0, "rh_min_rr": 14.0}
+    pr = run({**low_front, "bottoming_rear_s": 1.0, "third_packers_r": 0.0}, _setup(THIRD), knowledge=FREE_FRONT)
+    [c] = [c for c in pr.changes if c.group == "platform"]
+    assert c.keys == ["VM_REAR_3RD_PACKERS"] and c.delta == 1 and "rear bottoms 1.00 s/lap" in c.reason
+    pr = run({**low_front, "bottoming_rear_s": 0.1, "third_packers_r": 0.0}, _setup(THIRD), knowledge=FREE_FRONT)
+    assert not [c for c in pr.changes if c.group == "platform"]
+
+
+def test_a_car_bottoming_at_the_rear_is_not_lowered_or_softened():
+    plat = Platform({"front": 20.0, "rear": 20.0}, bottoming_s=0.0, min_mm=2.0, bottoming_limit_s=0.2,
+                    mm_per_click={"rh_rear": 1.0}, bottoming_rear_s=0.5)
+    assert not plat.ok({"rh_rear": 5}, {"rh_rear": 4})
+    assert not plat.ok({"third_spring_rear": 5}, {"third_spring_rear": 4})
+    assert plat.ok({"rh_rear": 5, "third_spring_rear": 5}, {"rh_rear": 6, "third_spring_rear": 6})
+
+
+def test_rake_is_measured_apart_in_fast_corners_and_on_straights():
+    n = 30 * GRID_HZ
+    part = np.arange(n) // (10 * GRID_HZ)  # 10 s slow, 10 s fast corner, 10 s straight
+    speed = np.choose(part, [30.0, 55.0, 80.0])
+    front = np.choose(part, [40.0, 32.0, 29.0])
+    rear = np.choose(part, [62.0, 47.0, 26.0])  # the rear sinks on the straight
+    rear[-GRID_HZ:] = 0.5  # and touches for the last second
+    rh = np.column_stack([front, front, rear, rear]) / 1000.0
+    sig = SimpleNamespace(ride_height=rh, speed=speed, a_lat=np.where(part == 1, 1.5, 0.0), brake=np.zeros(n))
+    m = _platform(sig)
+    assert abs(m["rake_corners"] - 15.0) < 1e-6 and m["rake_straight"] < 0.0
+    assert m["bottoming_s"] == 0.0 and abs(m["bottoming_rear_s"] - 1.0) < 1e-6
 
 
 def test_living_on_the_packers_is_left_to_the_model():

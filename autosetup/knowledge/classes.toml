@@ -19,8 +19,8 @@ crown_band = 3.0
 hot_pressure = []
 # Peak brake disc temperature (brake ducts). GT3 data: front p50 ~630, p90 ~790.
 brake_temp = [450.0, 850.0]
-# Platform: time per lap with a front corner under 1 mm, and the 1st-percentile ride
-# height below which we raise the car. Above `lower_above_mm` (and never bottoming) the
+# Platform: time per lap with a front corner (or, counted apart, a rear one) under 1 mm,
+# and the 1st-percentile ride height below which we raise the car. Above `lower_above_mm` (and never bottoming) the
 # car may come down a step when pace matters. GT3 front p90 ~27 mm.
 bottoming_s = 0.2
 min_ride_height_mm = 2.0

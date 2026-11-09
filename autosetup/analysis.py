@@ -23,7 +23,8 @@ WHEELS = ("fl", "fr", "rl", "rr")
 SUMMARY_METRICS = [
     "us_entry", "us_mid", "us_exit", "us_slow", "us_fast", "countersteer_events", "cs_entry", "cs_mid", "cs_exit",
     "steer_reversals_per_min", "tc_s", "tc_events", "abs_s", "lat_g_p98", "brake_g_p98", "bottoming_s",
-    "rake_fast", "full_throttle_frac", "coast_frac", "trail_brake_frac", "throttle_apply_rate",
+    "bottoming_rear_s", "rake_corners", "rake_straight", "full_throttle_frac", "coast_frac", "trail_brake_frac",
+    "throttle_apply_rate",
     "track_temp", "ambient_temp", "fuel_used", "kerb_s", "overheating_s", "speed_max", "speed_min",
     "third_travel_f", "third_travel_r", "third_packers_f", "third_packers_r", "third_contact_f", "third_contact_r",
 ]

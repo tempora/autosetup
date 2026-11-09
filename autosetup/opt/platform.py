@@ -1,7 +1,7 @@
 """Platform safety: the car mustn't bottom or run below the class's minimum ride height.
 
 From the stint the proposal starts from: its lowest ride heights (1st percentile per
-wheel) and its bottoming. A ride-height change moves the lowest point by the change
+wheel) and its bottoming, front and rear. A ride-height change moves the lowest point by the change
 (mm per click from the car's labels). A car that already bottoms may not come down.
 """
 
@@ -21,20 +21,22 @@ class Platform:
     min_mm: float
     bottoming_limit_s: float
     mm_per_click: dict[str, float]  # dim name → mm per index step (signed)
+    bottoming_rear_s: float = 0.0
 
     def ok(self, base: dict[str, int], cand: dict[str, int]) -> bool:
+        bottoms = max(self.bottoming_s, self.bottoming_rear_s) > self.bottoming_limit_s
         for axle in ("front", "rear"):
             name = f"rh_{axle}"
             if name not in cand or axle not in self.rh_min:
                 continue
             delta = (cand[name] - base[name]) * self.mm_per_click.get(name, DEFAULT_MM_PER_CLICK)
-            if delta < 0 and self.bottoming_s > self.bottoming_limit_s:
+            if delta < 0 and bottoms:
                 return False
             if delta < 0 and self.rh_min[axle] + delta < self.min_mm:
                 return False
         # A softer third spring lets the car down at speed: not on a car that already bottoms.
         for name in ("third_spring_front", "third_spring_rear"):
-            if name in cand and cand[name] < base[name] and self.bottoming_s > self.bottoming_limit_s:
+            if name in cand and cand[name] < base[name] and bottoms:
                 return False
         return True
 
@@ -51,4 +53,4 @@ def platform_of(summary: dict, dims: list[Dim], knowledge: dict, scales=None) ->
             step = scales[d.keys[0]].per_step if scales is not None else None
             per[d.name] = (step * 10.0) if step else DEFAULT_MM_PER_CLICK  # labels are cm
     return Platform(rh, float(summary.get("bottoming_s") or 0.0), float(knowledge["min_ride_height_mm"]),
-                    float(knowledge["bottoming_s"]), per)
+                    float(knowledge["bottoming_s"]), per, float(summary.get("bottoming_rear_s") or 0.0))
