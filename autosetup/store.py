@@ -105,6 +105,13 @@ create table if not exists settings (
     key           varchar primary key,
     value         json
 );
+-- trackmap.py: one outline per layout, from the recording with its fastest clean lap.
+create table if not exists track_maps (
+    layout        varchar primary key,
+    file_name     varchar,
+    lap_time      double,
+    data          json
+);
 alter table recordings add column if not exists metrics_version integer;
 alter table ratings add column if not exists lockups boolean;  -- you flagged too much brake pressure
 alter table ratings add column if not exists undrivable boolean;  -- a short stint: you couldn't drive it (false: it was fine)
@@ -314,6 +321,12 @@ class Store:
         return con
 
     def close(self) -> None:
+        try:
+            # Fold the write-ahead log into the file. Closing alone doesn't while other
+            # threads still hold cursors, and the log was then replayed at every start.
+            self._con.execute("checkpoint")
+        except duckdb.Error:
+            pass  # another thread is mid-write: the log is replayed next time, as after a crash
         self._con.close()
 
     def __enter__(self) -> "Store":
@@ -480,13 +493,15 @@ class Store:
             elif not in_progress(f):  # else LMU is writing it; it's re-imported when the outing ends
                 todo.append((rid, f))
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-            reads = [(rid, ex.submit(_reanalyse, f)) for rid, f in todo]
-            for rid, fut in reads:
+            reads = collections.deque((rid, ex.submit(_reanalyse, f)) for rid, f in todo)
+            while reads:  # each result is let go once saved: a whole library's wouldn't fit in memory
+                rid, fut = reads.popleft()
                 try:
                     results, obs, layout = fut.result()
                 except RecordingBusy:
                     continue
                 self._save_metrics(rid, results, obs, layout, lock)
+                del fut, results, obs
                 done += 1
         if done:
             from autosetup.feel import fingerprint
@@ -634,6 +649,15 @@ class Store:
         cur = self.con.execute("select * from ratings where file_name = ?", [file_name])
         row = cur.fetchone()
         return dict(zip([d[0] for d in cur.description], row)) if row else None
+
+    def ratings(self, file_names: list[str]) -> dict[str, dict]:
+        """``rating`` of many stints in one query (those that have one)."""
+        if not file_names:
+            return {}
+        cur = self.con.execute("select * from ratings where file_name in (select unnest(?::VARCHAR[]))",
+                               [list(file_names)])
+        cols = [d[0] for d in cur.description]
+        return {r["file_name"]: r for r in (dict(zip(cols, row)) for row in cur.fetchall())}
 
     def get_setting(self, key: str, default=None):
         row = self.con.execute("select value from settings where key = ?", [key]).fetchone()

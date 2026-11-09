@@ -85,12 +85,13 @@ def stints(store: Store, car_name: str, layout: str, min_clean: int = 0) -> list
     rids = [r[0] for r in recs]
     laps_by = laps_of(store, rids)
     summary_by = summaries(store, rids, laps_by)
+    ratings = store.ratings([r[1] for r in recs])
     for rid, file_name, recorded_at, session_type, setup_json, svm_path in recs:
         setup = CarSetup.from_json(json.loads(setup_json))
         st = Stint(
             id=rid, file_name=file_name, recorded_at=recorded_at, session_type=session_type,
             setup_name=re.sub(r"\.svm$", "", svm_path.replace("\\", "/").rsplit("/", 1)[-1]) if svm_path else None,
-            laps=laps_by[rid], summary=summary_by[rid], rating=store.rating(file_name),
+            laps=laps_by[rid], summary=summary_by[rid], rating=ratings.get(file_name),
             changes=setup_diff(prev_setup, setup) if prev_setup else [],
         )
         prev_setup = setup

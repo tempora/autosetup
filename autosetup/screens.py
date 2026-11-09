@@ -1,4 +1,4 @@
-"""Data for the History, Welcome and Setup screens (UI_LAYOUT_CONTRACT.md §2, §4, §5).
+"""Data for the History, Welcome and Setup screens.
 
 A *session* is one sitting with one car at one track: consecutive recordings of the same
 car + layout with less than SESSION_GAP_S between the end of one and the start of the
@@ -92,9 +92,20 @@ def fun_fact(store: Store, rng: random.Random | None = None) -> str | None:
         facts.append(f"Your most driven car is the {car}: {n} laps.")
     facts.append(f"{len(laps)} laps so far, with {len(by_car)} car{'s' if len(by_car) != 1 else ''} "
                  f"at {len(by_track)} track{'s' if len(by_track) != 1 else ''}.")
+    # Each stint's best clean lap, per car + layout in the order driven. Only the laps are
+    # read, all in one go: building every context's full stint list (summaries, setup
+    # diffs) for one sentence took half a second on the Home screen.
+    stints = store.con.execute(
+        """select id, car_name, coalesce(track_layout, track) from recordings where duration > 30
+           order by file_mtime""").fetchall()
+    laps_by = analysis.laps_of(store, [rid for rid, _, _ in stints])
+    bests_by: dict[tuple[str, str], list[float]] = {}
+    for rid, car, layout in stints:
+        clean = [lap["time"] for lap in laps_by[rid] if lap["clean"]]
+        if clean:
+            bests_by.setdefault((car, layout), []).append(min(clean))
     for c in analysis.contexts(store):
-        st = analysis.stints(store, c.car_name, c.layout)
-        bests = [s.summary["best"] for s in st if s.summary["best"] is not None]
+        bests = bests_by.get((c.car_name, c.layout), [])
         if len(bests) >= 2 and bests[0] - min(bests) >= 0.2:
             facts.append(f"At {c.layout} your best is {bests[0] - min(bests):.1f} s quicker than in your first stint there.")
     return rng.choice(facts)

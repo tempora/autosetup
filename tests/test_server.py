@@ -90,6 +90,24 @@ def test_posts_validate_input(server):
     assert call(base, "/api/nope", {})[0] == 404
 
 
+def test_only_the_dashboard_itself_may_post(server):
+    _, base = server
+
+    def post(origin):
+        req = urllib.request.Request(base + "/api/settings", data=b"{}", method="POST",
+                                     headers={} if origin is None else {"Origin": origin})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    assert post(None) == 200  # a script: no browser, no Origin
+    assert post(base) == 200  # the page served from here
+    assert post("https://example.com") == 403  # a page of another site, open in the same browser
+    assert post("null") == 403  # a sandboxed frame or a local file
+
+
 def test_watcher_waits_for_files_to_settle(tmp_path, install):
     with Store(tmp_path / "db.duckdb") as store:
         app = App(store, install)

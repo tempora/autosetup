@@ -1,9 +1,8 @@
 """Dashboard server: ``autosetup serve``.
 
-Standard-library HTTP server (same shape as the qwen_image phone server). It binds
-0.0.0.0 so a phone on the LAN can open it, serves ``web/index.html`` and a small JSON API
-(see UI_LAYOUT_CONTRACT.md §14), and runs a watcher thread that imports recordings once
-the game has finished writing them.
+Standard-library HTTP server. It binds 0.0.0.0 so a phone on the LAN can open it, serves
+``web/index.html`` and a small JSON API, and runs a watcher thread that imports recordings
+once the game has finished writing them.
 """
 
 from __future__ import annotations
@@ -75,6 +74,43 @@ def _stamp(path: Path) -> tuple[int, float]:
     return st.st_size, st.st_mtime
 
 
+def _listing(telemetry: Path) -> tuple[list[os.DirEntry], set[str]]:
+    """(the recordings in the telemetry folder, the names of those with a write-ahead log
+    beside them: outings still being driven), from one listing of the folder."""
+    recordings, wals = [], set()
+    try:
+        with os.scandir(telemetry) as it:
+            for e in it:
+                name = e.name.lower()
+                if name.endswith(".duckdb"):
+                    recordings.append(e)
+                elif name.endswith(".duckdb.wal"):
+                    wals.add(e.name[:-len(".wal")])
+    except OSError:  # no folder (yet)
+        pass
+    return recordings, wals
+
+
+def _svm_stamp(settings: Path) -> tuple[int, float]:
+    """(count, newest change) of the saved setups (``<track>/*.svm``), from the folders'
+    listings."""
+    n, newest = 0, 0.0
+    try:
+        with os.scandir(settings) as tracks:
+            for track in tracks:
+                try:
+                    with os.scandir(track.path) as files:
+                        for f in files:
+                            if f.name.lower().endswith(".svm"):
+                                n += 1
+                                newest = max(newest, f.stat().st_mtime)
+                except OSError:  # a file, not a track folder
+                    continue
+    except OSError:
+        pass
+    return n, newest
+
+
 class App:
     """Shared state: the store (each thread gets its own DuckDB cursor) and a lock that
     keeps a request from reading half an import, plus the watcher's status."""
@@ -126,12 +162,28 @@ class App:
         ready = []
         with self.lock:  # one query, not one per file: the folder can hold thousands
             imported = set(self.store.con.execute("select file_name, file_size from recordings").fetchall())
-        for f in sorted(self.paths.telemetry.glob("*.duckdb"), key=lambda p: p.stat().st_mtime, reverse=True):
-            size = f.stat().st_size
+        # One directory listing a second, not four file-system calls per recording: the
+        # listing carries each file's size and time, and names the write-ahead logs. Only
+        # the few files that aren't plainly imported and at rest are looked at themselves.
+        entries, wals = _listing(self.paths.telemetry)
+        look: list[tuple[Path, int, float]] = []
+        for e in entries:
+            if e.name in wals:
+                self._driving.add(e.name)
+            elif e.name not in self._driving:
+                try:
+                    st = e.stat()
+                except OSError:
+                    continue
+                if (e.name, st.st_size) in imported or self._unusable.get(e.name) == (st.st_size, st.st_mtime):
+                    continue
+            try:
+                look.append((Path(e.path), *_stamp(Path(e.path))))  # the file itself: a listing can lag a file being written
+            except OSError:
+                continue  # deleted meanwhile
+        for f, size, mtime in sorted(look, key=lambda x: x[2], reverse=True):
             seen = self._seen.get(f.name)
-            if in_progress(f):
-                self._driving.add(f.name)
-            elif f.name in self._driving:
+            if f.name not in wals and f.name in self._driving:
                 # Its .wal just went: LMU deletes it only after merging and letting go, so
                 # the outing is finished; no need to wait for the size to settle.
                 self._driving.discard(f.name)
@@ -141,8 +193,8 @@ class App:
             if seen is None or seen[0] != size:
                 self._seen[f.name] = (size, now)
                 continue
-            if now - seen[1] >= SETTLE_S and (in_progress(f) or (f.name, size) not in imported):
-                if self._unusable.get(f.name) != _stamp(f):  # else it would hold a place in every round
+            if now - seen[1] >= SETTLE_S and (f.name in wals or (f.name, size) not in imported):
+                if self._unusable.get(f.name) != (size, mtime):  # else it would hold a place in every round
                     ready.append(f)  # in-progress files are reported as waiting
         if not ready:
             self.status["waiting"] = []
@@ -154,10 +206,8 @@ class App:
     def relink_if_saved(self) -> int:
         """When a setup is saved in the garage, match it to the recent stints that have
         none yet, so the next setup can be written without an import. Returns the matches."""
-        files = list(self.paths.settings.glob("*/*.svm"))
-        stamp = (len(files), max((f.stat().st_mtime for f in files), default=0.0))
-        before, self._svms = self._svms, stamp
-        if before is None or before == stamp:  # the first look only takes the stamp
+        before, self._svms = self._svms, _svm_stamp(self.paths.settings)
+        if before is None or before == self._svms:  # the first look only takes the stamp
             return 0
         with self.lock:
             names = [r[0] for r in self.store.con.execute(
@@ -403,20 +453,23 @@ class App:
     # -- API -------------------------------------------------------------------------
     def context_key(self, requested: str | None) -> str | None:
         with self.lock:
-            ctxs = analysis.contexts(self.store)
-            keys = [c.key for c in ctxs]
-            for key in (requested, self.store.get_setting("context")):
-                if key in keys:
-                    return key
-            return keys[0] if keys else None
+            return self._pick_context(analysis.contexts(self.store), requested)
+
+    def _pick_context(self, ctxs: list, requested: str | None) -> str | None:
+        keys = [c.key for c in ctxs]
+        for key in (requested, self.store.get_setting("context")):
+            if key in keys:
+                return key
+        return keys[0] if keys else None
 
     def state(self) -> dict:
-        with self.lock:
+        with self.lock:  # the page asks every second: the contexts are read once, not twice
             ctxs = analysis.contexts(self.store)
+            context = self._pick_context(ctxs, None)
         return {
             "contexts": [dict(key=c.key, car_name=c.car_name, car_class=c.car_class, track=c.track,
                               layout=c.layout, stints=c.stints, last_recorded=c.last_recorded) for c in ctxs],
-            "context": self.context_key(None),
+            "context": context,
             "objectives": [dict(key=k, label=label, unit=unit) for k, label, unit in analysis.OBJECTIVES],
             "watcher": dict(self.status, watching=self.paths is not None),
         }
@@ -563,8 +616,18 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
+    def _own_page(self) -> bool:
+        """Whether a POST comes from the dashboard itself. A browser names the page that
+        posts in ``Origin``; ours is served from the address the request came to. Without
+        this any site open in a browser on this PC could post here (forget a fingerprint,
+        start a recompute, open folders). Scripts and the command line send no Origin."""
+        origin = self.headers.get("Origin")
+        return origin is None or urlparse(origin).netloc == self.headers.get("Host")
+
     def do_POST(self):
         self._t0 = time.perf_counter()
+        if not self._own_page():
+            return self._json({"error": "cross-site request refused"}, 403)
         try:
             body = self._body()
             app = self.app
@@ -646,13 +709,18 @@ def make_server(app: App, host: str = "0.0.0.0", port: int = DEFAULT_PORT) -> Th
     return ThreadingHTTPServer((host, port), handler)
 
 
-def serve(store: Store, paths: LmuPaths | None, host: str = "0.0.0.0", port: int = DEFAULT_PORT) -> None:
+def serve(store: Store, paths: LmuPaths | None, host: str = "0.0.0.0", port: int = DEFAULT_PORT,
+          stop: threading.Event | None = None) -> None:
+    """``stop``: set it to end serving (the desktop app closing); the caller then closes
+    the store, so the database is left tidy rather than cut off mid-log."""
     app = App(store, paths)
     if paths is not None:
         app.recompute(force=False)  # after an update that changed the metrics: in the background
     app.start_watcher()
     app.live.start()
     httpd = make_server(app, host, port)
+    if stop is not None:
+        threading.Thread(target=lambda: (stop.wait(), httpd.shutdown()), daemon=True, name="stop").start()
     print(f"autosetup dashboard: http://127.0.0.1:{port}  (phone: http://{lan_ip()}:{port})", flush=True)
     try:
         httpd.serve_forever()
