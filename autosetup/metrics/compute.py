@@ -15,7 +15,7 @@ from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.telemetry import Lap, Session
 from autosetup.metrics.signals import GRID_HZ, Signals, load_signals, smooth, wheelbase
 
-METRICS_VERSION = 15  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
+METRICS_VERSION = 16  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
 #                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs;
 #                      9: lap model data, the per speed × phase cells left to the corner passes;
 #                      10: DAM .ld offsets decoded right (slip angles), blank DAM tyre load falls back to springs;
@@ -24,6 +24,7 @@ METRICS_VERSION = 15  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: ste
 #                      13: Lexus RC F and Mercedes-AMG GT3 wheelbases;
 #                      14: Hypercar wheelbases, the Hypercar speed-band split at 150 km/h;
 #                      15: rear bottoming, rake in fast corners and on straights (was one average)
+#                      16: every corner pass kept, with where its corner is (no stored corner list)
 PACKER_FLAT = 0.25  # past contact, deflection gains under this share of the free spring's rate
 WHEELS = ("fl", "fr", "rl", "rr")
 SECTOR_M = 100.0  # minisector length; shorter ones bias the theoretical best low (min of noise)
