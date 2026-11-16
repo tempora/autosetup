@@ -5,8 +5,15 @@ distance over the complete laps (or, in a run without one, the laps outside the 
 cover at least half the lap, over the distance they cover). A corner is a run of distance where the median lap
 corners harder than CORNER_G, in one direction (a chicane is two corners), with its
 braking zone in front of it as entry. Its apex is the slowest point. Corners are
-numbered by apex distance; the store keeps one map per layout so passes from every
-recording share corner ids (``remap``).
+numbered by apex distance, within the recording.
+
+The track's corners, shared by every recording at a layout, are voted from the
+recordings' own corners (``track_corners``): a stretch of lap distance is a corner of the
+track where at least half of the recordings with a full lap corner the same way there,
+and at least two once there are two. Nothing is stored; it is worked out again when the
+passes are read. A pass then takes the number of the track corner it overlaps most
+(``assign``), with no use of the slowest point, which moves between stints in long and
+fast corners. A pass that overlaps none (a spin, a weave) is left out.
 
 Within a pass the phases follow what the car does, not the pedals. Progress through a
 corner is the share of its heading change done so far (0 where the car starts turning,
@@ -33,7 +40,6 @@ MERGE_GAP_M = 30.0  # cornering runs closer than this (same direction) are one c
 MIN_CORNER_M = 30.0
 MAX_ENTRY_M = 250.0  # braking zone counted as entry, at most
 MIN_SPEED = 15.0  # m/s
-MATCH_M = 40.0  # apexes this close are the same corner in another recording's map
 PHASES = ("braking", "entry", "mid", "exit")
 TURNING = ("entry", "mid", "exit")  # the phases weighted by progress through the turn
 BANDS = ("low", "high")
@@ -121,15 +127,64 @@ def corner_map(sig: Signals, laps: list[Lap]) -> list[Corner]:
     return [Corner(n, int(dirn), a, b, c, v) for n, (dirn, a, b, c, v) in enumerate(corners)]
 
 
-def remap(corners: list[Corner], canonical: list[Corner]) -> dict[int, int]:
-    """This map's corner id → the layout's canonical id (nearest apex within MATCH_M);
-    corners with no match are left out."""
-    out = {}
-    for c in corners:
-        best = min(canonical, key=lambda k: abs(k.d_apex - c.d_apex), default=None)
-        if best is not None and abs(best.d_apex - c.d_apex) <= MATCH_M and best.direction == c.direction:
-            out[c.id] = best.id
-    return out
+@dataclass(frozen=True)
+class TrackCorner:
+    """A corner of the layout, voted from the recordings' own corners."""
+
+    id: int
+    direction: int
+    d_start: float
+    d_end: float
+
+
+def track_corners(lists: list[list[tuple[float, float, int]]]) -> list[TrackCorner]:
+    """The layout's corners from the voting recordings' own: ``lists`` holds, per
+    recording, its corners as (d_start, d_end, direction). A 5 m stretch belongs to a
+    corner turning one way where at least half of the recordings have a corner turning
+    that way over it, and at least two do once there are two or more. Numbered by
+    distance."""
+    lists = [lst for lst in lists if lst]
+    n = len(lists)
+    if not n:
+        return []
+    need = max(int(np.ceil(n / 2)), 2 if n >= 2 else 1)
+    top = max(e for lst in lists for _, e, _ in lst)
+    cells = int(round(top / STEP_M)) + 1
+    found = []
+    for direction in (-1, 1):
+        votes = np.zeros(cells, dtype=int)
+        for lst in lists:
+            mine = np.zeros(cells, dtype=bool)  # a recording votes once per stretch
+            for s, e, dirn in lst:
+                if dirn == direction:
+                    mine[int(round(s / STEP_M)):int(round(e / STEP_M)) + 1] = True
+            votes += mine
+        ok = votes >= need
+        i = 0
+        while i < cells:
+            if not ok[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < cells and ok[j + 1]:
+                j += 1
+            found.append((i * STEP_M, j * STEP_M, direction))
+            i = j + 1
+    found.sort()
+    return [TrackCorner(k, dirn, s, e) for k, (s, e, dirn) in enumerate(found)]
+
+
+def assign(d_start: float, d_end: float, direction: int, track: list[TrackCorner]) -> int | None:
+    """The track corner turning the same way that a pass over [d_start, d_end] overlaps
+    most (by 5 m stretches, ends included), or None if it overlaps none."""
+    best, most = None, 0.0
+    for c in track:
+        if c.direction != direction:
+            continue
+        overlap = min(d_end, c.d_end) - max(d_start, c.d_start) + STEP_M
+        if overlap > most:
+            best, most = c.id, overlap
+    return best
 
 
 @dataclass

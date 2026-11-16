@@ -58,6 +58,9 @@ class PhaseObs:
     brake: float | None = None  # mean brake pedal (0..1) over the phase: how you drive it
     throttle: float | None = None  # mean throttle (0..1)
     coast: float | None = None  # mean of (1 − brake)·(1 − throttle): off both pedals
+    d_start: float | None = None  # m: where the recording's own corner is (corners.assign numbers it by this)
+    d_end: float | None = None
+    direction: int | None = None  # +1 right, -1 left
     ua_adj: float | None = None  # ua after normalise()
 
     @property
@@ -144,7 +147,8 @@ def observe(sig: Signals, per: dict[str, np.ndarray], p: Pass, kerb: np.ndarray 
             turnin_gain=gain, slip_fr=sf,
             kerb=bool(kerb is not None and kerb[sel].any()),
             brake=float(np.average(brake, weights=w)), throttle=float(np.average(throttle, weights=w)),
-            coast=float(np.average((1.0 - brake) * (1.0 - throttle), weights=w))))
+            coast=float(np.average((1.0 - brake) * (1.0 - throttle), weights=w)),
+            d_start=p.corner.d_start, d_end=p.corner.d_end, direction=p.corner.direction))
     return out
 
 

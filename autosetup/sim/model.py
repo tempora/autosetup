@@ -19,7 +19,8 @@ import numpy as np
 
 from autosetup.lmu.builds import current_build, current_filter
 from autosetup.lmu.setup_space import CarSetup
-from autosetup.metrics.balance import PhaseObs, cells, normalise
+from autosetup.feel.measure import passes_of
+from autosetup.metrics.balance import cells, normalise
 from autosetup.sim.aero import AeroMap, Platform, Stint, drag_deltas, layout_car, lift_deltas, shrink
 from autosetup.sim.extract import STEP_M, straights_of
 from autosetup.sim.lapsim import Car, Result, Track, fit_eta, simulate
@@ -155,9 +156,7 @@ class LayoutModel:
 def stint_balance(store, rid: int) -> tuple[float, float] | None:
     """High- minus low-speed understeer (deg, se), pooled over the phases: the aero balance
     shows here."""
-    cols = [d[0] for d in store.con.execute("select * from corner_passes limit 0").description]
-    rows = store.con.execute("select * from corner_passes where recording_id = ?", [rid]).fetchall()
-    obs = [PhaseObs(**{k: v for k, v in zip(cols, r) if k not in ("recording_id", "seq")}) for r in rows]
+    obs = [o for _, _, o in passes_of(store, [rid])]
     c = cells(normalise(obs))
     diffs = [(c[(ph, "high")].mean - c[(ph, "low")].mean, c[(ph, "high")].se ** 2 + c[(ph, "low")].se ** 2)
              for ph in ("entry", "mid", "exit") if (ph, "high") in c and (ph, "low") in c]
