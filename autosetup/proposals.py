@@ -37,7 +37,7 @@ from autosetup.lmu.setup_space import CarSetup, parse_number
 from autosetup.lmu.svm import read_settings
 from autosetup.opt import bo, dampers
 from autosetup.opt.balance_model import BalanceModel, Evidence
-from autosetup.opt.laptime import UNKNOWN_SD, lap_function
+from autosetup.opt.laptime import UNKNOWN_SD, lap_function, project_platform
 from autosetup.opt.platform import platform_of
 from autosetup.opt.priors import sensitivities
 from autosetup.opt.space import DAMPERS, MAIN, Dim, aero_wing, damper_dims, main_dims, setup_fingerprint
@@ -66,6 +66,7 @@ create table if not exists proposals (
 NAMES = {"wing": "Rear wing", "front_wing": "Front wing", "rh_rear": "Rear ride height", "rh_front": "Front ride height",
          "arb_front": "Front anti-roll bar", "arb_rear": "Rear anti-roll bar", "diff_preload": "Diff preload",
          "spring_front": "Front springs", "spring_rear": "Rear springs", "brake_bias": "Brake bias",
+         "brake_migration": "Brake migration",
          "toe_front": "Front toe", "toe_rear": "Rear toe", "tender_front": "Front tender springs",
          "tender_rear": "Rear tender springs", "third_spring_front": "Front third spring",
          "third_spring_rear": "Rear third spring", "diff_power": "Diff power ramp", "diff_coast": "Diff coast ramp",
@@ -85,9 +86,10 @@ REAR_TOE_OUT_S = 0.15  # a setup with rear toe-out (below 0°) pays this, unless
 # bars and toe last. Anything else costs bo.CHANGE_COST_S.
 CHANGE_COST = {"rh_": 0.005, "wing": 0.01, "front_wing": 0.01, "spring_": 0.01, "third_spring_": 0.01,
                "slow_": 0.01, "arb_": 0.02, "diff_": 0.02, "front_diff_": 0.02, "brake_bias": 0.02,
-               "toe_": TOE_COST_S}
+               "brake_migration": 0.02, "toe_": TOE_COST_S}
 # Clicks a setting may move in one proposal (a backstop: the model sizes the moves).
-REACH = {"arb_": 1, "wing": 1, "front_wing": 1, "toe_": 1, "diff_power": 1, "diff_coast": 1, "front_diff_": 1}
+REACH = {"arb_": 1, "wing": 1, "front_wing": 1, "toe_": 1, "diff_power": 1, "diff_coast": 1, "front_diff_": 1,
+         "brake_migration": 2}
 
 
 def _bb_reach(d: Dim, scales: CarScales) -> int:
@@ -346,20 +348,23 @@ class Advisor:
                       (select coalesce(string_agg(key || '=' || value::varchar, '|' order by key), '') from settings)"""
         ).fetchone()
 
-    def layout_model(self, signature: str, layout: str, k: dict) -> tuple:
+    def layout_model(self, signature: str, layout: str, k: dict, car_class: str | None = None) -> tuple:
         """(lap model with trap drag, aero map), or (None, None). Fitting it is most of a
         proposal's time and it doesn't depend on the feel or the locks, so it is kept
         until this car's stints change."""
-        stamp = self.store.con.execute(
-            "select count(*), max(id), max(metrics_version) from recordings where car_signature = ?",
-            [signature]).fetchone()
-        key = (signature, layout, *stamp)
+        sql = "select count(*), max(id), max(metrics_version) from recordings where car_signature = ?"
+        args = [signature]
+        if car_class:
+            sql += " and car_class = ?"
+            args.append(car_class)
+        stamp = self.store.con.execute(sql, args).fetchone()
+        key = (signature, car_class, layout, *stamp)
         if key not in self._models:
-            model = LayoutModel.build(self.store, signature, layout, k)
-            amap = aero_map(self.store, signature, k) if model is not None else None
+            model = LayoutModel.build(self.store, signature, layout, k, car_class=car_class)
+            amap = aero_map(self.store, signature, k, car_class=car_class) if model is not None else None
             if model is not None:
                 model = with_trap_drag(model)
-            self._models = {kk: v for kk, v in self._models.items() if kk[:2] != (signature, layout)}
+            self._models = {kk: v for kk, v in self._models.items() if kk[:3] != (signature, car_class, layout)}
             self._models[key] = (model, amap)
         return self._models[key]
 
@@ -373,12 +378,20 @@ class Advisor:
         self.store.put_setting(f"locks:{context}", sorted(current))
         return current
 
-    def brake_ceiling(self, car_signature: str) -> int | None:
+    def brake_ceiling(self, car_signature: str, car_class: str | None = None,
+                      layout: str | None = None) -> int | None:
         """Brake pressure index one step under the least pressure you've flagged too many
-        lock-ups at on this car model; None when you never have."""
-        rows = self.store.con.execute(
-            """select r.setup_json from recordings r join ratings g on g.file_name = r.file_name
-               where r.car_signature = ? and g.lockups""", [car_signature]).fetchall()
+        lock-ups at on this car model, class and layout; None when you never have."""
+        sql = """select r.setup_json from recordings r join ratings g on g.file_name = r.file_name
+                 where r.car_signature = ? and g.lockups"""
+        args = [car_signature]
+        if car_class:
+            sql += " and r.car_class = ?"
+            args.append(car_class)
+        if layout:
+            sql += " and coalesce(r.track_layout, r.track) = ?"
+            args.append(layout)
+        rows = self.store.con.execute(sql, args).fetchall()
         flagged = [json.loads(sj).get("VM_BRAKE_PRESSURE", {}).get("value") for (sj,) in rows]
         flagged = [int(v) for v in flagged if v is not None]
         return min(flagged) - 1 if flagged else None
@@ -421,6 +434,9 @@ class Advisor:
         if not any_car:
             sql += " and car_signature = ?"
             args.append(rec["car_signature"])
+            if rec.get("car_class"):
+                sql += " and car_class = ?"
+                args.append(rec["car_class"])
         return [r for (r,) in self.store.con.execute(sql, args).fetchall()]
 
     # -- the plan ----------------------------------------------------------------------
@@ -468,7 +484,8 @@ class Advisor:
         k = load_knowledge(rec["car_class"])
         summary = analysis.stint_summary(store, stint_id)
         pr = propose(stint_id, summary, setup, rec["car_class"], scales, rating=store.rating(rec["file_name"]),
-                     locks=locks, knowledge=k, brake_ceiling=self.brake_ceiling(rec["car_signature"]))
+                     locks=locks, knowledge=k,
+                     brake_ceiling=self.brake_ceiling(rec["car_signature"], rec["car_class"], layout))
         car_key, car_class = recording_car(store, stint_id)
         tgt = feel.target(store, car_key, car_class, k, stint_id, self._mix(stint_id))
         m_now = measured(store, same_setup_stints(store, stint_id))
@@ -498,19 +515,21 @@ class Advisor:
         for tc in _traction(setup, scales, summary, tgt, m_now, k, locks):
             pr.changes.append(tc)
             taken |= set(tc.keys)
-        model, amap = self.layout_model(rec["car_signature"], layout, k)
+        model, amap = self.layout_model(rec["car_signature"], layout, k, car_class=rec["car_class"])
         platform = platform_of(summary, dims, k, scales)
         ref_platform = None
         if model is not None:
             ref_platform = next((s.platform for s in model.stints if s.rid == stint_id and s.platform), model.platform)
         # The lap function remembers every setup it simulated; feel toggles search the same
         # setups again, so it is kept per stint and searched settings (locks change those).
+        third_rh_mm = float(k.get("third_spring_rh_mm", 0.0))
+        third_corner_rh_mm = float(k.get("third_spring_corner_rh_mm", 0.0))
         lkey = (stint_id, tuple(d.name for d in dims))
         held = self._laps.get(lkey)
         if held is None or held[0] is not model:  # rebuilt model: new data
             self._laps = {kk: v for kk, v in self._laps.items() if kk[0] != stint_id}
             held = self._laps[lkey] = (model, lap_function(store, model, amap, dims, base, ref_platform,
-                                                           platform.mm_per_click)[0])
+                                                           platform.mm_per_click, third_rh_mm, third_corner_rh_mm)[0])
         lap = held[1]
 
         dmodel = self._damper_model(rec, setup, ddims + [d for d in dims if "spring" in d.name and "tender" not in d.name],
@@ -568,7 +587,7 @@ class Advisor:
                         "delta": choice.best.lap[0] - choice.base.lap[0], "sd": choice.best.lap[1]}
             if model is not None and amap is not None and ref_platform is not None:
                 plan.lap["sectors"] = self._sector_delta(model, amap, dims, base, choice.best.indices, ref_platform,
-                                                         platform.mm_per_click)
+                                                         platform.mm_per_click, third_rh_mm, third_corner_rh_mm)
                 wing = aero_wing(dims)
                 if wing is not None:
                     s = aero_sensitivity(model, amap, ref_platform, wing.clicks)
@@ -580,16 +599,19 @@ class Advisor:
             pr.changes.append(self._change(d, setup, scales, a, b, self._reason(prob, d, b)))
         if ref_platform is not None:
             plan.platform = self._platforms(ref_platform, base, choice.best.indices, platform.mm_per_click, setup,
-                                            scales, dims)
+                                            scales, dims, third_rh_mm, third_corner_rh_mm)
 
         # Dampers, around the main choice, inside the same band: a damper move may not cut
-        # the chance of being in the band by more than DAMPER_BAND_LOSS.
+        # the chance of being in the band by more than DAMPER_BAND_LOSS, nor remove third
+        # packers on an axle that bottoms.
         if dmodel is not None and ddims:
             x_main = bo.x_of(dims, choice.best.indices)
             dbase = {**dbase, **{d.name: choice.best.indices[d.name] for d in slow}}  # refine, not undo
             p_main = bo.p_in_band(choice.best.balance, band)
 
             def balance_ok(idx: dict[str, int]) -> float:
+                if not platform.ok(dbase, idx):
+                    return 0.0
                 if band is None:
                     return 1.0
                 pred = balance.predict({**x_main, **{d.name: d.x(idx[d.name]) for d in ddims}})
@@ -643,11 +665,14 @@ class Advisor:
         # builds' count with more doubt (OLDER_BUILD_SD), but what a setup did then still says
         # where to start from.
         build = current_build(self.store)
-        rows = self.store.con.execute(
-            """select id, coalesce(track_layout, track), setup_json, game_build from recordings r
-               where car_signature = ?
-               and file_name not in (select file_name from ratings where undrivable) order by file_mtime""",
-            [rec["car_signature"]]).fetchall()
+        sql = """select id, coalesce(track_layout, track), setup_json, game_build from recordings r
+                 where car_signature = ?
+                 and file_name not in (select file_name from ratings where undrivable)"""
+        args = [rec["car_signature"]]
+        if rec.get("car_class"):
+            sql += " and car_class = ?"
+            args.append(rec["car_class"])
+        rows = self.store.con.execute(sql + " order by file_mtime", args).fetchall()
         from autosetup.lmu.setup_space import CarSetup
 
         # One piece of evidence per setup driven at a layout (its stints pooled), as the
@@ -690,12 +715,12 @@ class Advisor:
         return dampers.DamperModel.fit(dims, data) if data else None
 
     def _platforms(self, ref: Platform, base: dict[str, int], best: dict[str, int], mm: dict[str, float], setup,
-                   scales, dims: list[Dim]) -> dict:
+                   scales, dims: list[Dim], third_rh_mm: float = 0.0, third_corner_rh_mm: float = 0.0) -> dict:
         """Ride heights at speed and rake (mm) and the wing, now and with the proposal."""
+        wing = aero_wing(dims)
+
         def at(idx):
-            f = ref.rh_front + (idx.get("rh_front", base.get("rh_front", 0)) - base.get("rh_front", 0)) * mm.get("rh_front", 1.0)
-            r = ref.rh_rear + (idx.get("rh_rear", base.get("rh_rear", 0)) - base.get("rh_rear", 0)) * mm.get("rh_rear", 1.0)
-            wing = aero_wing(dims)
+            p = project_platform(ref, base, idx, wing, mm, third_rh_mm, third_corner_rh_mm)
             text = None
             if wing is not None:
                 text = scales.label(wing.keys[0], idx[wing.name])[0] or setup[wing.keys[0]].text.strip()
@@ -703,16 +728,16 @@ class Advisor:
                 key = next((k for k in ("VM_REAR_WING", "VM_FRONT_WING") if k in setup.params
                             and setup[k].adjustable), "VM_REAR_WING")
                 text = setup[key].text.strip() if key in setup.params else None
-            return {"rh_front": round(f, 1), "rh_rear": round(r, 1), "rake": round(r - f, 1), "wing": text}
+            return {"rh_front": round(p.rh_front, 1), "rh_rear": round(p.rh_rear, 1), "rake": round(p.rake, 1),
+                    "wing": text}
         return {"current": at(base), "proposed": at(best)}
 
-    def _sector_delta(self, model, amap, dims, base, best, ref_platform, mm) -> list[float]:
+    def _sector_delta(self, model, amap, dims, base, best, ref_platform, mm, third_rh_mm: float = 0.0,
+                      third_corner_rh_mm: float = 0.0) -> list[float]:
+        wing = aero_wing(dims)
+
         def plat(idx):
-            def rh(name, ref_mm):
-                return ref_mm + (idx.get(name, base.get(name, 0)) - base.get(name, 0)) * mm.get(name, 1.0)
-            wing = aero_wing(dims)
-            return Platform(wing.x(idx[wing.name]) if wing else ref_platform.wing, rh("rh_front", ref_platform.rh_front),
-                            rh("rh_rear", ref_platform.rh_rear))
+            return project_platform(ref_platform, base, idx, wing, mm, third_rh_mm, third_corner_rh_mm)
         a = model.simulate(model.car_at(amap, plat(base))).sectors
         b = model.simulate(model.car_at(amap, plat(best))).sectors
         return [y - x for x, y in zip(a, b)]

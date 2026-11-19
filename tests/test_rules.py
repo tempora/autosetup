@@ -91,9 +91,9 @@ def test_ride_height_raised_when_bottoming():
     assert c.after == {"WM_RIDEHEIGHT-W_FL": 6, "WM_RIDEHEIGHT-W_FR": 6} and "raise the front" in c.reason
 
 
-def _pressure(car_class: str, kgf: int, abs_adjustable: bool = False, **kw):
-    pr = propose(1, dict(BASE), _proto(kgf, abs_adjustable), car_class, SCALES, knowledge=load_knowledge(car_class),
-                 **kw)
+def _pressure(car_class: str, kgf: int, abs_adjustable: bool = False, summary: dict | None = None, **kw):
+    pr = propose(1, {**BASE, **(summary or {})}, _proto(kgf, abs_adjustable), car_class, SCALES,
+                 knowledge=load_knowledge(car_class), **kw)
     return [(c.after["VM_BRAKE_PRESSURE"] + 40, c.reason) for c in pr.changes if c.keys == ["VM_BRAKE_PRESSURE"]]
 
 
@@ -101,15 +101,16 @@ def test_brake_pressure_rises_inside_the_comfortable_range_until_you_say_too_muc
     # LMP2: 90–94 %, i.e. 108–112 kgf.
     [(kgf, why)] = _pressure("LMP2_ELMS", 105)
     assert kgf == 108 and "below the usual 90–94 %" in why  # straight to the bottom of the range
-    [(kgf, why)] = _pressure("LMP2_ELMS", 108)
-    assert kgf == 110 and "wasn't too much" in why  # then a step per stint ...
-    assert _pressure("LMP2_ELMS", 112) == []  # ... up to the top of it
+    assert _pressure("LMP2_ELMS", 108) == []  # inside range without pedal flat-topping: left alone
+    [(kgf, why)] = _pressure("LMP2_ELMS", 108, summary={"brake_sat_frac": 0.45})
+    assert kgf == 109 and "Holding 98%+ brake" in why  # caliper-limited: step up 1 click
+    assert _pressure("LMP2_ELMS", 112, summary={"brake_sat_frac": 0.45}) == []  # up to the top of it
     [(kgf, _)] = _pressure("LMP2_ELMS", 118)
     assert kgf == 112  # above it: down to the top
     [(kgf, why)] = _pressure("LMP2_ELMS", 110, rating={"lockups": True})
     assert kgf == 108 and "too much brake pressure" in why
     # Too much at 110 kgf before: never back above 109.
-    [(kgf, _)] = _pressure("LMP2_ELMS", 108, brake_ceiling=109 - 40)
+    [(kgf, _)] = _pressure("LMP2_ELMS", 108, brake_ceiling=109 - 40, summary={"brake_sat_frac": 0.45})
     assert kgf == 109
     [(kgf, why)] = _pressure("LMP2_ELMS", 111, brake_ceiling=109 - 40)
     assert kgf == 109 and "where you said it was too much (92 %)" in why
@@ -117,8 +118,9 @@ def test_brake_pressure_rises_inside_the_comfortable_range_until_you_say_too_muc
 
 def test_brake_pressure_on_hypercars_and_cars_with_abs():
     assert _pressure("Hyper", 120) == []  # 100 % is inside 93–100 %
-    [(kgf, _)] = _pressure("Hyper", 112)
-    assert kgf == 114
+    assert _pressure("Hyper", 112) == []  # inside 93–100 % and not flat-topping: stays
+    [(kgf, _)] = _pressure("Hyper", 112, summary={"brake_sat_frac": 0.5})
+    assert kgf == 113
     assert _pressure("GT3", 100, abs_adjustable=True) == []  # ABS: left alone
     assert _pressure("LMP2_ELMS", 100, abs_adjustable=True) == []
 
