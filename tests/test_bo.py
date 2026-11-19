@@ -77,10 +77,17 @@ def test_the_band_wins_and_the_gap_says_what_it_costs():
 def test_a_bottoming_car_is_not_lowered():
     def lap(idx):  # lower is faster
         return 100.0 + 0.05 * idx["rh_front"] + 0.05 * idx["rh_rear"], 0.01
-    plat = Platform({"front": 3.0, "rear": 10.0}, bottoming_s=0.5, min_mm=2.0, bottoming_limit_s=0.2,
-                    mm_per_click={"rh_front": 1.0, "rh_rear": 1.0})
-    choice = bo.solve(bo.Problem(DIMS, MID, lap, _model(FLAT), _band(FLAT, tol=1.0), plat))
-    assert choice.best.indices["rh_front"] >= MID["rh_front"] and choice.best.indices["rh_rear"] >= MID["rh_rear"]
+    # Front bottoming blocks lowering the front while leaving the healthy rear free.
+    front_only = Platform({"front": 3.0, "rear": 10.0}, bottoming_s=0.5, min_mm=2.0, bottoming_limit_s=0.2,
+                          mm_per_click={"rh_front": 1.0, "rh_rear": 1.0})
+    c1 = bo.solve(bo.Problem(DIMS, MID, lap, _model(FLAT), _band(FLAT, tol=1.0), front_only))
+    assert c1.best.indices["rh_front"] >= MID["rh_front"]
+    assert c1.best.indices["rh_rear"] < MID["rh_rear"]
+    # Both axles bottoming blocks lowering either end.
+    both = Platform({"front": 3.0, "rear": 10.0}, bottoming_s=0.5, min_mm=2.0, bottoming_limit_s=0.2,
+                    mm_per_click={"rh_front": 1.0, "rh_rear": 1.0}, bottoming_rear_s=0.5)
+    c2 = bo.solve(bo.Problem(DIMS, MID, lap, _model(FLAT), _band(FLAT, tol=1.0), both))
+    assert c2.best.indices["rh_front"] >= MID["rh_front"] and c2.best.indices["rh_rear"] >= MID["rh_rear"]
 
 
 def test_an_unreachable_target_gets_the_closest_setup():

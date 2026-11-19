@@ -24,20 +24,23 @@ class Platform:
     bottoming_rear_s: float = 0.0
 
     def ok(self, base: dict[str, int], cand: dict[str, int]) -> bool:
-        bottoms = max(self.bottoming_s, self.bottoming_rear_s) > self.bottoming_limit_s
+        bottoms = {
+            "front": self.bottoming_s > self.bottoming_limit_s,
+            "rear": self.bottoming_rear_s > self.bottoming_limit_s,
+        }
         for axle in ("front", "rear"):
             name = f"rh_{axle}"
-            if name not in cand or axle not in self.rh_min:
-                continue
-            delta = (cand[name] - base[name]) * self.mm_per_click.get(name, DEFAULT_MM_PER_CLICK)
-            if delta < 0 and bottoms:
-                return False
-            if delta < 0 and self.rh_min[axle] + delta < self.min_mm:
-                return False
-        # A softer third spring lets the car down at speed: not on a car that already bottoms.
-        for name in ("third_spring_front", "third_spring_rear"):
-            if name in cand and cand[name] < base[name] and bottoms:
-                return False
+            if name in cand and axle in self.rh_min:
+                delta = (cand[name] - base[name]) * self.mm_per_click.get(name, DEFAULT_MM_PER_CLICK)
+                if delta < 0 and bottoms[axle]:
+                    return False
+                if delta < 0 and self.rh_min[axle] + delta < self.min_mm:
+                    return False
+            # A softer third spring or fewer third packers lets that axle down at speed:
+            # not on an axle that already bottoms.
+            for key in (f"third_spring_{axle}", f"third_packers_{axle}"):
+                if key in cand and cand[key] < base[key] and bottoms[axle]:
+                    return False
         return True
 
 

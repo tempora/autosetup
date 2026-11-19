@@ -90,6 +90,9 @@ PRIORS: dict[str, tuple[str, dict[str, float]]] = {
                                    exit_high=0.2)),
     # Brake bias forward: the fronts do more of the braking, the rear stays planted on entry.
     "brake_bias": ("front", _cells(entry_low=1.0, entry_high=0.8, braking_low=1.0, braking_high=1.0)),
+    # Brake migration forward (% F at peak brake): adds forward bias proportional to brake
+    # pressure, so it acts most under heavy straight-line braking and bleeds off at turn-in.
+    "brake_migration": ("up", _cells(entry_low=0.35, entry_high=0.25, braking_low=0.8, braking_high=0.8)),
     # Slow dampers shape each phase's weight transfer: on the brakes the front is in bump and
     # the rear in rebound, on power the other way round. Damping an end harder moves load
     # across it sooner, which costs that end grip in the transition.
@@ -105,6 +108,7 @@ PRIORS: dict[str, tuple[str, dict[str, float]]] = {
 # replace the PRIORS weights above (kept for when it isn't).
 USAGE: dict[str, tuple[str, float, dict[str, float]]] = {
     "brake_bias": ("brake", 0.5, {"low": 1.0, "high": 1.0}),
+    "brake_migration": ("brake", 1.0, {"low": 0.8, "high": 0.8}),
     "diff_coast": ("off_throttle", 0.8, {"low": 0.6, "high": 0.4}),
     "front_diff_coast": ("off_throttle", 0.8, {"low": 0.3, "high": 0.2}),
     "diff_power": ("throttle", 0.7, {"low": 0.7, "high": 0.4}),
@@ -124,7 +128,7 @@ def usage_weights(name: str, usage: dict[str, dict[str, float]] | None) -> dict[
             continue
         use = 1.0 - u.get("throttle", 0.0) if what == "off_throttle" else u.get(what, 0.0)
         w = by_band[c.split("_")[1]] * min(1.0, max(0.0, use) / full)
-        if w > 1e-3:
+        if abs(w) > 1e-3:
             out[c] = w
     return out
 
@@ -157,6 +161,7 @@ KINDS: dict[str, tuple[str, float | None, str | None]] = {
     "toe_front": ("toe", 0.1, "deg"), "toe_rear": ("toe", 0.1, "deg"),
     "diff_preload": ("preload", 10.0, "Nm"), "front_diff_preload": ("preload", 10.0, "Nm"),
     "brake_bias": ("brake_bias", 1.0, ":"),  # front %, labels 'front:rear'
+    "brake_migration": ("brake_migration", 0.5, "%"),  # 0.5 % F per step
     "slow_bump_front": ("damper", None, None), "slow_rebound_front": ("damper", None, None),
     "slow_bump_rear": ("damper", None, None), "slow_rebound_rear": ("damper", None, None),
     "diff_power": ("diff_ramp", None, None), "diff_coast": ("diff_ramp", None, None),
@@ -195,7 +200,7 @@ def sensitivities(dims: list[Dim], knowledge: dict, scales=None,
         top = max(abs(w) for w in weights.values())
         used = usage_weights(d.name, usage)
         if used is not None:
-            weights, top = used, max(USAGE[d.name][2].values())  # sized at full use, not rescaled
+            weights, top = used, max(abs(v) for v in USAGE[d.name][2].values())  # sized at full use, not rescaled
         sign = index_direction(intent, d, scales)
         size = knowledge.get(f"step_deg_{KINDS[d.name][0]}") if d.name in KINDS else None
         per_click = steps_per_click(d, scales)

@@ -42,6 +42,7 @@ MAIN = [
     ("toe_front", ["VM_FRONT_TOEIN"]),
     ("toe_rear", ["VM_REAR_TOEIN"]),
     ("brake_bias", ["VM_BRAKE_BALANCE"]),
+    ("brake_migration", ["VM_BRAKE_MIGRATION"]),
     ("tender_front", _axle("WM_TENDERSPRING", "front")),
     ("tender_rear", _axle("WM_TENDERSPRING", "rear")),
 ]
