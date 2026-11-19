@@ -27,8 +27,27 @@ UNKNOWN_SD = 5.0  # s: "no idea" when there is no lap model
 D_DRAG, D_LIFT = 2e-6, 2e-6  # finite-difference steps for lap time per unit drag / downforce
 
 
+def project_platform(ref_platform: Platform, ref: dict[str, int], idx: dict[str, int], wing: Dim | None,
+                     mm_per_click: dict[str, float], third_rh_mm: float = 0.0,
+                     third_corner_rh_mm: float = 0.0) -> Platform:
+    """Aero platform of ``idx`` projected from ``ref_platform``: static ride-height clicks
+    move straight and corner heights equally; stiffer third springs hold the axle higher
+    under aero load (more on straights than in fast corners)."""
+    w = wing.x(idx[wing.name]) if wing is not None and wing.name in idx else ref_platform.wing
+    df_s = (idx.get("rh_front", ref.get("rh_front", 0)) - ref.get("rh_front", 0)) * mm_per_click.get("rh_front", 1.0)
+    dr_s = (idx.get("rh_rear", ref.get("rh_rear", 0)) - ref.get("rh_rear", 0)) * mm_per_click.get("rh_rear", 1.0)
+    dtf = idx.get("third_spring_front", ref.get("third_spring_front", 0)) - ref.get("third_spring_front", 0)
+    dtr = idx.get("third_spring_rear", ref.get("third_spring_rear", 0)) - ref.get("third_spring_rear", 0)
+    f = ref_platform.rh_front + df_s + dtf * third_rh_mm
+    r = ref_platform.rh_rear + dr_s + dtr * third_rh_mm
+    fc = ref_platform.corner_rh_front + df_s + dtf * third_corner_rh_mm
+    rc = ref_platform.corner_rh_rear + dr_s + dtr * third_corner_rh_mm
+    return Platform(w, f, r, fc, rc)
+
+
 def lap_function(store, model: LayoutModel | None, aero: AeroMap | None, dims: list[Dim],
-                 ref: dict[str, int], ref_platform: Platform | None, mm_per_click: dict[str, float]
+                 ref: dict[str, int], ref_platform: Platform | None, mm_per_click: dict[str, float],
+                 third_rh_mm: float = 0.0, third_corner_rh_mm: float = 0.0
                  ) -> tuple[Callable[[dict[str, int]], tuple[float, float]], dict]:
     """(indices → (mean s, sd s), info). ``ref``: the indices ``ref_platform`` was measured on."""
     if model is None or ref_platform is None:
@@ -45,10 +64,7 @@ def lap_function(store, model: LayoutModel | None, aero: AeroMap | None, dims: l
     wing = aero_wing(dims)
 
     def platform(idx: dict[str, int]) -> Platform:
-        w = wing.x(idx[wing.name]) if wing is not None else ref_platform.wing
-        f = ref_platform.rh_front + (idx.get("rh_front", ref.get("rh_front", 0)) - ref.get("rh_front", 0)) * mm_per_click.get("rh_front", 1.0)
-        r = ref_platform.rh_rear + (idx.get("rh_rear", ref.get("rh_rear", 0)) - ref.get("rh_rear", 0)) * mm_per_click.get("rh_rear", 1.0)
-        return Platform(w, f, r)
+        return project_platform(ref_platform, ref, idx, wing, mm_per_click, third_rh_mm, third_corner_rh_mm)
 
     # What the aero map doesn't know: lap time per unit drag and downforce at the reference
     # platform, so a platform far from what you drove carries the map's doubt about it.
@@ -62,14 +78,16 @@ def lap_function(store, model: LayoutModel | None, aero: AeroMap | None, dims: l
     def aero_var(p: Platform) -> float:
         if sens is None:
             return 0.0
-        dx = p.x() - ref_platform.x()
-        return sens[0] ** 2 * aero.drag.effect(dx)[1] ** 2 + sens[1] ** 2 * aero.lift.effect(dx)[1] ** 2
+        dx_d = p.x_drag() - ref_platform.x_drag()
+        dx_c = p.x_corner() - ref_platform.x_corner()
+        return sens[0] ** 2 * aero.drag.effect(dx_d)[1] ** 2 + sens[1] ** 2 * aero.lift.effect(dx_c)[1] ** 2
 
     wing_step = 1.0 / max(wing.hi - wing.lo, 1) if wing is not None else 0.0
 
     def lap(idx: dict[str, int]) -> tuple[float, float]:
         p = platform(idx)
-        key = (round(p.wing, 4), round(p.rh_front, 2), round(p.rh_rear, 2))
+        key = (round(p.wing, 4), round(p.rh_front, 2), round(p.rh_rear, 2),
+               round(p.corner_rh_front, 2), round(p.corner_rh_rear, 2))
         if key not in cache:
             car = model.car_at(aero, p) if aero is not None else model.base.scaled(model.eta)
             outside = aero is not None and not aero.within(p, wing_step)

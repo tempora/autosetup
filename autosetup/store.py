@@ -192,8 +192,10 @@ alter table corner_passes add column if not exists coast double;
 alter table corner_passes add column if not exists d_start double;
 alter table corner_passes add column if not exists d_end double;
 alter table corner_passes add column if not exists direction integer;
-alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed
+alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed on straights
 alter table recordings add column if not exists rh_rear_fast double;
+alter table recordings add column if not exists rh_front_corner double;  -- mm, in fast corners
+alter table recordings add column if not exists rh_rear_corner double;
 create table if not exists kerb_events (
     recording_id  integer,
     seq           integer,
@@ -466,8 +468,9 @@ class Store:
         self._insert("sim_envelope", ("INTEGER", "VARCHAR", "DOUBLE", "INTEGER", "DOUBLE"),
                      [(rid, *row) for row in sim.envelope])
         self._insert("sim_traps", ("INTEGER", "INTEGER", "DOUBLE", "DOUBLE"), [(rid, *row) for row in sim.traps])
-        self.con.execute("update recordings set rh_front_fast = ?, rh_rear_fast = ? where id = ?",
-                         [sim.rh_front, sim.rh_rear, rid])
+        self.con.execute(
+            "update recordings set rh_front_fast = ?, rh_rear_fast = ?, rh_front_corner = ?, rh_rear_corner = ? where id = ?",
+            [sim.rh_front, sim.rh_rear, sim.rh_front_corner, sim.rh_rear_corner, rid])
 
     def recompute_metrics(self, telemetry_dir: Path, force: bool = False,
                           lock: threading.RLock | None = None, workers: int = 1) -> tuple[int, list[str]]:

@@ -49,8 +49,10 @@ class SimData:
     profile: Profile | None = None
     straights: list[tuple[int, int, int, float, float]] = field(default_factory=list)  # (seq, bin, n, v, a_x)
     envelope: list[tuple[str, float, int, float]] = field(default_factory=list)  # (kind, v, n, q95 m/s²)
-    rh_front: float | None = None  # mm, at speed
+    rh_front: float | None = None  # mm, at speed on straights
     rh_rear: float | None = None
+    rh_front_corner: float | None = None  # mm, in fast corners
+    rh_rear_corner: float | None = None
     traps: list[tuple[int, float, float]] = field(default_factory=list)  # (seq, trap distance m, v m/s)
 
 
@@ -147,12 +149,16 @@ def extract(s: Session, sig: Signals, laps: list[Lap], clean: set[int]) -> SimDa
             if sel.sum() >= GRID_HZ // 2:
                 out.envelope.append((kind, float((b + 0.5) * V_BIN), int(sel.sum()),
                                      float(np.percentile(value[mask][sel], q))))
-    # Platform at speed, cruising (no big pitch from braking or power).
+    # Platform at speed: straight-line cruising (drag) and fast corners (downforce / aero balance).
     fast = racing & (sig.speed > FAST_MS) & (np.abs(sig.a_lon) < 0.3) & (np.abs(sig.a_lat) < 0.5)
+    fast_corner = racing & (sig.speed > FAST_MS) & (np.abs(sig.a_lat) > CORNER_G) & (sig.brake <= 0.05)
     rh = sig.ride_height * 1000.0
     if fast.sum() > GRID_HZ and np.isfinite(rh[fast]).any():
         out.rh_front = float(np.nanmean(rh[fast, :2]))
         out.rh_rear = float(np.nanmean(rh[fast, 2:]))
+    if fast_corner.sum() > GRID_HZ and np.isfinite(rh[fast_corner]).any():
+        out.rh_front_corner = float(np.nanmean(rh[fast_corner, :2]))
+        out.rh_rear_corner = float(np.nanmean(rh[fast_corner, 2:]))
     # Speed traps: the top speed on each straight of the profile, per lap.
     if out.profile is not None:
         for d0, d1 in straights_of(out.profile.kappa):
