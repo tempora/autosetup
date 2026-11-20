@@ -147,6 +147,11 @@ function renderPanel(p, pr, plan) {
   b.onclick = async () => { try { bst.rating = (await api("/api/rating", {file_name: bst.file_name, lockups: !r.lockups})).rating; scheduleProposal(); renderSetup(); } catch (e) { setStatus(e.message, true); } };
   p.append(b);
  }
+ if (bst) {
+  const kb = el("button", {type: "button", class: "ghost", "aria-pressed": !!r.kerbs_unstable}, t("next.kerbs"));
+  kb.onclick = async () => { try { bst.rating = (await api("/api/rating", {file_name: bst.file_name, kerbs_unstable: !r.kerbs_unstable})).rating; scheduleProposal(); renderSetup(); } catch (e) { setStatus(e.message, true); } };
+  p.append(kb);
+ }
  const list = el("div", {class: "list" + (S.proposalBusy ? " busy" : "")});
  for (const [i, c] of (pr ? pr.changes : []).entries()) {
   const li = el("div", {class: "li"}), info = el("div");

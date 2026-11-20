@@ -657,15 +657,17 @@ class Handler(BaseHTTPRequestHandler):
                 with app.lock:
                     self._json({"forgotten": fpm.forget(app.store, str(body["car_key"]))})
             elif self.path == "/api/rating":
-                # {file_name, lockups?, undrivable?, note?}: only the fields in the request change.
+                # {file_name, lockups?, undrivable?, kerbs_unstable?, note?}: only the fields in the request change.
                 name = str(body["file_name"])
                 with app.lock:
                     r = {k: v for k, v in (app.store.rating(name) or {}).items()
-                         if k in ("note", "lockups", "undrivable")}
+                         if k in ("note", "lockups", "undrivable", "kerbs_unstable")}
                     if "lockups" in body:
                         r["lockups"] = bool(body["lockups"])
                     if "undrivable" in body:
                         r["undrivable"] = None if body["undrivable"] is None else bool(body["undrivable"])
+                    if "kerbs_unstable" in body:
+                        r["kerbs_unstable"] = bool(body["kerbs_unstable"])
                     if "note" in body:
                         r["note"] = body["note"]
                     app.store.set_rating(name, **r)

@@ -115,6 +115,7 @@ create table if not exists track_maps (
 alter table recordings add column if not exists metrics_version integer;
 alter table ratings add column if not exists lockups boolean;  -- you flagged too much brake pressure
 alter table ratings add column if not exists undrivable boolean;  -- a short stint: you couldn't drive it (false: it was fine)
+alter table ratings add column if not exists kerbs_unstable boolean;  -- you flagged instability over kerbs
 alter table recordings add column if not exists game_build varchar;   -- lmu/builds.py
 alter table recordings add column if not exists dam_log varchar;      -- DAM .ld file merged in, if any
 alter table recordings add column if not exists load_source varchar;  -- tyre_load (DAM) | spring
@@ -638,12 +639,12 @@ class Store:
 
     # -- ratings and settings --------------------------------------------------------
     def set_rating(self, file_name: str, note: str | None = None, lockups: bool | None = None,
-                   undrivable: bool | None = None) -> None:
-        """What you said about a stint: too much brake pressure, couldn't drive it, a note."""
+                   undrivable: bool | None = None, kerbs_unstable: bool | None = None) -> None:
+        """What you said about a stint: too much brake pressure, couldn't drive it, kerbs, a note."""
         self.con.execute(
-            """insert or replace into ratings (file_name, note, rated_at, lockups, undrivable)
-               values (?, ?, ?, ?, ?)""",
-            [file_name, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups, undrivable])
+            """insert or replace into ratings (file_name, note, rated_at, lockups, undrivable, kerbs_unstable)
+               values (?, ?, ?, ?, ?, ?)""",
+            [file_name, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups, undrivable, kerbs_unstable])
 
     def rating(self, file_name: str) -> dict | None:
         cur = self.con.execute("select * from ratings where file_name = ?", [file_name])

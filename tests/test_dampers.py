@@ -136,3 +136,26 @@ def test_a_setting_never_moved_explores_after_the_others_are_known():
     assert model.settings == 5 and model.tried["fast_bump_front"] == 1
     choice = dampers.choose(model, DIMS, BASE, {}, lambda idx: 1.0)
     assert "fast_bump_front" in choice.moves and choice.exploring
+
+
+def test_arb_kerb_prior_p90_aggregation_and_kerbs_unstable_rating():
+    from autosetup.knowledge import load_knowledge
+    from autosetup.store import Store
+
+    # Stiffer ARBs carry a positive (worse) kerb prior.
+    p = dampers._prior("arb_rear")
+    assert p["peak_load"][0] > 0 and p["yaw_dist"][0] > 0 and p["airtime_s"][0] > 0
+
+    # Four gentle kerbs and one violent chicane kerb: p90 reflects the violent kerb, not the diluted mean.
+    st = Store(":memory:")
+    for i, peak in enumerate((1.1, 1.1, 1.1, 1.1, 2.8)):
+        st.con.execute(
+            "insert into kerb_events values (1, 0, ?, ?, 500.0, 'fl', 'surface', ?, 0.0, 0.2, 2.0, 0.01)",
+            [float(i), float(i) + 0.2, peak],
+        )
+    m = dampers.stint_metrics(st, 1, load_knowledge("GT3"))
+    assert m["peak_load"][0] > 2.0
+
+    # kerbs_unstable persists on ratings.
+    st.set_rating("monza.duckdb", kerbs_unstable=True)
+    assert st.rating("monza.duckdb")["kerbs_unstable"] is True

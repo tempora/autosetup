@@ -339,7 +339,8 @@ class Advisor:
                       (select count(*) || ':' || coalesce(string_agg(file_name || '=' || svm_path, '|' order by file_name), '')
                        from recording_setups),
                       (select coalesce(string_agg(file_name || ':' || coalesce(lockups::varchar, '')
-                       || ':' || coalesce(undrivable::varchar, ''), '|' order by file_name), '') from ratings),
+                       || ':' || coalesce(undrivable::varchar, '')
+                       || ':' || coalesce(kerbs_unstable::varchar, ''), '|' order by file_name), '') from ratings),
                       (select count(*) || ':' || coalesce(max(id), 0) from proposals),
                       (select coalesce(string_agg(id || ':' || coalesce(tolerance::varchar, ''), '|' order by id), '')
                        from fingerprints where active),
@@ -483,7 +484,9 @@ class Advisor:
         setup = store.setup_of(stint_id)
         k = load_knowledge(rec["car_class"])
         summary = analysis.stint_summary(store, stint_id)
-        pr = propose(stint_id, summary, setup, rec["car_class"], scales, rating=store.rating(rec["file_name"]),
+        rating = store.rating(rec["file_name"]) or {}
+        kerbs_unstable = bool(rating.get("kerbs_unstable"))
+        pr = propose(stint_id, summary, setup, rec["car_class"], scales, rating=rating,
                      locks=locks, knowledge=k,
                      brake_ceiling=self.brake_ceiling(rec["car_signature"], rec["car_class"], layout))
         car_key, car_class = recording_car(store, stint_id)
@@ -532,9 +535,9 @@ class Advisor:
                                                            platform.mm_per_click, third_rh_mm, third_corner_rh_mm)[0])
         lap = held[1]
 
-        dmodel = self._damper_model(rec, setup, ddims + [d for d in dims if "spring" in d.name and "tender" not in d.name],
-                                    k, layout,
-                                    stint_id)
+        kerb_chassis = [d for d in dims if ("spring" in d.name and "tender" not in d.name)
+                        or d.name in ("arb_front", "arb_rear")]
+        dmodel = self._damper_model(rec, setup, ddims + kerb_chassis, k, layout, stint_id)
         band = (bo.TargetBand(tgt.cells, tgt.tolerance, tgt.weights, float(k["feel_step_deg"])) if tgt.cells else None)
         x_damp = {d.name: d.x(dbase[d.name]) for d in kept}
 
@@ -548,9 +551,13 @@ class Advisor:
             def predict(x):
                 return balance.predict({**x, **x_damp})
 
+        kerb_margin = 0.0 if kerbs_unstable else dampers.KERB_MARGIN
         extra = []
         if dmodel is not None:
-            extra.append(lambda idx: dmodel.kerb_ok(with_dampers(idx), with_dampers(base)))
+            extra.append(lambda idx: dmodel.kerb_ok(with_dampers(idx), with_dampers(base), margin=kerb_margin))
+        if kerbs_unstable:
+            stiff_keys = ("arb_front", "arb_rear", "spring_front", "spring_rear")
+            extra.append(lambda idx: 0.0 if any(n in idx and idx[n] > base[n] for n in stiff_keys) else 1.0)
         # On a track the car hasn't been driven at, the fingerprint's own setup is a candidate
         # however far it is (the first proposal should already be close); once there are
         # stints here, the trust region and the ride-height reach hold.
@@ -572,13 +579,23 @@ class Advisor:
                 if all(key in bad.params for key in d.keys) and d.index(bad) != base[d.name]:
                     step = d.index(bad) - base[d.name]
                     avoid[d.name] = (1 if step > 0 else -1, abs(step))
+        toe_pen = _rear_toe_out(next((d for d in toe if d.name == "toe_rear"), None), setup, scales)
+        if kerbs_unstable:
+            stiff_keys = ("arb_front", "arb_rear", "spring_front", "spring_rear")
+
+            def penalty(idx: dict[str, int]) -> float:
+                p_val = toe_pen(idx) if toe_pen is not None else 0.0
+                # Reward softening ARBs/springs when the user flagged kerb instability.
+                softened = sum(1 for n in stiff_keys if n in idx and idx[n] < base[n])
+                return p_val - 0.04 * softened
+        else:
+            penalty = toe_pen
         prob = bo.Problem(dims, base, lap, _Balance(), band, platform, extra,
                           (lambda idx: dmodel.contact(with_dampers(idx))[0]) if dmodel is not None else None,
                           self._radius(stint_id, rec, tgt), candidates, seed=stint_id, reach=reach,
                           cost={d.name: _by_kind(CHANGE_COST, d.name) for d in dims
                                 if _by_kind(CHANGE_COST, d.name) is not None},
-                          penalty=_rear_toe_out(next((d for d in toe if d.name == "toe_rear"), None), setup, scales),
-                          avoid=avoid)
+                          penalty=penalty, avoid=avoid)
         choice = bo.solve(prob)
         plan.reason, plan.feasible, plan.gap, plan.wing = choice.reason, choice.feasible, choice.gap, choice.wing
         plan.predicted = {c: [m, float(np.sqrt(v))] for c, (m, v) in choice.best.balance.items()}
@@ -618,7 +635,9 @@ class Advisor:
                 return 1.0 if bo.p_in_band(pred, band) >= (1 - DAMPER_BAND_LOSS) * p_main else 0.0
 
             # Damper experiments get stints of their own: not while the balance is being moved.
-            dc = dampers.choose(dmodel, ddims, dbase, x_main, balance_ok, explore=not choice.moves)
+            kw = dampers.KERB_WEIGHT_UNSTABLE if kerbs_unstable else dampers.KERB_WEIGHT
+            dc = dampers.choose(dmodel, ddims, dbase, x_main, balance_ok,
+                                explore=not choice.moves, kerb_weight=kw, kerb_margin=kerb_margin)
             plan.dampers = {"contact": list(dc.contact), "contact_base": list(dc.contact_base),
                             "kerbs": dc.kerbs, "exploring": dc.exploring, "stints": dmodel.stints,
                             "settings": dmodel.settings}
