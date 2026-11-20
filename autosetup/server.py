@@ -1,8 +1,8 @@
 """Dashboard server: ``autosetup serve``.
 
-Standard-library HTTP server. It binds 127.0.0.1 by default (or 0.0.0.0 when Phone access
-is enabled in Settings), serves ``web/`` and a small JSON API, and runs a watcher thread
-that imports recordings once the game has finished writing them.
+Standard-library HTTP server. It binds 127.0.0.1 (this PC only), serves ``web/`` and a
+small JSON API, and runs a watcher thread that imports recordings once the game has
+finished writing them.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import re
 import os
-import socket
 import subprocess
 import sys
 import threading
@@ -141,10 +140,8 @@ class App:
         self.game_running = game_running  # injectable for tests
         self._stop = threading.Event()
         self.port = DEFAULT_PORT
-        self._rebind = None
         with self.lock:
             units.set_current(units.Units.from_json(store.get_setting("units")))
-            self.phone_access = bool(store.get_setting("phone_access", False))
             note_build(store, paths)
 
     # -- watcher ---------------------------------------------------------------------
@@ -364,13 +361,11 @@ class App:
             "fingerprints": [{"car_key": f.car_key, "car_class": f.car_class, "layout": f.layout,
                               "created_at": f.created_at} for f in fps],
             "recomputing": self.status["recomputing"], "recomputed": self.status["recomputed"],
-            "phone_access": self.phone_access, "phone_url": f"http://{lan_ip()}:{self.port}",
             "templates": {**(self.store.get_setting("templates", {}) or {}),
                           "default_name": templates.NAME, "default_notes": templates.NOTES},
         }
 
     def put_settings(self, body: dict) -> dict:
-        rebind = None
         with self.lock:
             if "units" in body:
                 u = units.Units.from_json({**units.current.to_json(), **(body["units"] or {})})
@@ -379,14 +374,6 @@ class App:
             if "templates" in body:
                 t = {**(self.store.get_setting("templates", {}) or {}), **(body["templates"] or {})}
                 self.store.put_setting("templates", {k: str(t[k]).strip() for k in ("name", "notes") if t.get(k)})
-            if "phone_access" in body:
-                on = bool(body["phone_access"])
-                self.store.put_setting("phone_access", on)
-                if on != self.phone_access:
-                    self.phone_access = on
-                    rebind = on
-        if rebind is not None and self._rebind is not None:
-            self._rebind(rebind)
         return self.settings()
 
     def open_folder(self, which: str) -> str:
@@ -523,9 +510,6 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # keep the console quiet
         pass
 
-    def _client_allowed(self) -> bool:
-        return self.client_address[0] in ("127.0.0.1", "::1") or self.app.phone_access
-
     def _json(self, payload, status: int = 200) -> None:
         body = json.dumps(payload, default=str).encode()
         self.send_response(status)
@@ -571,8 +555,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._t0 = time.perf_counter()
-        if not self._client_allowed():
-            return self._json({"error": "phone access is off"}, 403)
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
@@ -639,8 +621,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._t0 = time.perf_counter()
-        if not self._client_allowed():
-            return self._json({"error": "phone access is off"}, 403)
         if not self._own_page():
             return self._json({"error": "cross-site request refused"}, 403)
         try:
@@ -701,15 +681,6 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
 
-def lan_ip() -> str:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))  # no packet is sent; picks the LAN interface
-            return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-
-
 def make_server(app: App, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
     handler = type("BoundHandler", (Handler,), {"app": app})
     srv = ThreadingHTTPServer((host, port), handler)
@@ -717,7 +688,7 @@ def make_server(app: App, host: str = "127.0.0.1", port: int = DEFAULT_PORT) -> 
     return srv
 
 
-def serve(store: Store, paths: LmuPaths | None, host: str | None = None, port: int = DEFAULT_PORT,
+def serve(store: Store, paths: LmuPaths | None, port: int = DEFAULT_PORT,
           stop: threading.Event | None = None) -> None:
     """``stop``: set it to end serving (the desktop app closing); the caller then closes
     the store, so the database is left tidy rather than cut off mid-log."""
@@ -726,25 +697,12 @@ def serve(store: Store, paths: LmuPaths | None, host: str | None = None, port: i
         app.recompute(force=False)  # after an update that changed the metrics: in the background
     app.start_watcher()
     app.live.start()
-    bind = host or ("0.0.0.0" if app.phone_access else "127.0.0.1")
-    httpd = make_server(app, bind, port)
-    restarting = threading.Event()
-    if host is None:
-        def rebind(on: bool) -> None:
-            restarting.set()
-            threading.Thread(target=httpd.shutdown, daemon=True, name="rebind").start()
-        app._rebind = rebind
+    httpd = make_server(app, "127.0.0.1", port)
     if stop is not None:
         threading.Thread(target=lambda: (stop.wait(), httpd.shutdown()), daemon=True, name="stop").start()
-    print(f"autosetup dashboard: http://127.0.0.1:{app.port}  (phone: http://{lan_ip()}:{app.port})", flush=True)
+    print(f"autosetup dashboard: http://127.0.0.1:{app.port}", flush=True)
     try:
-        while True:
-            httpd.serve_forever()
-            if not restarting.is_set() or (stop is not None and stop.is_set()):
-                break
-            restarting.clear()
-            httpd.server_close()
-            httpd = make_server(app, "0.0.0.0" if app.phone_access else "127.0.0.1", port)
+        httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:

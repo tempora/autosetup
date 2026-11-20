@@ -3,7 +3,7 @@
 //! On start it launches the bundled server (`server/autosetup-server.exe`, the Python
 //! backend frozen by PyInstaller), shows a splash until `/api/health` answers, then points
 //! the window at the dashboard. If an `autosetup serve` is already running on the port it
-//! is used as is. The server keeps listening on the LAN, so the phone works as before.
+//! is used as is.
 //!
 //! The server's stdin is a pipe from this process. The server exits when that pipe
 //! closes, so it never outlives the window, even if the shell crashes.

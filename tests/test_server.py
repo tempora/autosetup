@@ -328,7 +328,7 @@ def test_lap_loads_all_stint_laps_in_one_open_without_temp_copy(server, install,
     assert call(base, f"/api/lap?stint={stint}&seq=99")[0] == 400
 
 
-def test_menu_screens_and_phone_access(server, install):
+def test_menu_screens_and_settings(server, install):
     app, base = server
     with urllib.request.urlopen(base + "/", timeout=10) as r:
         page = r.read()
@@ -345,11 +345,11 @@ def test_menu_screens_and_phone_access(server, install):
 
     _, s = call(base, "/api/settings")
     assert s["units"] == {"speed": "km/h", "temp": "°C", "pressure": "kPa"}
-    assert s["phone_access"] is False
+    assert "phone_access" not in s
     assert [f["which"] for f in s["folders"]] == ["install", "telemetry", "settings", "database"]
     assert [x["car_class"] for x in s["classes"]] == [c["car_class"]]
-    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}, "phone_access": True})
-    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h" and s["phone_access"] is True
+    _, s = call(base, "/api/settings", {"units": {"temp": "°F"}})
+    assert s["units"]["temp"] == "°F" and s["units"]["speed"] == "km/h"
     assert call(base, "/api/open-folder", {"which": "nowhere"})[0] == 400
 
 

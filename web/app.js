@@ -416,8 +416,6 @@ function renderSettings() {
  rec.onclick = async () => { try { await api("/api/recompute", {}); } catch (e) { showError(e.message); return; } await loadSettings(); pollRecompute(); };
  const acts = el("div", {class: "acts"}); acts.append(imp, rec);
  data.append(row(t("settings.recordings"), el("span", {class: "path muted"}, st.recomputing ? t("settings.recomputing") : dataStatus || t("settings.uptodate")), acts));
- data.append(row(t("settings.phone"), el("span", {class: "path muted"}, st.phone_access && st.phone_url ? st.phone_url : t("settings.phone_sub")),
-  pills(null, [false, true], [t("kerbs.off"), t("kerbs.on")], !!st.phone_access, v => putSettings({phone_access: v}))));
  const prof = sec(t("settings.profile")), fps = st.fingerprints || [];
  if (!fps.length) prof.append(el("div", {class: "muted"}, t("driver.none")));
  for (const f of fps) {
