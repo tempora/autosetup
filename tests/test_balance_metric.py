@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from autosetup.metrics.balance import PhaseObs, cells, normalise, observe, sample_metrics
-from autosetup.metrics.corners import corner_map, passes
+from autosetup.metrics.corners import assign, corner_map, passes, track_corners
 from autosetup.metrics.signals import GRID_HZ, G, Signals
 from autosetup.lmu.telemetry import Lap
 
@@ -158,3 +158,66 @@ def test_countersteer_reads_as_oversteer():
     sig = make_signals(n, speed=np.full(n, 30.0), yaw_rate=np.full(n, 0.3), a_lat=np.full(n, 0.9),
                        steer=np.full(n, -0.05))
     assert np.all(sample_metrics(sig, GEOMETRY)["ua"] < 0)
+
+
+# -- the track's corners: voted from the recordings' own ----------------------------------
+def test_a_corner_only_one_of_three_stints_has_is_not_a_track_corner():
+    """A spin or a weave on one stint's only lap shows up as a corner there alone."""
+    real = [(100.0, 300.0, 1), (500.0, 700.0, -1)]
+    track = track_corners([real, real + [(900.0, 960.0, 1)], real])
+    assert [(c.d_start, c.d_end, c.direction) for c in track] == [(100.0, 300.0, 1), (500.0, 700.0, -1)]
+    assert assign(900.0, 960.0, 1, track) is None
+
+
+def test_a_corner_missing_from_the_first_stint_is_still_a_track_corner():
+    """No first-recording list: two stints out of three are enough."""
+    real = [(100.0, 300.0, 1)]
+    track = track_corners([real, real + [(500.0, 700.0, -1)], real + [(505.0, 710.0, -1)]])
+    assert len(track) == 2
+    assert assign(500.0, 700.0, -1, track) == track[1].id
+
+
+def test_a_stint_without_a_full_lap_does_not_vote_but_is_numbered(tmp_path):
+    from autosetup.feel.measure import passes_of
+    from autosetup.store import Store
+
+    store = Store(tmp_path / "db.duckdb")
+    con = store.con
+    for rid, complete, own in ((1, True, [(100.0, 300.0, 1)]), (2, True, [(110.0, 290.0, 1)]),
+                               (3, False, [(100.0, 300.0, 1), (500.0, 700.0, -1)])):
+        con.execute("insert into recordings (id, file_name, file_size, file_mtime, track, track_layout) values (?, ?, 1, 1, 'T', 'T')",
+                    [rid, f"r{rid}.duckdb"])
+        con.execute("insert into laps (recording_id, seq, complete, in_pits) values (?, 0, ?, false)",
+                    [rid, complete])
+        for k, (s, e, d) in enumerate(own):
+            con.execute("""insert into corner_passes (recording_id, seq, corner, phase, band, n, v_min, v_mean,
+                           a_lat, ua, ua_var, yaw_err, steer_rate, countersteer_s, kerb, d_start, d_end, direction)
+                           values (?, 0, ?, 'mid', 'low', 20, 30, 32, 1.5, 0.5, 0.01, 0.1, 50, 0, false, ?, ?, ?)""",
+                        [rid, k, s, e, d])
+    assert len(store.track_corners("T")) == 1  # the partial lap's second corner doesn't count
+    rows = passes_of(store, [1, 2, 3])
+    assert {(rid, o.corner) for rid, _, o in rows} == {(1, 0), (2, 0), (3, 0)}
+
+
+def test_one_corner_whose_slowest_point_moves_500_m_gets_one_number():
+    """A long fast corner: its slowest point sits at the entry in one stint and the exit
+    in another (Blanchimont). Numbered by overlap, it's the same corner."""
+    track = track_corners([[(5550.0, 6180.0, -1)], [(5600.0, 6175.0, -1)]])
+    assert len(track) == 1
+    assert assign(5550.0, 6180.0, -1, track) == assign(5600.0, 6175.0, -1, track) == track[0].id
+
+
+def test_two_corners_another_stint_merges_stay_sensible():
+    """One stint sees a left-left as two corners, the others as one: no crash, every pass
+    of them gets a number."""
+    two = [(100.0, 200.0, -1), (240.0, 340.0, -1)]
+    one = [(100.0, 340.0, -1)]
+    track = track_corners([two, one, one])
+    assert track
+    for s, e, d in two + one:
+        assert assign(s, e, d, track) is not None
+
+
+def test_no_votes_no_track_corners():
+    assert track_corners([]) == []
+    assert track_corners([[], []]) == []

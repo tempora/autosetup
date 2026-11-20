@@ -154,7 +154,7 @@ def propose(stint_id: int, summary: dict, setup: CarSetup, car_class: str, scale
     b = _Builder(setup, scales, set(locks or ()))
     _tyres(b, summary, k)
     _brakes(b, summary, k)
-    _brake_pressure(b, k, rating or {}, brake_ceiling, 1)
+    _brake_pressure(b, summary, k, rating or {}, brake_ceiling, 1)
     _platform(b, summary, k)
     order = {"tyres": 0, "brakes": 1, "platform": 2}
     b.changes.sort(key=lambda c: order[c.group])
@@ -220,8 +220,13 @@ def _tyres(b: _Builder, s: dict, k: dict) -> None:
 
 
 def _brakes(b: _Builder, s: dict, k: dict) -> None:
-    lo, hi = k["brake_temp"]
+    if k.get("regen_at_max"):
+        p = b.setup.params.get("VM_REGEN_LEVEL")
+        if p is not None:
+            b.add("brakes", ["VM_REGEN_LEVEL"], SEMANTIC["more"]("VM_REGEN_LEVEL", b.scales), p.steps,
+                  "Hybrid regen always runs at maximum → up to the highest setting", name="Regen map", quiet=True)
     for axle, key, wheels in (("Front", "VM_BRAKE_DUCTS", ("fl", "fr")), ("Rear", "VM_BRAKE_DUCTS_REAR", ("rl", "rr"))):
+        lo, hi = k.get(f"brake_temp_{axle.lower()}") or k["brake_temp"]
         temps = _num(s, *(f"brake_temp_max_{w}" for w in wheels))
         if not temps:
             continue
@@ -249,11 +254,12 @@ def manages_brake_pressure(setup: CarSetup, k: dict) -> bool:
             and p.number is not None and not (abs_map is not None and abs_map.adjustable))
 
 
-def _brake_pressure(b: _Builder, k: dict, rating: dict, ceiling: int | None, mult: int) -> None:
-    """Brake pressure where it's set by feel (manages_brake_pressure), inside the class's
-    comfortable range: up a step every stint until you say it's too much, then down a step
-    and never back above that (``ceiling``, learned per car model). Below the range it goes
-    straight to the bottom of it, above it down to the top.
+def _brake_pressure(b: _Builder, s: dict, k: dict, rating: dict, ceiling: int | None, mult: int) -> None:
+    """Brake pressure where it's managed without ABS (manages_brake_pressure), inside the
+    class's comfortable range: brought into the range if outside, and left alone inside it
+    unless telemetry shows caliper-limited pedal flat-topping (``brake_sat_frac`` above
+    ``brake_sat_raise``) or front lock-ups (``lockup_front`` or your lockups flag). Rear-only
+    lock-ups are noted as a bias/migration issue rather than cutting overall brake force.
 
     Percent is of the setting's highest index (LMU's cars: 120 kgf = 100 %, 1 kgf a click,
     a higher index = more pressure)."""
@@ -275,6 +281,11 @@ def _brake_pressure(b: _Builder, k: dict, rating: dict, ceiling: int | None, mul
     top = min(hi, ceiling) if ceiling is not None else hi
     step = BRAKE_PRESSURE_STEP * mult
     usual = f"usual {rng[0]:g}–{rng[1]:g} %"
+    lock_f = float(s.get("lockup_front") or 0.0)
+    lock_r = float(s.get("lockup_rear") or 0.0)
+    lock_lim = float(k.get("lockup_per_lap", 1.0))
+    sat = s.get("brake_sat_frac")
+    sat_lim = float(k.get("brake_sat_raise", 0.35))
     if rating.get("lockups"):
         b.add("brakes", [key], -1, step, f"You said {pct(p.value):.0f} % is too much brake pressure → down a step")
     elif p.value > top:
@@ -283,10 +294,14 @@ def _brake_pressure(b: _Builder, k: dict, rating: dict, ceiling: int | None, mul
         b.add("brakes", [key], -1, p.value - top, f"Brake pressure {pct(p.value):.0f} % is {why} → down to {pct(top):.0f} %")
     elif p.value < lo and lo <= top:
         b.add("brakes", [key], 1, lo - p.value, f"Brake pressure {pct(p.value):.0f} % is below the {usual} → up to {pct(lo):.0f} %")
-    elif p.value < top:
-        b.add("brakes", [key], 1, min(step, top - p.value),
-              f"{pct(p.value):.0f} % wasn't too much → brake pressure up a step "
-              f"(press Too much brake pressure when it is)", quiet=True)
+    elif lock_f >= lock_lim and lock_f >= lock_r:
+        b.add("brakes", [key], -1, max(1, mult),
+              f"Front lock-ups ({lock_f:.1f}/lap) at {pct(p.value):.0f} % → brake pressure down a step", quiet=True)
+    elif lock_r >= lock_lim and lock_r > lock_f:
+        b.notes.append(f"Rear lock-ups ({lock_r:.1f}/lap): shift brake bias forward or raise brake migration instead of cutting brake pressure")
+    elif sat is not None and sat >= sat_lim and p.value < top:
+        b.add("brakes", [key], 1, min(max(1, mult), top - p.value),
+              f"Holding 98%+ brake for {sat:.0%} of heavy braking → brake pressure up a step", quiet=True)
 
 
 def _platform(b: _Builder, s: dict, k: dict) -> None:
@@ -307,7 +322,8 @@ def _platform(b: _Builder, s: dict, k: dict) -> None:
                   "The front ride height always runs at its minimum → down to the lowest setting", quiet=True)
     front_low = not pinned and bool(front_rh) and (bottoming > k["bottoming_s"]
                                                    or min(front_rh) < k["min_ride_height_mm"])
-    rear_low = bool(rear_rh) and min(rear_rh) < k["min_ride_height_mm"]
+    bottoming_rear = s.get("bottoming_rear_s") or 0.0
+    rear_low = bool(rear_rh) and (bottoming_rear > k["bottoming_s"] or min(rear_rh) < k["min_ride_height_mm"])
     if front_low:
         steps = 2 if bottoming > 3 * k["bottoming_s"] else 1
         why = (f"front bottoms {bottoming:.2f} s/lap" if bottoming > k["bottoming_s"]
@@ -316,7 +332,8 @@ def _platform(b: _Builder, s: dict, k: dict) -> None:
                  or b.add("platform", FRONT_RH, SEMANTIC["up"](FRONT_RH[0], b.scales), steps,
                           f"The {why} → raise the front", quiet=True))
     if done < budget and rear_low:
-        why = f"The rear ride height drops to {min(rear_rh):.1f} mm"
+        why = (f"The rear bottoms {bottoming_rear:.2f} s/lap" if bottoming_rear > k["bottoming_s"]
+               else f"The rear ride height drops to {min(rear_rh):.1f} mm")
         done += (_packers_in(b, s, k, "rear", why)
                  or b.add("platform", REAR_RH, SEMANTIC["up"](REAR_RH[0], b.scales), 1, f"{why} → raise the rear",
                           quiet=True))

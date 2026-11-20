@@ -107,6 +107,7 @@
   "next.gap_rear": "{s} s available with more rotation",
   "next.gap_front": "{s} s available with a pointier front",
   "next.brakes": "Too much brake pressure",
+  "next.kerbs": "Unstable over kerbs",
   "next.predicted": "predicted ± {sd} s",
   "next.write": "Write setup",
   "next.written": "Written",

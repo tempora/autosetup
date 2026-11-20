@@ -51,6 +51,7 @@ MAX_CLICKS = 3  # per damper move
 MAX_PACKER_CLICKS = 2
 MIN_GAIN = 0.1  # score units (contact + weighted kerbs) a move must be expected to win
 KERB_WEIGHT = 0.5  # a kerb number's SCALE unit against a contact one
+KERB_WEIGHT_UNSTABLE = 2.0  # weight when you flagged the car as unstable over kerbs
 EXPLORE = 0.3  # weight of what a move would teach, while its setting is little known
 EXPLORE_VALUES = 3  # values of one setting driven before what its click does counts as known
 DAMPER_NAMES = {name for name, _ in DAMPERS}
@@ -91,6 +92,9 @@ def _prior(name: str) -> dict[str, tuple[float, float]]:
         for a in same:
             out[f"cv_{a}"] = (0.5, 1.5)
         out.update(pitch_deg=(-0.5, 1.5), heave_mm=(-0.5, 1.5), peak_load=(0.5, 1.5), yaw_dist=(0.3, 1.5))
+    elif kind == "arb":
+        # A stiffer bar couples left and right wheels across a one-sided kerb hit.
+        out.update(peak_load=(0.8, 1.5), airtime_s=(0.8, 1.5), yaw_dist=(0.8, 1.5), heave_mm=(0.3, 1.0))
     if third:  # a third element works on the platform, less on one wheel
         out = {k: (m * 0.5, s) for k, (m, s) in out.items()}
     out.setdefault("shape", (0.0, 1.0))
@@ -150,7 +154,9 @@ def stint_metrics(store, rid: int, knowledge: dict) -> dict[str, tuple[float, fl
     for i, name in enumerate(KERB):
         vals = [r[i] for r in kerbs if r[i] is not None and math.isfinite(r[i])]
         if len(vals) >= 2:
-            out[name] = (float(np.mean(vals)), float(np.var(vals) / len(vals)) + (0.2 * SCALE[name]) ** 2)
+            # High percentile (p90) so violent chicane kerbs aren't diluted by flat exit kerbs.
+            stat = float(np.percentile(vals, 90)) if len(vals) >= 4 else float(np.mean(vals))
+            out[name] = (stat, float(np.var(vals) / len(vals)) + (0.2 * SCALE[name]) ** 2)
     return out
 
 
@@ -220,16 +226,17 @@ class DamperModel:
             v += float(max(d @ lin.cov @ d, 0.0)) / SCALE[metric] ** 2
         return m, v
 
-    def change(self, x: dict[str, float], x_base: dict[str, float]) -> tuple[float, float, float]:
+    def change(self, x: dict[str, float], x_base: dict[str, float],
+               kerb_weight: float = KERB_WEIGHT) -> tuple[float, float, float]:
         """What a move does to the score: (contact change, kerb change, variance of the
         weighted sum). Negative is better."""
         cm, cv = self._delta(CONTACT, x, x_base)
         km, kv = self._delta(KERB, x, x_base)
-        return cm, km, cv + KERB_WEIGHT ** 2 * kv
+        return cm, km, cv + kerb_weight ** 2 * kv
 
-    def kerb_ok(self, x: dict[str, float], x_base: dict[str, float]) -> float:
+    def kerb_ok(self, x: dict[str, float], x_base: dict[str, float], margin: float = KERB_MARGIN) -> float:
         """Chance no kerb number gets worse than at ``x_base`` (the setup you drove) by more
-        than KERB_MARGIN: the change is judged, under one model, not the model's level
+        than ``margin``: the change is judged, under one model, not the model's level
         against one stint's measurement."""
         p = 1.0
         for metric in KERB:
@@ -242,7 +249,7 @@ class DamperModel:
             if var <= 0 and m <= 0:
                 continue
             sd = math.sqrt(max(var, 1e-12))
-            p *= 0.5 * (1.0 + math.erf((KERB_MARGIN * SCALE[metric] - m) / (sd * math.sqrt(2.0))))
+            p *= 0.5 * (1.0 + math.erf((margin * SCALE[metric] - m) / (sd * math.sqrt(2.0))))
         return p
 
 
@@ -262,7 +269,8 @@ def _reach(d: Dim) -> int:
 
 
 def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: dict[str, float],
-           balance_ok, explore: bool = True) -> DamperChoice:
+           balance_ok, explore: bool = True, kerb_weight: float = KERB_WEIGHT,
+           kerb_margin: float = KERB_MARGIN) -> DamperChoice:
     """Best damper moves (whole clicks): the most predicted gain in contact score and
     weighted kerb numbers, kerbs within margin, the balance band holding (``balance_ok``:
     indices of these dims → probability). A move of a setting driven at fewer than
@@ -276,13 +284,13 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
 
     def score(idx):
         """(value, gain, sd of the gain, new): value adds the teaching bonus to the gain."""
-        cm, km, v = model.change(x_of(idx), xb)
-        gain, sd = -(cm + KERB_WEIGHT * km), math.sqrt(v)
+        cm, km, v = model.change(x_of(idx), xb, kerb_weight=kerb_weight)
+        gain, sd = -(cm + kerb_weight * km), math.sqrt(v)
         new = explore and any(idx[n] != base[n] and model.tried.get(n, 0) < EXPLORE_VALUES for n in idx)
         return gain + (EXPLORE * sd if new else 0.0), gain, sd, new
 
     def allowed(idx):
-        return model.kerb_ok(x_of(idx), xb) >= 0.5 and balance_ok(idx) >= 0.5
+        return model.kerb_ok(x_of(idx), xb, margin=kerb_margin) >= 0.5 and balance_ok(idx) >= 0.5
 
     singles = []
     for d in dims:
@@ -311,12 +319,12 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
     (_, gain, sd, _), best = max(ok, key=lambda c: c[0][0])
     moves = {k: (base[k], best[k]) for k in best if best[k] != base[k]}
     exploring = gain - 0.5 * sd < MIN_GAIN
-    cm, km, _ = model.change(x_of(best), xb)
+    cm, km, _ = model.change(x_of(best), xb, kerb_weight=kerb_weight)
     m, v = model.contact(x_of(best))
     if exploring:
         reason = "learning what it does to the tyre load and kerbs"
     else:
-        reason = "takes the kerbs better" if -KERB_WEIGHT * km > -cm else "steadier tyre load"
+        reason = "takes the kerbs better" if -kerb_weight * km > -cm else "steadier tyre load"
     return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring, reason, km)
 
 

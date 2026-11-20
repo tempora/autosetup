@@ -178,8 +178,22 @@ def _region(prob: Problem, d: Dim) -> int:
     return min(r, prob.reach[d.name]) if d.name in prob.reach else r
 
 
+# Coupled pairs searched deterministically alongside random draws: aero balance trade-offs,
+# static ride height vs third spring heave, braking vs trail-braking migration, and axle ARBs.
+COUPLED_PAIRS = (
+    ("wing", "rh_rear"),
+    ("wing", "rh_front"),
+    ("rh_rear", "third_spring_rear"),
+    ("rh_front", "third_spring_front"),
+    ("brake_bias", "brake_migration"),
+    ("arb_front", "arb_rear"),
+    ("spring_front", "spring_rear"),
+)
+
+
 def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> list[dict[str, int]]:
     dims = {d.name: d for d in prob.dims}
+    by_name = {d.name: d for d in free}
     out = [dict(start)]
     for d in free:
         r = _region(prob, d)
@@ -187,6 +201,18 @@ def _candidates(prob: Problem, start: dict[str, int], free: list[Dim], rng) -> l
             v = start[d.name] + step
             if d.lo <= v <= d.hi and v != start[d.name]:
                 out.append({**start, d.name: v})
+    for a_name, b_name in COUPLED_PAIRS:
+        if a_name not in by_name or b_name not in by_name:
+            continue
+        da, db = by_name[a_name], by_name[b_name]
+        ra, rb = _region(prob, da), _region(prob, db)
+        sa = sorted({s for s in (-ra, -1, 1, ra) if 0 < abs(s) <= ra})
+        sb = sorted({s for s in (-rb, -1, 1, rb) if 0 < abs(s) <= rb})
+        for va in sa:
+            for vb in sb:
+                na, nb = start[a_name] + va, start[b_name] + vb
+                if da.lo <= na <= da.hi and db.lo <= nb <= db.hi:
+                    out.append({**start, a_name: na, b_name: nb})
     for _ in range(POOL if free else 0):
         k = int(rng.integers(1, min(MAX_CHANGES, len(free)) + 1))
         pick = rng.choice(len(free), size=k, replace=False)

@@ -255,18 +255,41 @@ def drag_deltas(rows: list[tuple[int, int, int, float, float]]) -> dict[int, tup
 # -- aero map -------------------------------------------------------------------------------
 @dataclass
 class Platform:
-    """Aero platform state: rear wing as a share of its range, ride heights at speed (mm)."""
+    """Aero platform state: rear wing as a share of its range, ride heights at speed (mm).
+    Straight-line ride heights (rh_front, rh_rear) govern drag; fast-corner ride heights
+    (rh_front_corner, rh_rear_corner, falling back to straight-line) govern downforce and
+    aero balance."""
 
     wing: float
     rh_front: float
     rh_rear: float
+    rh_front_corner: float | None = None
+    rh_rear_corner: float | None = None
 
     @property
     def rake(self) -> float:
         return self.rh_rear - self.rh_front
 
-    def x(self) -> np.ndarray:
+    @property
+    def corner_rh_front(self) -> float:
+        return self.rh_front if self.rh_front_corner is None else self.rh_front_corner
+
+    @property
+    def corner_rh_rear(self) -> float:
+        return self.rh_rear if self.rh_rear_corner is None else self.rh_rear_corner
+
+    @property
+    def corner_rake(self) -> float:
+        return self.corner_rh_rear - self.corner_rh_front
+
+    def x_drag(self) -> np.ndarray:
         return np.array([self.wing, self.rh_front, self.rake])
+
+    def x_corner(self) -> np.ndarray:
+        return np.array([self.wing, self.corner_rh_front, self.corner_rake])
+
+    def x(self) -> np.ndarray:
+        return self.x_drag()
 
 
 @dataclass
@@ -334,7 +357,8 @@ class AeroMap:
         pri = priors(knowledge)
         out, n = {}, {}
         for name in ("drag", "lift", "balance"):
-            rows = [(s.layout, s.platform.x(), getattr(s, name)) for s in stints if getattr(s, name) is not None]
+            feat = (lambda p: p.x_drag()) if name == "drag" else (lambda p: p.x_corner())
+            rows = [(s.layout, feat(s.platform), getattr(s, name)) for s in stints if getattr(s, name) is not None]
             X, y, var = [], [], []
             for layout in sorted({r[0] for r in rows}):
                 mine = [r for r in rows if r[0] == layout]
@@ -347,11 +371,15 @@ class AeroMap:
                 var += [max(r[2][1], 1e-12) ** 2 for r in mine]
             X = np.array(X).reshape(len(X), len(FEATURES))
             fit = Slopes.fit(X, np.array(y), np.array(var), *pri[name])
-            # Known directions are kept: a slope the data puts on the wrong side of its
-            # prior's direction (confounded stints, a narrow range) counts as zero.
+            # Known directions are kept while evidence is sparse/noisy; strong data
+            # (4+ stints and >2 sd past zero) is allowed to flip sign (e.g. diffuser stall).
             prior_mean = pri[name][0]
+            sd = np.sqrt(np.maximum(np.diag(fit.cov), 0.0))
             wrong = (prior_mean != 0) & (np.sign(fit.mean) != np.sign(prior_mean))
-            fit.mean = np.where(wrong, 0.0, fit.mean)
+            if len(y) < 4:
+                fit.mean = np.where(wrong, 0.0, fit.mean)
+            else:
+                fit.mean = np.where(wrong & (np.abs(fit.mean) < 2.0 * sd), 0.0, fit.mean)
             out[name] = fit
             n[name] = len(y)
         xs = np.array([s.platform.x() for s in stints]).reshape(len(stints), len(FEATURES))
@@ -369,8 +397,9 @@ class AeroMap:
 
     def car(self, base: Car, base_platform: Platform, platform: Platform) -> Car:
         """``base`` (measured on ``base_platform``) moved to ``platform``."""
-        dx = platform.x() - base_platform.x()
-        return base.perturb(d_drag=self.drag.effect(dx)[0], d_lift=self.lift.effect(dx)[0])
+        dx_drag = platform.x_drag() - base_platform.x_drag()
+        dx_corner = platform.x_corner() - base_platform.x_corner()
+        return base.perturb(d_drag=self.drag.effect(dx_drag)[0], d_lift=self.lift.effect(dx_corner)[0])
 
     def to_json(self) -> dict:
         return {"drag": self.drag.to_json(), "lift": self.lift.to_json(), "balance": self.balance.to_json(),

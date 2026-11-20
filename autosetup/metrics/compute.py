@@ -15,13 +15,19 @@ from autosetup.lmu.setup_space import CarSetup
 from autosetup.lmu.telemetry import Lap, Session
 from autosetup.metrics.signals import GRID_HZ, Signals, load_signals, smooth, wheelbase
 
-METRICS_VERSION = 13  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
+METRICS_VERSION = 19  # 2: Lap Dist unwrapped; 3: countersteer per phase; 4: steering unit, off_major; 5: third spring;
 #                      6: understeer in mid-speed corners; 7: per corner speed × phase; 8: corner passes, suspension, kerbs;
 #                      9: lap model data, the per speed × phase cells left to the corner passes;
 #                      10: DAM .ld offsets decoded right (slip angles), blank DAM tyre load falls back to springs;
 #                      11: phases by progress through the turn (soft), a braking phase, pedal use per phase;
 #                      12: wheelbase per car model, steering ratios read from every steer-lock label;
-#                      13: Lexus RC F and Mercedes-AMG GT3 wheelbases
+#                      13: Lexus RC F and Mercedes-AMG GT3 wheelbases;
+#                      14: Hypercar wheelbases, the Hypercar speed-band split at 150 km/h;
+#                      15: rear bottoming, rake in fast corners and on straights (was one average)
+#                      16: every corner pass kept, with where its corner is (no stored corner list)
+#                      17: fast-corner ride heights saved separately from straight-line for the aero map
+#                      18: brake pedal saturation share and per-axle telemetry lock-up counts
+#                      19: steering ratio computed as half_lock / road-wheel lock from VM_STEER_LOCK
 PACKER_FLAT = 0.25  # past contact, deflection gains under this share of the free spring's rate
 WHEELS = ("fl", "fr", "rl", "rr")
 SECTOR_M = 100.0  # minisector length; shorter ones bias the theoretical best low (min of noise)
@@ -248,11 +254,16 @@ def _platform(s: Signals) -> dict[str, float]:
     if not np.isfinite(s.ride_height).any():
         return {}
     rh = s.ride_height * 1000.0  # mm
-    fast = s.speed > 40.0
     out = _per_wheel("rh_min", np.nanpercentile(rh, 1, axis=0))
     out["bottoming_s"] = float((rh[:, :2] < 1.0).any(axis=1).sum() / GRID_HZ)
-    if fast.sum() > GRID_HZ:
-        out["rake_fast"] = float(np.nanmean(rh[fast, 2:]) - np.nanmean(rh[fast, :2]))
+    out["bottoming_rear_s"] = float((rh[:, 2:] < 1.0).any(axis=1).sum() / GRID_HZ)
+    # Rake at speed, apart for fast corners and straights: a rear that sinks on the straight
+    # sheds drag, and only what is left in the fast corners is balance.
+    fast = s.speed > FAST_MS
+    cornering = np.abs(s.a_lat) > CORNER_G
+    for name, mask in (("rake_corners", fast & cornering), ("rake_straight", fast & ~cornering & (s.brake <= 0.05))):
+        if mask.sum() > GRID_HZ:
+            out[name] = float(np.nanmean(rh[mask, 2:]) - np.nanmean(rh[mask, :2]))
     return out
 
 
@@ -330,6 +341,7 @@ def _driver(s: Signals) -> dict[str, float]:
         return {}
     moving = s.speed > MIN_SPEED
     braking = moving & (s.brake > 0.05)
+    heavy = moving & (s.brake > 0.3)
     n = max(moving.sum(), 1)
     out = {
         "full_throttle_frac": float(np.sum(moving & (s.throttle > 0.98)) / n),
@@ -337,6 +349,19 @@ def _driver(s: Signals) -> dict[str, float]:
         "brake_peak": _nanpct(s.brake, 99),
         "trail_brake_frac": float(np.sum(braking & (np.abs(s.a_lat) > CORNER_G)) / max(braking.sum(), 1)),
     }
+    if heavy.sum() >= GRID_HZ // 2:
+        out["brake_sat_frac"] = float(np.sum(heavy & (s.brake >= 0.98)) / heavy.sum())
+    if len(s.t) >= GRID_HZ and np.isfinite(s.tyre_centre).any():
+        win = max(2, GRID_HZ // 10)
+        decel = smooth(-s.a_lon, win)
+        d_decel = np.gradient(decel) * GRID_HZ
+        d_brake = np.gradient(smooth(s.brake, win)) * GRID_HZ
+        dip = heavy & (d_decel < -1.5) & (d_brake >= -0.3)
+        dt_c = np.column_stack([np.gradient(smooth(s.tyre_centre[:, i], win)) * GRID_HZ for i in range(4)])
+        spike = dip[:, None] & (dt_c > 15.0)
+        min_run = max(2, GRID_HZ // 10)
+        out["lockup_front"] = float(_runs(spike[:, :2].any(axis=1), min_run))
+        out["lockup_rear"] = float(_runs(spike[:, 2:].any(axis=1), min_run))
     rate = np.gradient(s.throttle) * GRID_HZ
     applying = moving & (s.throttle > 0.2) & (s.throttle < 0.8) & (rate > 0.05)
     if applying.sum() > 5:

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from autosetup.metrics.balance import Cell, PhaseObs, cells, corner_mix, normalise
-from autosetup.metrics.corners import BANDS, PHASES
+from autosetup.metrics.corners import BANDS, PHASES, assign
 
 CELLS = tuple(f"{ph}_{b}" for ph in PHASES for b in BANDS)
 
@@ -61,15 +61,32 @@ def usage_of(obs: list[PhaseObs]) -> dict[str, dict[str, float]]:
 
 
 def passes_of(store, rids: list[int]) -> list[tuple[int, int, PhaseObs]]:
-    """(recording id, lap seq, observation) of these recordings."""
+    """(recording id, lap seq, observation) of these recordings, each numbered by the
+    track corner it overlaps most (corners.assign against the layout's voted corners).
+    A pass that overlaps none is left out. Rows saved without a position (a recording
+    whose telemetry file is gone, from before positions were saved) keep their old
+    number, moved below zero so it can't be taken for a voted one."""
     if not rids:
         return []
-    cur = store.con.execute("select * from corner_passes where recording_id in (select unnest(?::INTEGER[]))", [rids])
+    cur = store.con.execute(
+        """select p.*, coalesce(r.track_layout, r.track) as layout from corner_passes p
+           join recordings r on r.id = p.recording_id where p.recording_id in (select unnest(?::INTEGER[]))""",
+        [rids])
     cols = [d[0] for d in cur.description]
+    track: dict[str, list] = {}
     out = []
     for row in cur.fetchall():
         d = dict(zip(cols, row))
-        rid, seq = d.pop("recording_id"), d.pop("seq")
+        rid, seq, layout = d.pop("recording_id"), d.pop("seq"), d.pop("layout")
+        if d["d_start"] is None:
+            d["corner"] = -1 - d["corner"]
+        else:
+            if layout not in track:
+                track[layout] = store.track_corners(layout)
+            c = assign(d["d_start"], d["d_end"], d["direction"], track[layout])
+            if c is None:
+                continue
+            d["corner"] = c
         out.append((rid, seq, PhaseObs(**d)))
     return out
 

@@ -19,14 +19,16 @@ crown_band = 3.0
 hot_pressure = []
 # Peak brake disc temperature (brake ducts). GT3 data: front p50 ~630, p90 ~790.
 brake_temp = [450.0, 850.0]
-# Platform: time per lap with a front corner under 1 mm, and the 1st-percentile ride
-# height below which we raise the car. Above `lower_above_mm` (and never bottoming) the
+# Platform: time per lap with a front corner (or, counted apart, a rear one) under 1 mm,
+# and the 1st-percentile ride height below which we raise the car. Above `lower_above_mm` (and never bottoming) the
 # car may come down a step when pace matters. GT3 front p90 ~27 mm.
 bottoming_s = 0.2
 min_ride_height_mm = 2.0
 lower_above_mm = 25.0
 # Front ride height always at its lowest setting: moved there, never raised, never searched.
 front_rh_at_min = false
+# Hybrid regen always at its maximum setting: moved there, never lowered, never searched.
+regen_at_max = false
 # Third spring (prototypes): bottoming while the axle's third spring is on its packers
 # less than this share of the lap → a packer step in, instead of a higher ride height
 # (which costs downforce). How much packer suits you otherwise is left to the model.
@@ -40,35 +42,13 @@ tc_s_per_lap = 5.0
 # exit than this per lap count as none.
 tc_event_long_s = 0.15
 countersteer_none_per_lap = 0.5
-# Balance per cell: corner speed (slow < 108 km/h <= medium <= 162 km/h < fast) × corner
-# phase (entry on the brakes, mid, exit on the power). understeer_<cell>: the understeer
-# angle (deg) above which a stint counts as understeering there when you haven't rated it,
-# the p75 of the GT3 laps (119, mostly pro setups); the balance you like (no ratings yet)
-# sits a rating point below it, and Car feel moves it from there. rating_point_<cell>: how
-# far one point of your rating moves the angle, the p75 → p90 step (at least 0.08°: a
-# smaller step would read measurement noise as whole points).
-understeer_slow_entry = 0.77
-understeer_slow_mid = 1.94
-understeer_slow_exit = 0.35
-understeer_medium_entry = 0.43
-understeer_medium_mid = 2.0
-understeer_medium_exit = 0.5
-understeer_fast_entry = 0.31
-understeer_fast_mid = 1.34
-understeer_fast_exit = 0.32
-rating_point_slow_entry = 0.42
-rating_point_slow_mid = 0.37
-rating_point_slow_exit = 0.42
-rating_point_medium_entry = 0.34
-rating_point_medium_mid = 0.35
-rating_point_medium_exit = 0.11
-rating_point_fast_entry = 0.08
-rating_point_fast_mid = 0.33
-rating_point_fast_exit = 0.08
 # Brake pressure (% of the car's maximum) where it's comfortable without ABS. Inside it,
-# pressure rises a step per stint until you flag too many lock-ups, then stays a step
-# under that. Empty = leave brake pressure alone (cars with ABS).
+# pressure is left alone unless you're flat-topping >= 98 % brake for more than
+# brake_sat_raise of heavy braking (step up) or locking the fronts / flagging lockups
+# (step down, capped per track). Empty = leave brake pressure alone (cars with ABS).
 brake_pressure_pct = []
+brake_sat_raise = 0.35
+lockup_per_lap = 1.0
 # Corner passes (metrics/corners.py): a corner is low or high speed by its apex speed.
 band_split_kmh = 140.0
 # Car feel buttons (feel/target.py): one press moves the target this many degrees of
@@ -95,8 +75,13 @@ step_deg_ride_height = 0.05 # per mm: 2 mm of rake ≈ 0.1° in fast corners
 step_deg_toe = 0.05         # per 0.1°
 step_deg_preload = 0.05     # per 10 Nm
 step_deg_brake_bias = 0.08  # per 1 %, at turn-in
+step_deg_brake_migration = 0.05  # per 0.5 % F: shifts bias forward at peak braking
 step_deg_damper = 0.03      # slow damper click
 step_deg_diff_ramp = 0.08   # diff ramp step
+# Dynamic ride-height sensitivity to one third-spring click (mm/click): stiffer third
+# spring holds the axle higher under aero load, more on straights than in fast corners.
+third_spring_rh_mm = 0.5
+third_spring_corner_rh_mm = 0.3
 # A setting without a step size above, or with a unit its labels don't show: its whole
 # range moves the cells this much at weight 1.
 prior_full_range_deg = 0.6
@@ -142,35 +127,40 @@ model_min_setups = 3
 front_rh_at_min = true  # a GT3 always runs the front at the minimum
 
 [Hyper]
-brake_temp = [400.0, 1000.0]
+regen_at_max = true  # always harvest maximum regen; balance braking with bias and migration
+# Calibrated across Genesis (Lusail), Peugeot 9X8 (Spa), and BMW M Hybrid V8 (Spa).
+# Brakes peak cooler than GT3 and hybrid regen offloads the rear discs further:
+# front ~430–590 °C, rear ~370–490 °C (LMH cooler at rear than LMDh).
+brake_temp = [350.0, 1000.0]
+brake_temp_front = [380.0, 1000.0]
+brake_temp_rear = [300.0, 1000.0]
+# Hypercars run less negative camber at the front (~−1.0° to −1.5°); rear spread reaches ~10.7 °C.
+spread_front = [3.0, 10.0]
+spread_rear = [3.0, 12.0]
+# Traction control works more on every lap (Spa 6–8.4 s, Lusail median ~11 s).
+tc_s_per_lap = 12.0
 fuel_s_per_l = 0.035
 brake_pressure_pct = [93.0, 100.0]  # depends on the car; "too much brake pressure" finds where
-full_throttle_ref = 0.48  # a guess from one partial lap (Spa); your own median takes over at 3 tracks
+# Lusail 0.48, Spa 0.61 -> midpoint 0.55 until 3+ layouts are driven.
+full_throttle_ref = 0.55
+band_split_kmh = 150.0  # more downforce: its fast corners start higher (as LMP2)
+feel_step_deg = 0.3
+feel_tolerance_deg = 0.2
+# Off-kerb damper shaft velocity p85 sits at 12.5–22.5 mm/s across both Peugeot and BMW.
+damper_knee_mm_s = 22.0
+# Free (un-packered) rear third-spring clicks on BMW Spa moved RH ~0.5 mm/click straight & corner.
+third_spring_rh_mm = 0.5
+third_spring_corner_rh_mm = 0.5
 drag_k_typ = 9e-4
-lift_c_typ = 1.5e-4
+lift_c_typ = 1.0e-4  # BMW 7.8–8.6e-5, Peugeot 9.5e-5–1.09e-4
+aero_drag_per_wing = 0.09  # Peugeot 9.5%, BMW 8.2% of drag_k_typ across full wing range
+aero_lift_per_wing = 0.25
+aero_lift_per_mm_rh = -0.015
+aero_lift_per_mm_rake = 0.012
+aero_balance_per_mm_rake = -0.03
 
 [LMP2]
 brake_temp = [400.0, 1000.0]
-# Its angles run differently from a GT3's (longer car, more downforce): p75 and p75 → p90
-# of its laps (35, one track: rough).
-understeer_slow_entry = 3.31
-understeer_slow_mid = 5.03
-understeer_slow_exit = 0.7
-understeer_medium_entry = 0.48
-understeer_medium_mid = 2.67
-understeer_medium_exit = 0.58
-understeer_fast_entry = 0.08
-understeer_fast_mid = 2.6
-understeer_fast_exit = 0.35
-rating_point_slow_entry = 0.43
-rating_point_slow_mid = 0.71
-rating_point_slow_exit = 0.68
-rating_point_medium_entry = 0.17
-rating_point_medium_mid = 0.24
-rating_point_medium_exit = 0.33
-rating_point_fast_entry = 0.08
-rating_point_fast_mid = 0.12
-rating_point_fast_exit = 0.08
 brake_pressure_pct = [90.0, 94.0]
 full_throttle_ref = 0.49  # a guess from one track (Barcelona); your own median takes over at 3 tracks
 band_split_kmh = 150.0  # more downforce: its fast corners start higher
@@ -178,3 +168,13 @@ feel_step_deg = 0.3  # its angles run larger
 feel_tolerance_deg = 0.2
 drag_k_typ = 9e-4
 lift_c_typ = 1.5e-4
+
+[LMP2_ELMS]
+# ELMS Oreca 07 runs higher power and the unrestricted high-downforce aero kit compared to
+# WEC LMP2 BoP; inherits [LMP2] brake bands and overrides the aero baseline.
+drag_k_typ = 9.5e-4
+lift_c_typ = 1.7e-4
+aero_lift_per_wing = 0.24
+aero_drag_per_wing = 0.18
+aero_balance_per_wing = 0.55
+damper_knee_mm_s = 40.0

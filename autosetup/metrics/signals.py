@@ -34,7 +34,10 @@ GRID_HZ = 50
 # 2024 LMGT3 comparison (Aston Martin, Ferrari, Lamborghini, Porsche), BMW's M4 GT3 media
 # guide, Corvette Racing / TF Sport (Z06 GT3.R), McLaren's 720S GT3, Ford's Mustang GT3,
 # Lexus/Toyota (RC F GT3, 2,730 mm as the road RC F), iRacing's Mercedes-AMG GT3 manual
-# (2,630 mm).
+# (2,630 mm). Hypercars: the LMDh cars share 3,148 mm (Porsche's 963 data sheet, Wayne
+# Taylor Racing's Cadillac specs, the same for the BMW, Lamborghini and the Oreca-based
+# Genesis); Peugeot's 9X8 is 3,045 mm. Ferrari, Toyota and Aston Martin publish none and
+# stay on the class figure (the LMH maximum is 3,150 mm).
 # A model without a figure here falls back to its class's rough one.
 WHEELBASE = {"GT3": 2.65, "GTE": 2.70, "LMP2": 3.00, "LMP3": 2.85, "Hyper": 3.15}
 MODEL_WHEELBASE = {
@@ -48,6 +51,12 @@ MODEL_WHEELBASE = {
     "McLaren_720S_LMGT3_Evo": 2.670,
     "Mercedes_AMG_GT3": 2.630,
     "Porsche_911_GT3_R_LMGT3": 2.507,
+    "BMW_M_Hybrid": 3.148,
+    "Cadillac_V_lmdh": 3.148,
+    "Genesis_GMR001": 3.148,
+    "Lamborghini_SC63": 3.148,
+    "Peugeot_9x8": 3.045,
+    "Porsche_963": 3.148,
 }
 # Livery name → car model, from the saved setups the store has matched (car_classes).
 # A recording only names its livery; the store keeps this current (Store.car_models).

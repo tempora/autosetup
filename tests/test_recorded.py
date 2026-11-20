@@ -74,17 +74,21 @@ def test_less_rear_wing_reads_less_understeer(read):
     assert sum(z) / np.sqrt(len(z)) > 1.5  # Stouffer
 
 
-def test_store_keeps_one_corner_map_per_layout(recorded, tmp_path):
-    """Two stints at the same layout share corner ids; re-importing replaces, not adds."""
+def test_store_keeps_every_pass_and_numbers_them_by_the_track(recorded, tmp_path):
+    """Two stints at the same layout: no pass is lost at import, most corner numbers are
+    shared once read, and re-importing replaces, not adds."""
+    from autosetup.feel.measure import passes_of
     from autosetup.store import Store
 
     store = Store(tmp_path / "db.duckdb")
     a = store.import_recording(recorded("interlagos_arb_r3"))
     b = store.import_recording(recorded("interlagos_arb_r5"))
-    layouts = store.con.execute("select layout, count(*) from corners group by 1").fetchall()
-    assert len(layouts) == 1 and layouts[0][1] >= 8
-    ids = {rid: {c for (c,) in store.con.execute(
-        "select distinct corner from corner_passes where recording_id = ?", [rid]).fetchall()} for rid in (a, b)}
+    for rid, name in ((a, "interlagos_arb_r3"), (b, "interlagos_arb_r5")):
+        kept = store.con.execute("select count(*) from corner_passes where recording_id = ?", [rid]).fetchone()[0]
+        assert kept == len(read_recording(recorded(name)).obs.passes)
+    assert store.con.execute("select count(*) from corner_passes where d_start is null").fetchone()[0] == 0
+    ids = {rid: {o.corner for r, _, o in passes_of(store, [a, b]) if r == rid} for rid in (a, b)}
+    assert len(ids[a] | ids[b]) >= 8
     assert len(ids[a] & ids[b]) >= 0.8 * len(ids[a] | ids[b])
     n = store.con.execute("select count(*) from corner_passes").fetchone()[0]
     store._delete_recording(b)

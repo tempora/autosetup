@@ -19,7 +19,8 @@ import numpy as np
 
 from autosetup.lmu.builds import current_build, current_filter
 from autosetup.lmu.setup_space import CarSetup
-from autosetup.metrics.balance import PhaseObs, cells, normalise
+from autosetup.feel.measure import passes_of
+from autosetup.metrics.balance import cells, normalise
 from autosetup.sim.aero import AeroMap, Platform, Stint, drag_deltas, layout_car, lift_deltas, shrink
 from autosetup.sim.extract import STEP_M, straights_of
 from autosetup.sim.lapsim import Car, Result, Track, fit_eta, simulate
@@ -60,14 +61,38 @@ def wing_share(setup: CarSetup) -> float:
     return 0.0
 
 
-def stints_of(store, signature: str, layout: str | None = None) -> list[StintData]:
-    """The current build's stints of a car model (at one layout, or all)."""
+def _motor_map(setup: CarSetup) -> int | None:
+    p = setup.params.get("VM_ELECTRIC_MOTOR_MAP")
+    return p.value if p is not None and p.adjustable else None
+
+
+def _grouped_drag_deltas(stints: list[StintData]) -> dict[int, tuple[float, float]]:
+    """Compute drag deltas only between stints sharing the same hybrid electric motor map,
+    so ERS deployment changes aren't misread as aerodynamic drag."""
+    groups: dict[int | None, list[StintData]] = {}
+    for s in stints:
+        groups.setdefault(_motor_map(s.setup), []).append(s)
+    out: dict[int, tuple[float, float]] = {}
+    for group in groups.values():
+        if len(group) >= 2:
+            out.update(drag_deltas([row for s in group for row in s.straights]))
+    return out
+
+
+def stints_of(store, signature: str, layout: str | None = None, car_class: str | None = None) -> list[StintData]:
+    """The current build's stints of a car model (at one layout, or all), optionally
+    scoped to one ``car_class`` so different series/BoP specs (e.g. LMP2 vs LMP2_ELMS)
+    never pool their aero or drive envelopes."""
     from autosetup.analysis import laps_of
 
     cond, params = current_filter(store)
-    sql = (f"select r.id, r.file_name, r.setup_json, r.rh_front_fast, r.rh_rear_fast, coalesce(r.track_layout, r.track) "
+    sql = (f"select r.id, r.file_name, r.setup_json, r.rh_front_fast, r.rh_rear_fast, "
+           f"r.rh_front_corner, r.rh_rear_corner, coalesce(r.track_layout, r.track) "
            f"from recordings r where r.car_signature = ? and {cond}")
     args = [signature, *params]
+    if car_class:
+        sql += " and r.car_class = ?"
+        args.append(car_class)
     if layout is not None:
         sql += " and coalesce(r.track_layout, r.track) = ?"
         args.append(layout)
@@ -94,9 +119,9 @@ def stints_of(store, signature: str, layout: str | None = None) -> list[StintDat
         prof[rid] = (np.array(json.loads(kappa)), np.array(json.loads(speed)), float(lap_time), json.loads(sectors))
     laps = laps_of(store, rids)
     out = []
-    for rid, name, sj, rhf, rhr, _ in rows:
+    for rid, name, sj, rhf, rhr, rhfc, rhrc, _ in rows:
         setup = CarSetup.from_json(json.loads(sj))
-        platform = Platform(wing_share(setup), rhf, rhr) if rhf is not None and rhr is not None else None
+        platform = Platform(wing_share(setup), rhf, rhr, rhfc, rhrc) if rhf is not None and rhr is not None else None
         out.append(StintData(rid, name, setup, platform, env.get(rid, []), st.get(rid, []), tr.get(rid, []),
                              prof.get(rid), [lap["seq"] for lap in laps[rid] if lap["clean"]]))
     return out
@@ -115,8 +140,9 @@ class LayoutModel:
     stints: list[StintData]
 
     @classmethod
-    def build(cls, store, signature: str, layout: str, knowledge: dict) -> "LayoutModel | None":
-        stints = [s for s in stints_of(store, signature, layout) if s.envelope]
+    def build(cls, store, signature: str, layout: str, knowledge: dict,
+              car_class: str | None = None) -> "LayoutModel | None":
+        stints = [s for s in stints_of(store, signature, layout, car_class) if s.envelope]
         with_profile = [s for s in stints if s.profile is not None]
         if not with_profile:
             return None
@@ -126,11 +152,17 @@ class LayoutModel:
             return None
         kappa, _, _, sectors = min(with_profile, key=lambda s: s.profile[2]).profile
         track = Track(STEP_M, kappa, tuple(sectors), tuple(d1 for _, d1 in straights_of(kappa)))
-        drag = drag_deltas([row for s in stints for row in s.straights])
+        drag = _grouped_drag_deltas(stints)
         lift = shrink(lift_deltas({s.rid: s.envelope for s in stints}, base.mu), LIFT_SHRINK * lift_typ)
         platforms = [s.platform for s in stints if s.platform is not None]
-        mean = (Platform(float(np.mean([p.wing for p in platforms])), float(np.mean([p.rh_front for p in platforms])),
-                         float(np.mean([p.rh_rear for p in platforms]))) if platforms else None)
+        if platforms:
+            cf = [p.rh_front_corner for p in platforms if p.rh_front_corner is not None]
+            cr = [p.rh_rear_corner for p in platforms if p.rh_rear_corner is not None]
+            mean = Platform(float(np.mean([p.wing for p in platforms])), float(np.mean([p.rh_front for p in platforms])),
+                            float(np.mean([p.rh_rear for p in platforms])),
+                            float(np.mean(cf)) if cf else None, float(np.mean(cr)) if cr else None)
+        else:
+            mean = None
         model = cls(signature, layout, track, base, 1.0, mean, drag, lift, stints)
         model.eta = fit_eta([(Track(STEP_M, s.profile[0], tuple(s.profile[3])), model.stint_car(s.rid), s.profile[2])
                              for s in with_profile])
@@ -155,9 +187,7 @@ class LayoutModel:
 def stint_balance(store, rid: int) -> tuple[float, float] | None:
     """High- minus low-speed understeer (deg, se), pooled over the phases: the aero balance
     shows here."""
-    cols = [d[0] for d in store.con.execute("select * from corner_passes limit 0").description]
-    rows = store.con.execute("select * from corner_passes where recording_id = ?", [rid]).fetchall()
-    obs = [PhaseObs(**{k: v for k, v in zip(cols, r) if k not in ("recording_id", "seq")}) for r in rows]
+    obs = [o for _, _, o in passes_of(store, [rid])]
     c = cells(normalise(obs))
     diffs = [(c[(ph, "high")].mean - c[(ph, "low")].mean, c[(ph, "high")].se ** 2 + c[(ph, "low")].se ** 2)
              for ph in ("entry", "mid", "exit") if (ph, "high") in c and (ph, "low") in c]
@@ -167,14 +197,16 @@ def stint_balance(store, rid: int) -> tuple[float, float] | None:
     return float(np.sum(w * np.array([d for d, _ in diffs])) / w.sum()), float(np.sqrt(1 / w.sum()))
 
 
-def aero_map(store, signature: str, knowledge: dict, refit: bool = False) -> AeroMap:
+def aero_map(store, signature: str, knowledge: dict, refit: bool = False,
+             car_class: str | None = None) -> AeroMap:
     """The car's aero map for the current build, fitted over all its layouts (and kept)."""
     store.con.execute(SCHEMA)
     build = current_build(store) or ""
-    stints = [s for s in stints_of(store, signature) if s.platform is not None]
+    cache_key = f"{signature}|{car_class}" if car_class else signature
+    stints = [s for s in stints_of(store, signature, car_class=car_class) if s.platform is not None]
     if not refit:
         row = store.con.execute("select data, stints from aero_maps where car_signature = ? and game_build = ?",
-                                [signature, build]).fetchone()
+                                [cache_key, build]).fetchone()
         if row and row[1] == len(stints):
             return AeroMap.from_json(json.loads(row[0]))
     layouts = dict(store.con.execute(
@@ -183,7 +215,7 @@ def aero_map(store, signature: str, knowledge: dict, refit: bool = False) -> Aer
     evidence = []
     for layout in sorted(set(layouts.values())):
         mine = [s for s in stints if layouts[s.rid] == layout]
-        drag = drag_deltas([row for s in mine for row in s.straights])
+        drag = _grouped_drag_deltas(mine)
         base = layout_car([s.envelope for s in mine if s.envelope], float(knowledge["lift_c_typ"]),
                           float(knowledge["drag_k_typ"]))
         lift = lift_deltas({s.rid: s.envelope for s in mine}, base.mu) if base is not None else {}
@@ -191,7 +223,7 @@ def aero_map(store, signature: str, knowledge: dict, refit: bool = False) -> Aer
             evidence.append(Stint(layout, s.platform, drag.get(s.rid), lift.get(s.rid), stint_balance(store, s.rid)))
     amap = AeroMap.fit(evidence, knowledge)
     store.con.execute("insert or replace into aero_maps values (?, ?, ?, ?, ?)",
-                      [signature, build, json.dumps(amap.to_json()), len(stints),
+                      [cache_key, build, json.dumps(amap.to_json()), len(stints),
                        datetime.now(timezone.utc).replace(tzinfo=None)])
     return amap
 

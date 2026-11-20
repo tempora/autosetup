@@ -25,7 +25,7 @@ from autosetup.lmu.svm import best_match, read_settings
 from autosetup.lmu.telemetry import RecordingBusy, Session, in_progress, list_recordings
 from autosetup.lmu.validate import match_recordings
 from autosetup.metrics import METRICS_VERSION, compute_recording
-from autosetup.metrics.corners import Corner, remap
+from autosetup.metrics.corners import TrackCorner, track_corners
 from autosetup.metrics.observations import Observations, observe_recording
 from autosetup.metrics.signals import livery_models, load_signals, set_car_models
 
@@ -115,21 +115,14 @@ create table if not exists track_maps (
 alter table recordings add column if not exists metrics_version integer;
 alter table ratings add column if not exists lockups boolean;  -- you flagged too much brake pressure
 alter table ratings add column if not exists undrivable boolean;  -- a short stint: you couldn't drive it (false: it was fine)
+alter table ratings add column if not exists kerbs_unstable boolean;  -- you flagged instability over kerbs
 alter table recordings add column if not exists game_build varchar;   -- lmu/builds.py
 alter table recordings add column if not exists dam_log varchar;      -- DAM .ld file merged in, if any
 alter table recordings add column if not exists load_source varchar;  -- tyre_load (DAM) | spring
 alter table recordings add column if not exists kerb_source varchar;  -- surface | spike
--- One corner map per layout, so passes from every recording share corner ids.
-create table if not exists corners (
-    layout        varchar,
-    corner        integer,
-    direction     integer,               -- +1 right, -1 left
-    d_start       double,
-    d_apex        double,
-    d_end         double,
-    v_apex        double,
-    primary key (layout, corner)
-);
+-- The stored corner list per layout is gone: the track's corners are voted from the
+-- passes' own corners when they are read (metrics/corners.py).
+drop table if exists corners;
 -- metrics/balance.py: one row per lap, corner and phase.
 create table if not exists corner_passes (
     recording_id  integer,
@@ -196,8 +189,14 @@ create table if not exists sim_traps (
 alter table corner_passes add column if not exists brake double;     -- mean brake pedal over the phase
 alter table corner_passes add column if not exists throttle double;
 alter table corner_passes add column if not exists coast double;
-alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed
+-- Where the recording's own corner of the pass is; corner is the recording's own number.
+alter table corner_passes add column if not exists d_start double;
+alter table corner_passes add column if not exists d_end double;
+alter table corner_passes add column if not exists direction integer;
+alter table recordings add column if not exists rh_front_fast double;  -- mm, at speed on straights
 alter table recordings add column if not exists rh_rear_fast double;
+alter table recordings add column if not exists rh_front_corner double;  -- mm, in fast corners
+alter table recordings add column if not exists rh_rear_corner double;
 create table if not exists kerb_events (
     recording_id  integer,
     seq           integer,
@@ -418,29 +417,30 @@ class Store:
         cols = ", ".join(f"unnest(${i + 1}::{t}[])" for i, t in enumerate(types))
         self.con.execute(f"insert into {table} select {cols}", [list(c) for c in zip(*rows)])
 
-    def corner_map(self, layout: str) -> list[Corner]:
+    def track_corners(self, layout: str) -> list[TrackCorner]:
+        """The layout's corners, voted from the own corners of its recordings that have a
+        complete lap outside the pits (a partial lap can't shape the track)."""
         rows = self.con.execute(
-            "select corner, direction, d_start, d_apex, d_end, v_apex from corners where layout = ? order by corner",
+            """select distinct p.recording_id, p.d_start, p.d_end, p.direction
+               from corner_passes p join recordings r on r.id = p.recording_id
+               where coalesce(r.track_layout, r.track) = ? and p.d_start is not null
+               and exists (select 1 from laps l where l.recording_id = r.id and l.complete and not l.in_pits)""",
             [layout]).fetchall()
-        return [Corner(*r) for r in rows]
-
-    def canonical_corners(self, layout: str, found: list[Corner]) -> dict[int, int]:
-        """This map's corner ids in the layout's map (the first recording's, if it's new)."""
-        known = self.corner_map(layout)
-        if not known:
-            self._insert("corners", ("VARCHAR", "INTEGER", "INTEGER", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE"),
-                         [(layout, c.id, c.direction, c.d_start, c.d_apex, c.d_end, c.v_apex) for c in found])
-            return {c.id: c.id for c in found}
-        return remap(found, known)
+        lists: dict[int, list[tuple[float, float, int]]] = {}
+        for rid, s, e, d in rows:
+            lists.setdefault(rid, []).append((s, e, d))
+        return track_corners(list(lists.values()))
 
     def _insert_observations(self, rid: int, layout: str, obs: Observations) -> None:
-        ids = self.canonical_corners(layout, obs.corners)
+        """Every pass, with the recording's own corner number and where that corner is."""
         self._insert("corner_passes", ("INTEGER", "INTEGER", "INTEGER", "VARCHAR", "VARCHAR", "INTEGER", "DOUBLE",
                                        "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE",
-                                       "DOUBLE", "DOUBLE", "BOOLEAN", "DOUBLE", "DOUBLE", "DOUBLE"),
-                     [(rid, seq, ids[o.corner], o.phase, o.band, o.n, o.v_min, o.v_mean, o.a_lat, o.ua, o.ua_var,
+                                       "DOUBLE", "DOUBLE", "BOOLEAN", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE",
+                                       "INTEGER"),
+                     [(rid, seq, o.corner, o.phase, o.band, o.n, o.v_min, o.v_mean, o.a_lat, o.ua, o.ua_var,
                        _num(o.yaw_err), o.steer_rate, o.throttle_rate, o.countersteer_s, o.turnin_gain, o.slip_fr,
-                       o.kerb, o.brake, o.throttle, o.coast) for seq, o in obs.passes if o.corner in ids])
+                       o.kerb, o.brake, o.throttle, o.coast, o.d_start, o.d_end, o.direction)
+                      for seq, o in obs.passes])
         rows = []
         for ls in obs.suspension:
             nz = np.flatnonzero(ls.hist)
@@ -469,8 +469,9 @@ class Store:
         self._insert("sim_envelope", ("INTEGER", "VARCHAR", "DOUBLE", "INTEGER", "DOUBLE"),
                      [(rid, *row) for row in sim.envelope])
         self._insert("sim_traps", ("INTEGER", "INTEGER", "DOUBLE", "DOUBLE"), [(rid, *row) for row in sim.traps])
-        self.con.execute("update recordings set rh_front_fast = ?, rh_rear_fast = ? where id = ?",
-                         [sim.rh_front, sim.rh_rear, rid])
+        self.con.execute(
+            "update recordings set rh_front_fast = ?, rh_rear_fast = ?, rh_front_corner = ?, rh_rear_corner = ? where id = ?",
+            [sim.rh_front, sim.rh_rear, sim.rh_front_corner, sim.rh_rear_corner, rid])
 
     def recompute_metrics(self, telemetry_dir: Path, force: bool = False,
                           lock: threading.RLock | None = None, workers: int = 1) -> tuple[int, list[str]]:
@@ -638,12 +639,12 @@ class Store:
 
     # -- ratings and settings --------------------------------------------------------
     def set_rating(self, file_name: str, note: str | None = None, lockups: bool | None = None,
-                   undrivable: bool | None = None) -> None:
-        """What you said about a stint: too much brake pressure, couldn't drive it, a note."""
+                   undrivable: bool | None = None, kerbs_unstable: bool | None = None) -> None:
+        """What you said about a stint: too much brake pressure, couldn't drive it, kerbs, a note."""
         self.con.execute(
-            """insert or replace into ratings (file_name, note, rated_at, lockups, undrivable)
-               values (?, ?, ?, ?, ?)""",
-            [file_name, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups, undrivable])
+            """insert or replace into ratings (file_name, note, rated_at, lockups, undrivable, kerbs_unstable)
+               values (?, ?, ?, ?, ?, ?)""",
+            [file_name, note, datetime.now(timezone.utc).replace(tzinfo=None), lockups, undrivable, kerbs_unstable])
 
     def rating(self, file_name: str) -> dict | None:
         cur = self.con.execute("select * from ratings where file_name = ?", [file_name])
