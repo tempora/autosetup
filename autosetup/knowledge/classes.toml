@@ -153,47 +153,53 @@ front_rh_at_min = true  # a GT3 always runs the front at the minimum
 
 [Hyper]
 regen_at_max = true  # always harvest maximum regen; balance braking with bias and migration
-# Rough: from 7 laps of one car at one track (Genesis, Lusail), on a published setup.
-# Its brakes peak cooler than a GT3's and hybrid regen offloads the rear discs further:
-# front p10–p90 ~430–520, rear ~370–450.
+# Calibrated across Genesis (Lusail), Peugeot 9X8 (Spa), and BMW M Hybrid V8 (Spa).
+# Brakes peak cooler than GT3 and hybrid regen offloads the rear discs further:
+# front ~430–590 °C, rear ~370–490 °C (LMH cooler at rear than LMDh).
 brake_temp = [350.0, 1000.0]
 brake_temp_front = [380.0, 1000.0]
 brake_temp_rear = [300.0, 1000.0]
-# Hypercars run less negative camber at both axles (~−1.0° to −1.5°): spread p10–p90 ~3–10.
+# Hypercars run less negative camber at the front (~−1.0° to −1.5°); rear spread reaches ~10.7 °C.
 spread_front = [3.0, 10.0]
-spread_rear = [3.0, 10.0]
-# Traction control works more on every lap (p10 ~5, median ~11, p90 ~12 s).
+spread_rear = [3.0, 12.0]
+# Traction control works more on every lap (Spa 6–8.4 s, Lusail median ~11 s).
 tc_s_per_lap = 12.0
 fuel_s_per_l = 0.035
 brake_pressure_pct = [93.0, 100.0]  # depends on the car; "too much brake pressure" finds where
-# Lusail gave 0.48, and Lusail is the lowest of the GT3 tracks too (0.55 against its 0.60).
-full_throttle_ref = 0.52
+# Lusail 0.48, Spa 0.61 -> midpoint 0.55 until 3+ layouts are driven.
+full_throttle_ref = 0.55
 band_split_kmh = 150.0  # more downforce: its fast corners start higher (as LMP2)
-# Longer wheelbase and ground-effect downforce shift the understeer angle baseline well
-# away from GT3; seeded from prototype (LMP2) curves until a larger Hyper sample is gathered.
-understeer_slow_entry = 3.0
-understeer_slow_mid = 4.6
-understeer_slow_exit = 0.7
-understeer_medium_entry = 0.5
-understeer_medium_mid = 2.5
-understeer_medium_exit = 0.55
-understeer_fast_entry = 0.1
-understeer_fast_mid = 2.4
-understeer_fast_exit = 0.35
-rating_point_slow_entry = 0.43
-rating_point_slow_mid = 0.65
-rating_point_slow_exit = 0.6
-rating_point_medium_entry = 0.2
-rating_point_medium_mid = 0.25
-rating_point_medium_exit = 0.3
-rating_point_fast_entry = 0.08
-rating_point_fast_mid = 0.15
-rating_point_fast_exit = 0.08
+# p75 and p75 → p90 across clean Spa laps (Peugeot 9X8 LMH + BMW M Hybrid V8 LMDh) with
+# true road-wheel steering ratio.
+understeer_slow_entry = 1.09
+understeer_slow_mid = 2.37
+understeer_slow_exit = 0.35
+understeer_medium_entry = 1.04
+understeer_medium_mid = 1.71
+understeer_medium_exit = 0.36
+understeer_fast_entry = 0.61
+understeer_fast_mid = 0.62
+understeer_fast_exit = 0.47
+rating_point_slow_entry = 0.59
+rating_point_slow_mid = 0.74
+rating_point_slow_exit = 0.74
+rating_point_medium_entry = 0.36
+rating_point_medium_mid = 0.37
+rating_point_medium_exit = 0.53
+rating_point_fast_entry = 0.39
+rating_point_fast_mid = 0.33
+rating_point_fast_exit = 0.19
 feel_step_deg = 0.3
 feel_tolerance_deg = 0.2
-damper_knee_mm_s = 40.0  # stiffer prototype suspension runs lower shaft velocities off kerbs
+# Off-kerb damper shaft velocity p85 sits at 12.5–22.5 mm/s across both Peugeot and BMW.
+damper_knee_mm_s = 22.0
+# Free (un-packered) rear third-spring clicks on BMW Spa moved RH ~0.5 mm/click straight & corner.
+third_spring_rh_mm = 0.5
+third_spring_corner_rh_mm = 0.5
 drag_k_typ = 9e-4
-lift_c_typ = 1.5e-4
+lift_c_typ = 1.0e-4  # BMW 7.8–8.6e-5, Peugeot 9.5e-5–1.09e-4
+aero_drag_per_wing = 0.09  # Peugeot 9.5%, BMW 8.2% of drag_k_typ across full wing range
+aero_lift_per_wing = 0.25
 aero_lift_per_mm_rh = -0.015
 aero_lift_per_mm_rake = 0.012
 aero_balance_per_mm_rake = -0.03

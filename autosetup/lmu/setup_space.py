@@ -126,8 +126,16 @@ class CarSetup:
 
     @property
     def steering_ratio(self) -> float | None:
-        """Steering ratio from the steer-lock label: '560 (16.5) deg', '516 deg(19.7 )' and
-        '524deg (18.5deg)' all give the number in brackets."""
+        """Steering ratio (steering-wheel angle / road-wheel angle) from the steer-lock label.
+
+        LMU labels give lock-to-lock steering-wheel degrees and one-way road-wheel lock in
+        brackets: '560 (16.5) deg', '516 deg(19.7 )', '524deg (18.5deg)', '527 (20) deg'.
+        """
         p = self.params.get("VM_STEER_LOCK")
-        m = re.search(r"\(\s*([\d.]+)\s*(?:deg)?\s*\)", p.text) if p else None
-        return float(m.group(1)) if m else None
+        if not p or not p.number:
+            return None
+        m = re.search(r"\(\s*([\d.]+)\s*(?:deg)?\s*\)", p.text)
+        if not m:
+            return None
+        wheel_lock = float(m.group(1))
+        return (p.number / 2.0) / wheel_lock if wheel_lock > 0 else None
