@@ -156,6 +156,41 @@ def test_arb_kerb_prior_p90_aggregation_and_kerbs_unstable_rating():
     m = dampers.stint_metrics(st, 1, load_knowledge("GT3"))
     assert m["peak_load"][0] > 2.0
 
-    # kerbs_unstable persists on ratings.
-    st.set_rating("monza.duckdb", kerbs_unstable=True)
-    assert st.rating("monza.duckdb")["kerbs_unstable"] is True
+def test_kerbs_unstable_end_to_end_softens_dampers_and_blocks_stiffening(recorded, tmp_path):
+    """End-to-end Advisor.plan() with kerbs_unstable ON must still propose softening
+    damper moves (not reject all candidates via kerb_ok) and must not stiffen ARBs/springs."""
+    from autosetup.proposals import Advisor
+    from autosetup.store import Store
+
+    store = Store(tmp_path / "db.duckdb")
+    rid = store.import_recording(recorded("interlagos_wing_11"))
+    rec = store.recording(rid)
+    adv = Advisor(store, None)
+
+    pr_off, plan_off = adv.plan(rid)
+    store.set_rating(rec["file_name"], kerbs_unstable=True)
+    pr_on, plan_on = adv.plan(rid)
+
+    assert plan_on.dampers is not None
+    assert plan_on.dampers["candidates"] > 0
+    assert plan_on.dampers["rejected_kerb"] < plan_on.dampers["candidates"]
+
+    damper_moves_on = [c for c in pr_on.changes if c.group == "dampers"]
+    assert damper_moves_on, f"kerbs_unstable=True produced no damper moves (plan={plan_on.dampers})"
+    assert all(c.delta < 0 for c in damper_moves_on if "fast" in c.name.lower())
+
+    stiff_prefixes = ("VM_FRONT_ANTISWAY", "VM_REAR_ANTISWAY", "WM_SPRINGRATE")
+    for c in pr_on.changes:
+        if any(k.startswith(stiff_prefixes) for k in c.keys):
+            assert c.delta <= 0, f"kerbs_unstable=True stiffened {c.name}: {c.delta}"
+
+    # Verify kerb_ok rejection counts are surfaced when a strict zero-margin gate rejects candidates.
+    dims = [Dim("fast_bump_front", ("FBF",), 0, 20), Dim("fast_rebound_front", ("FRF",), 0, 20)]
+    base = {"fast_bump_front": 10, "fast_rebound_front": 10}
+    vals = {m: (1.0, (0.2 * dampers.SCALE[m]) ** 2) for m in dampers.CONTACT + dampers.KERB}
+    m1 = dampers.DamperModel.fit(dims, [dampers.StintMetrics(1, {d.name: d.x(10) for d in dims}, vals)])
+    blocked = dampers.choose(m1, dims, base, {}, lambda idx: 1.0, kerb_margin=0.0)
+    assert blocked.moves == {} and blocked.candidates > 0 and blocked.rejected_kerb == blocked.candidates
+    unblocked = dampers.choose(m1, dims, base, {}, lambda idx: 1.0,
+                               kerb_weight=dampers.KERB_WEIGHT_UNSTABLE, kerb_margin=dampers.KERB_MARGIN)
+    assert unblocked.moves and all(b < a for a, b in unblocked.moves.values()) and unblocked.kerbs < 0

@@ -261,6 +261,9 @@ class DamperChoice:
     exploring: bool
     reason: str
     kerbs: float = 0.0  # predicted change of the kerb numbers, SCALE units (negative: better)
+    candidates: int = 0
+    rejected_kerb: int = 0
+    rejected_balance: int = 0
 
 
 def _reach(d: Dim) -> int:
@@ -293,14 +296,21 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
         return model.kerb_ok(x_of(idx), xb, margin=kerb_margin) >= 0.5 and balance_ok(idx) >= 0.5
 
     singles = []
+    tested = rejected_kerb = rejected_balance = 0
     for d in dims:
         r = _reach(d)
         for step in sorted({s for s in (1, 2, r, -1, -2, -r) if abs(s) <= r}):
             to = base[d.name] + step
             if d.lo <= to <= d.hi:
                 idx = {**base, d.name: to}
-                if allowed(idx):
+                tested += 1
+                kerb_pass = model.kerb_ok(x_of(idx), xb, margin=kerb_margin) >= 0.5
+                bal_pass = balance_ok(idx) >= 0.5
+                if kerb_pass and bal_pass:
                     singles.append((score(idx), idx, d.name))
+                else:
+                    rejected_kerb += int(not kerb_pass)
+                    rejected_balance += int(not bal_pass)
     singles.sort(key=lambda s: -s[0][0])
     cands = [(s, idx) for s, idx, _ in singles]
     for i, (_, idx1, n1) in enumerate(singles[:6]):
@@ -315,7 +325,9 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
           if s[1] - 0.5 * s[2] >= MIN_GAIN or (s[3] and s[0] >= MIN_GAIN)]
     b_m, b_v = model.contact(xb)
     if not ok:
-        return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "")
+        return DamperChoice({}, (b_m, math.sqrt(b_v)), (b_m, math.sqrt(b_v)), False, "",
+                            candidates=tested, rejected_kerb=rejected_kerb,
+                            rejected_balance=rejected_balance)
     (_, gain, sd, _), best = max(ok, key=lambda c: c[0][0])
     moves = {k: (base[k], best[k]) for k in best if best[k] != base[k]}
     exploring = gain - 0.5 * sd < MIN_GAIN
@@ -325,7 +337,9 @@ def choose(model: DamperModel, dims: list[Dim], base: dict[str, int], x_main: di
         reason = "learning what it does to the tyre load and kerbs"
     else:
         reason = "takes the kerbs better" if -kerb_weight * km > -cm else "steadier tyre load"
-    return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring, reason, km)
+    return DamperChoice(moves, (m, math.sqrt(v)), (b_m, math.sqrt(b_v)), exploring, reason, km,
+                        candidates=tested, rejected_kerb=rejected_kerb,
+                        rejected_balance=rejected_balance)
 
 
 def histograms(store, rid: int, kerbs: bool | None, width: float, knowledge: dict) -> dict:

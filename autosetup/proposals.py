@@ -551,7 +551,7 @@ class Advisor:
             def predict(x):
                 return balance.predict({**x, **x_damp})
 
-        kerb_margin = 0.0 if kerbs_unstable else dampers.KERB_MARGIN
+        kerb_margin = dampers.KERB_MARGIN
         extra = []
         if dmodel is not None:
             extra.append(lambda idx: dmodel.kerb_ok(with_dampers(idx), with_dampers(base), margin=kerb_margin))
@@ -640,7 +640,8 @@ class Advisor:
                                 explore=not choice.moves, kerb_weight=kw, kerb_margin=kerb_margin)
             plan.dampers = {"contact": list(dc.contact), "contact_base": list(dc.contact_base),
                             "kerbs": dc.kerbs, "exploring": dc.exploring, "stints": dmodel.stints,
-                            "settings": dmodel.settings}
+                            "settings": dmodel.settings, "candidates": dc.candidates,
+                            "rejected_kerb": dc.rejected_kerb, "rejected_balance": dc.rejected_balance}
             gone = []
             for name, (a, b) in dc.moves.items():
                 d = next(x for x in ddims if x.name == name)
