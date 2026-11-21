@@ -1,0 +1,17 @@
+[package]
+name = "pitwall"
+description = "Telemetry ingestion, four-wheel mechanical physics, and setup exploration engine for Le Mans Ultimate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = ["duckdb-native"]
+duckdb-native = ["dep:duckdb"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+duckdb = { version = "1.1", features = ["bundled"], optional = true }

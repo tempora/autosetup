@@ -7,7 +7,7 @@ These rules apply to every AI agent working in this repository.
 Write concise, adaptable code where every abstraction serves a concrete purpose.
 Avoid speculative plumbing, unused indirection, and duplicate boilerplate.
 
-In Rust (`autosetup-core` and Tauri code), factor repeated patterns into shared
+In Rust (`pitwall` and Tauri code), factor repeated patterns into shared
 traits and generalizable declarative macros rather than copy-pasting per-metric
 or per-channel logic.  Prefer functional paradigms: pure functions, iterator
 combinators, immutable data pipelines, and explicit algebraic types for units
