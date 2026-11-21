@@ -113,3 +113,23 @@ def test_spike_fallback_only_at_the_track_edge():
     evs = events(s, sig, np.zeros(1000), 2.6)
     assert len(evs) == 1 and evs[0].wheels == "fr" and abs(evs[0].t0 - 14.9) < 0.05
     assert grid_mask(s, mask, t50)[(t50 > 15.0) & (t50 < 15.04)].all()
+
+
+def test_fixed_rate_surface_types_channel_detected_as_surface(tmp_path):
+    """LMU logs SurfaceTypes as a 5 Hz fixed-rate channel without a ts column.
+    load_suspension must decode it via zero-order hold instead of falling back to spikes."""
+    from pathlib import Path
+
+    from autosetup.lmu.telemetry import Session
+    from autosetup.metrics.suspension import load_suspension
+
+    monza = Path("Autodromo Nazionale Monza_P_2026-11-13T16_58_22Z.duckdb")
+    if not monza.exists():
+        return
+    with Session.open(monza, copy=False) as s:
+        assert "SurfaceTypes" in s.frequencies
+        ts, spd = s.channel("Ground Speed")
+        susp = load_suspension(s, ts, spd)
+        assert susp is not None and susp.has_surface is True
+        # Monza 8-lap recording contains > 5000 100 Hz wheel-samples on rumble strips (code 5).
+        assert int(susp.kerb.sum()) > 5000

@@ -63,9 +63,22 @@ def load_suspension(s: Session, speed_t: np.ndarray, speed: np.ndarray,
     kerb = np.zeros_like(x, dtype=bool)
     if has_surface:
         try:
-            surf = np.asarray(s.state_at("SurfaceTypes", t))
-            if surf.ndim == 2:
-                kerb = surf == KERB_SURFACE
+            # SurfaceTypes is a fixed-rate channel in LMU recordings (typically 5 Hz)
+            # and an event table in older/synthetic fixtures.  Use zero-order hold on
+            # fixed-rate channels to preserve discrete surface codes.
+            if "SurfaceTypes" in s.frequencies:
+                ts, sf = s.channel("SurfaceTypes")
+                if sf.ndim == 2 and len(ts):
+                    idx = np.clip(np.searchsorted(ts, t, side="right") - 1, 0, len(ts) - 1)
+                    kerb = sf[idx] == KERB_SURFACE
+                else:
+                    has_surface = False
+            else:
+                surf = np.asarray(s.state_at("SurfaceTypes", t))
+                if surf.ndim == 2:
+                    kerb = surf == KERB_SURFACE
+                else:
+                    has_surface = False
         except KeyError:
             has_surface = False
     if tyre_load is not None and np.isfinite(tyre_load).any():
