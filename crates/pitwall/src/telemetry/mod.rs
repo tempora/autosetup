@@ -1,9 +1,7 @@
-/* Native LMU telemetry abstraction and resampling primitives.
-   LMU .duckdb recordings are the sole input source; no external DAM/MoTeC logs
-   are supported.  ChannelKind distinguishes fixed-rate tables from ts-indexed
-   event tables upfront so fixed-rate channels (such as 5 Hz SurfaceTypes)
-   never silently fall back on missing ts columns.  Discrete channels must use
-   sample_zoh; continuous channels use sample_linear.  */
+/* LMU telemetry abstraction and resampling primitives.
+   ChannelKind distinguishes fixed-rate tables from ts-indexed event tables
+   from schema metadata.  Discrete channels use sample_zoh; continuous
+   channels use sample_linear.  */
 
 #[cfg(feature = "duckdb-native")]
 pub mod duckdb;
