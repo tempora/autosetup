@@ -89,37 +89,126 @@ mod tests {
 
     #[cfg(feature = "duckdb-native")]
     #[test]
-    fn reads_real_monza_duckdb_fixed_rate_surface_types_and_setup() {
-        use std::path::Path;
+    fn duckdb_reads_fixed_rate_surface_types_and_flat_car_setup() {
+        use ::duckdb::Connection;
 
         use crate::telemetry::duckdb::DuckDbRecording;
         use crate::telemetry::{count_kerb_events, ChannelKind, TelemetrySource, KERB_SURFACE_CODE};
         use crate::units::Seconds;
 
-        let monza = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../Autodromo Nazionale Monza_P_2026-11-13T16_58_22Z.duckdb");
-        if !monza.exists() {
-            return;
+        let path = std::env::temp_dir().join(format!(
+            "pitwall_fixture_{}.duckdb",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let conn = Connection::open(&path).expect("create fixture duckdb");
+            let setup_json = r#"{
+                "VM_REAR_ANTISWAY": {"available": true, "minValue": 0, "maxValue": 11, "value": 8, "stringValue": "8"},
+                "WM_SPRINGRATE-W_FL": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"},
+                "WM_SPRINGRATE-W_FR": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"}
+            }"#;
+            conn.execute_batch(&format!(
+                "create table metadata (key varchar, value varchar);
+                 insert into metadata values
+                   ('TrackName', 'Autodromo Nazionale Monza'),
+                   ('CarName', 'Test GT3 #1:LM'),
+                   ('CarClass', 'GT3'),
+                   ('SessionType', 'Practice'),
+                   ('CarSetup', '{}');
+                 create table channelsList (channelName varchar, frequency integer, unit varchar);
+                 insert into channelsList values
+                   ('GPS Time', 100, 's'),
+                   ('Susp Pos', 100, 'm'),
+                   ('SurfaceTypes', 5, '');
+                 create table \"GPS Time\" (value double);
+                 create table \"Susp Pos\" (value1 double, value2 double, value3 double, value4 double);
+                 create table \"SurfaceTypes\" (value1 utinyint, value2 utinyint, value3 utinyint, value4 utinyint);",
+                setup_json.replace('\'', "''")
+            ))
+            .expect("init schema");
+
+            for i in 0..200 {
+                let t = i as f64 / 100.0;
+                conn.execute("insert into \"GPS Time\" values (?)", [t])
+                    .unwrap();
+                conn.execute(
+                    "insert into \"Susp Pos\" values (0.05, 0.05, 0.05, 0.05)",
+                    [],
+                )
+                .unwrap();
+            }
+            // 5 Hz over 2.0 s = 10 samples; two separated kerb strikes at 0.2 s and 1.2 s.
+            for i in 0..10 {
+                let fl = if i == 1 || i == 6 { KERB_SURFACE_CODE } else { 0 };
+                conn.execute(
+                    "insert into \"SurfaceTypes\" values (?, 0, 0, 0)",
+                    [fl],
+                )
+                .unwrap();
+            }
         }
 
-        let rec = DuckDbRecording::open(&monza).expect("open real Monza recording");
+        let rec = DuckDbRecording::open(&path).expect("open fixture recording");
         let meta = rec.metadata().expect("read metadata");
-        assert!(meta.track.contains("Monza"));
-        assert!(!meta.setup.params.is_empty());
+        assert_eq!(meta.track, "Autodromo Nazionale Monza");
+        assert_eq!(meta.car_name, "Test GT3 #1");
+        assert!((meta.setup.fraction("VM_REAR_ANTISWAY").unwrap() - 0.8).abs() < 1e-9);
+        assert!((meta.setup.mechanical_vector().spring.front - 0.5).abs() < 1e-9);
 
         match rec.channel_kind("SurfaceTypes") {
             Some(ChannelKind::FixedRate { hz }) => assert!((hz - 5.0).abs() < 1e-6),
-            other => panic!("expected SurfaceTypes FixedRate(5 Hz), got {other:?}"),
+            other => panic!("expected FixedRate(5 Hz), got {other:?}"),
         }
 
         let susp = rec.wheel_channel("Susp Pos").expect("read Susp Pos");
         let surf = rec.wheel_surface().expect("read SurfaceTypes");
-        let zoh = surf.sample_zoh(&susp.times);
-        let kerb_mask: Vec<_> = zoh
+        let kerb_mask: Vec<_> = surf
+            .sample_zoh(&susp.times)
+            .into_iter()
+            .map(|w| w.map(|code| code == KERB_SURFACE_CODE))
+            .collect();
+        assert_eq!(count_kerb_events(&susp.times, &kerb_mask, Seconds::new(0.25)), 2);
+
+        drop(rec);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(feature = "duckdb-native")]
+    #[test]
+    #[ignore = "requires local LMU .duckdb recording (set PITWALL_TEST_RECORDING or place Monza recording at repo root)"]
+    fn local_recording_smoke_test() {
+        use std::path::PathBuf;
+
+        use crate::telemetry::duckdb::DuckDbRecording;
+        use crate::telemetry::{count_kerb_events, ChannelKind, TelemetrySource, KERB_SURFACE_CODE};
+        use crate::units::Seconds;
+
+        let path = std::env::var("PITWALL_TEST_RECORDING")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../Autodromo Nazionale Monza_P_2026-11-13T16_58_22Z.duckdb")
+            });
+        let rec = DuckDbRecording::open(&path).expect("open local LMU recording");
+        let meta = rec.metadata().expect("read metadata");
+        assert!(!meta.track.is_empty());
+        assert!(!meta.setup.params.is_empty());
+
+        match rec.channel_kind("SurfaceTypes") {
+            Some(ChannelKind::FixedRate { hz }) => assert!(hz > 0.0),
+            other => panic!("expected SurfaceTypes FixedRate, got {other:?}"),
+        }
+
+        let susp = rec.wheel_channel("Susp Pos").expect("read Susp Pos");
+        let surf = rec.wheel_surface().expect("read SurfaceTypes");
+        let kerb_mask: Vec<_> = surf
+            .sample_zoh(&susp.times)
             .into_iter()
             .map(|w| w.map(|code| code == KERB_SURFACE_CODE))
             .collect();
         let events = count_kerb_events(&susp.times, &kerb_mask, Seconds::new(0.25));
-        assert!(events >= 60, "expected >= 60 Monza kerb events, got {events}");
+        assert!(events > 0, "expected kerb events in local recording");
     }
 }
