@@ -16,6 +16,7 @@
    validation can prove that every shipped term improves real-data accuracy.  */
 
 pub mod calibrate;
+pub mod calibration;
 
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +69,7 @@ macro_rules! define_terms {
 
         impl Terms {
             pub const ALL: Self = Self { $($field: true),+ };
+            pub const NONE: Self = Self { $($field: false),+ };
 
             #[inline]
             pub const fn enabled(self, term: Term) -> bool {

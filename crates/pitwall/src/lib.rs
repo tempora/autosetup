@@ -1,5 +1,6 @@
 pub mod chassis;
 pub mod metrics;
+pub mod opt;
 pub mod physics;
 pub mod setup;
 pub mod telemetry;
@@ -137,8 +138,8 @@ mod tests {
             let conn = Connection::open(&path).expect("create fixture duckdb");
             let setup_json = r#"{
                 "VM_REAR_ANTISWAY": {"available": true, "minValue": 0, "maxValue": 11, "value": 8, "stringValue": "8"},
-                "WM_SPRINGRATE-W_FL": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"},
-                "WM_SPRINGRATE-W_FR": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"}
+                "WM_SPRING-W_FL": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"},
+                "WM_SPRING-W_FR": {"available": true, "minValue": 0, "maxValue": 5, "value": 2, "stringValue": "150 N/mm"}
             }"#;
             conn.execute_batch(&format!(
                 "create table metadata (key varchar, value varchar);

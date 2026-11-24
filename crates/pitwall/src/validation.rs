@@ -5,8 +5,8 @@
    measured a_lon, so driver pedal adaptation between stints is an input to
    the model rather than a setup effect it must explain.
 
-   Real pairs come from StintMetrics: stints are grouped by (car, class,
-   layout), ordered chronologically, and consecutive stints whose mechanical
+   Real pairs come from StintMetrics: stints are grouped by (class, car
+   model signature, layout), ordered chronologically, and consecutive stints whose mechanical
    setup changed are paired cell by cell where both have MIN_CELL_PASSES.
    Lateral G is the cell's p95 |a_lat|, scored in cornering phases only;
    speed is the cell's median apex speed.  */
@@ -43,6 +43,20 @@ impl StintObservation {
             state: CornerState { speed: cell.v_min, phase: cell.cell.phase, a_lon: cell.a_lon },
             measured_ua: cell.ua,
             measured_lat_g: cell.a_lat_p95,
+        }
+    }
+}
+
+// Reference model that predicts no change between any two setups.
+pub struct NoChange;
+
+impl MechanicalModel for NoChange {
+    fn evaluate(&self, _: &MechanicalSetup, _: CornerState) -> crate::physics::CornerPrediction {
+        crate::physics::CornerPrediction {
+            max_lat_g: Gs::ZERO,
+            understeer: Degrees::ZERO,
+            lltd_front: 0.5,
+            vertical_front: 0.5,
         }
     }
 }
@@ -137,13 +151,15 @@ pub fn evaluate_holdout<'a, M: MechanicalModel>(
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StintKey {
     pub class: CarClass,
-    pub car: String,
+    // CarSetup::signature: the car model across liveries.
+    pub signature: String,
     pub layout: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Stint {
     pub key: StintKey,
+    pub car_name: String,
     // Chronological sort key (LMU file names embed the UTC start time).
     pub label: String,
     pub setup: MechanicalSetup,
@@ -153,7 +169,8 @@ pub struct Stint {
 impl Stint {
     pub fn new(label: impl Into<String>, meta: &SessionMeta, metrics: &StintMetrics) -> Self {
         Self {
-            key: StintKey { class: metrics.class, car: meta.car_name.clone(), layout: meta.layout.clone() },
+            key: StintKey { class: metrics.class, signature: meta.setup.signature(), layout: meta.layout.clone() },
+            car_name: meta.car_name.clone(),
             label: label.into(),
             setup: meta.setup.mechanical_vector(),
             cells: metrics.cells_off_kerb(),
@@ -213,6 +230,7 @@ mod tests {
     use crate::chassis::CarClass;
     use crate::metrics::analyse_stint;
     use crate::physics::calibrate::{calibrate_class, DEFAULT_FOLDS};
+    use crate::physics::calibration::{CalibrationSet, CALIBRATION_FILE};
     use crate::telemetry::duckdb::DuckDbRecording;
     use crate::telemetry::TelemetrySource;
     use crate::testdata::local_recordings;
@@ -222,7 +240,9 @@ mod tests {
     /* Groups real stints by (car, layout), pairs consecutive stints whose
        setup changed, then per class: calibrates VehicleParams, prunes terms
        that do not improve held-out accuracy, and requires the cross-validated
-       calibrated model to beat the uncalibrated class baseline.
+       calibrated model to beat the uncalibrated class baseline.  With
+       PITWALL_WRITE_CALIBRATION set it writes calibration.json, which the
+       planner loads.
        Run: cargo test -p pitwall --release -- --ignored --nocapture  */
     #[test]
     #[ignore = "requires PITWALL_TELEMETRY_DIR with LMU .duckdb recordings"]
@@ -244,19 +264,24 @@ mod tests {
 
         let mut by_class: BTreeMap<CarClass, Vec<GroupedPair>> = BTreeMap::new();
         for (key, pairs) in holdout_pairs(&stints) {
-            println!("{:?} {} @ {}: {} pairs", key.class, key.car, key.layout, pairs.len());
+            let names: std::collections::BTreeSet<&str> =
+                stints.iter().filter(|s| s.key == key).map(|s| s.car_name.as_str()).collect();
+            println!("{:?} {} @ {}: {} pairs ({})", key.class, key.signature, key.layout, pairs.len(), names.into_iter().collect::<Vec<_>>().join(", "));
             by_class.entry(key.class).or_default().extend(pairs);
         }
 
         let mut calibrated = 0;
+        let mut set = CalibrationSet::default();
         for (class, pairs) in by_class.iter().filter(|(_, p)| p.len() >= MIN_CLASS_PAIRS) {
             let cal = calibrate_class(*class, pairs, DEFAULT_FOLDS);
             println!("\n{class:?}: {} pairs", pairs.len());
+            println!("  no change  {:?} score {:.4}", cal.no_change, cal.no_change.score());
             println!("  baseline   {:?} score {:.4}", cal.baseline, cal.baseline.score());
             println!("  calibrated {:?} score {:.4}", cal.calibrated, cal.calibrated.score());
             for a in &cal.ablations {
                 println!("  {:?}: gain {:+.4} -> {}", a.term, a.gain(), if a.improves() { "kept" } else { "pruned" });
             }
+            println!("  lambda {} pinned {:?} {:?}", cal.lambda, cal.pinned, cal.verification());
             println!("  params {:?}", cal.params);
 
             assert_eq!(cal.calibrated.pairs, pairs.len());
@@ -268,7 +293,14 @@ mod tests {
                 cal.baseline.score()
             );
             calibrated += 1;
+            set.classes.insert(*class, cal);
         }
         assert!(calibrated > 0, "no class with {MIN_CLASS_PAIRS}+ holdout pairs");
+        if std::env::var_os("PITWALL_WRITE_CALIBRATION").is_some() {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(CALIBRATION_FILE);
+            std::fs::write(&path, set.to_json()).unwrap();
+            println!("
+wrote {}", path.display());
+        }
     }
 }

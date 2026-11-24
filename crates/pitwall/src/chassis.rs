@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::units::{Meters, MetersPerSec, MmPerSec};
+use crate::units::{Degrees, Meters, MetersPerSec, MmPerSec};
 
 // Canonical LMU wheel order: FL, FR, RL, RR.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -245,6 +245,26 @@ impl CarClass {
             Self::Gt3 | Self::Other => 140.0,
             Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 150.0,
         })
+    }
+
+    // One feel step and the band half-width around a target cell (classes.toml).
+    pub const fn feel_step(self) -> Degrees {
+        Degrees::new(match self {
+            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 0.30,
+            Self::Gt3 | Self::Other => 0.25,
+        })
+    }
+
+    pub const fn feel_tolerance(self) -> Degrees {
+        Degrees::new(match self {
+            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 0.20,
+            Self::Gt3 | Self::Other => 0.15,
+        })
+    }
+
+    // GT3 always runs the front ride height at its minimum setting.
+    pub const fn front_ride_height_at_min(self) -> bool {
+        matches!(self, Self::Gt3)
     }
 
     // Shaft speed separating slow from fast damper circuits.

@@ -67,6 +67,34 @@ impl CarSetup {
         Ok(Self { params })
     }
 
+    /* Stable id of the car model: identical for every livery of the same car,
+       different once parameter ranges differ (other car, BoP or upgrade).
+       FNV-1a 64 over sorted "key:min:max" of available parameters.  */
+    pub fn signature(&self) -> String {
+        let mut parts: Vec<String> = self
+            .params
+            .iter()
+            .filter(|(_, p)| p.available)
+            .map(|(k, p)| format!("{k}:{}:{}", p.min, p.max_exclusive))
+            .collect();
+        parts.sort();
+        let hash = parts.join("|").bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+        format!("{hash:016x}")
+    }
+
+    // Sets a parameter's index, clamped to its selectable range; false if absent.
+    pub fn set_value(&mut self, key: &str, value: i32) -> bool {
+        match self.params.get_mut(key) {
+            Some(p) => {
+                p.value = value.clamp(p.min, (p.max_exclusive - 1).max(p.min));
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn fraction(&self, key: &str) -> Option<f64> {
         self.params.get(key).map(SetupParam::fraction)
     }
@@ -82,9 +110,9 @@ impl CarSetup {
     pub fn mechanical_vector(&self) -> MechanicalSetup {
         MechanicalSetup {
             spring: Axle::new(
-                self.pair_fraction("WM_SPRINGRATE-W_FL", "WM_SPRINGRATE-W_FR")
+                self.pair_fraction("WM_SPRING-W_FL", "WM_SPRING-W_FR")
                     .unwrap_or(0.5),
-                self.pair_fraction("WM_SPRINGRATE-W_RL", "WM_SPRINGRATE-W_RR")
+                self.pair_fraction("WM_SPRING-W_RL", "WM_SPRING-W_RR")
                     .unwrap_or(0.5),
             ),
             arb: Axle::new(
