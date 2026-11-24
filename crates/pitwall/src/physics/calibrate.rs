@@ -252,7 +252,12 @@ pub struct Verification {
 }
 
 pub fn calibrate_class(class: CarClass, pairs: &[GroupedPair], folds: usize) -> ClassCalibration {
-    let start = VehicleParams::for_class(class);
+    calibrate_from(class, VehicleParams::for_class(class), pairs, folds)
+}
+
+// Calibrates starting from (and regularising toward) `start`: used directly
+// with class baselines, or with a class's fitted params for per-car calibration.
+pub fn calibrate_from(class: CarClass, start: VehicleParams, pairs: &[GroupedPair], folds: usize) -> ClassCalibration {
     let all: Vec<HoldoutPair> = pairs.iter().map(|p| p.pair).collect();
     let pick_lambda = |terms: Terms| {
         LAMBDAS

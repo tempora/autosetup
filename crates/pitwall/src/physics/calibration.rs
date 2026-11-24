@@ -19,6 +19,9 @@ const SHIPPED: &str = include_str!("../../calibration.json");
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationSet {
     pub classes: BTreeMap<CarClass, ClassCalibration>,
+    // Per-car-model overrides keyed by CarSetup::signature().
+    #[serde(default)]
+    pub cars: BTreeMap<String, ClassCalibration>,
 }
 
 impl CalibrationSet {
@@ -31,8 +34,8 @@ impl CalibrationSet {
         SET.get_or_init(|| serde_json::from_str(SHIPPED).expect("calibration.json parses"))
     }
 
-    pub fn model_for(&self, class: CarClass) -> (QssModel, Verification) {
-        match self.classes.get(&class) {
+    fn build(class: CarClass, cal: Option<&ClassCalibration>) -> (QssModel, Verification) {
+        match cal {
             Some(c) => {
                 // Load sensitivity is core to 4-wheel LLTD; never let a stale file disable springs/ARBs.
                 let mut terms = c.terms;
@@ -42,8 +45,20 @@ impl CalibrationSet {
             None => (QssModel::with_terms(VehicleParams::for_class(class), Terms::CORE), Verification::default()),
         }
     }
+
+    pub fn model_for(&self, class: CarClass) -> (QssModel, Verification) {
+        Self::build(class, self.classes.get(&class))
+    }
+
+    pub fn model_for_car(&self, class: CarClass, signature: &str) -> (QssModel, Verification) {
+        Self::build(class, self.cars.get(signature).or_else(|| self.classes.get(&class)))
+    }
 }
 
 pub fn model_for(class: CarClass) -> (QssModel, Verification) {
     CalibrationSet::shipped().model_for(class)
+}
+
+pub fn model_for_car(class: CarClass, signature: &str) -> (QssModel, Verification) {
+    CalibrationSet::shipped().model_for_car(class, signature)
 }

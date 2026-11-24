@@ -303,8 +303,9 @@ mod tests {
     use super::{holdout_pairs, GroupedPair, Stint};
     use crate::chassis::CarClass;
     use crate::metrics::analyse_stint;
-    use crate::physics::calibrate::{calibrate_class, DEFAULT_FOLDS};
+    use crate::physics::calibrate::{calibrate_class, calibrate_from, DEFAULT_FOLDS};
     use crate::physics::calibration::{CalibrationSet, CALIBRATION_FILE};
+    use crate::physics::VehicleParams;
     use crate::telemetry::duckdb::DuckDbRecording;
     use crate::telemetry::TelemetrySource;
     use crate::testdata::local_recordings;
@@ -337,11 +338,13 @@ mod tests {
             .collect();
 
         let mut by_class: BTreeMap<CarClass, Vec<GroupedPair>> = BTreeMap::new();
+        let mut by_car: BTreeMap<(CarClass, String), Vec<GroupedPair>> = BTreeMap::new();
         for (key, pairs) in holdout_pairs(&stints) {
             let names: std::collections::BTreeSet<&str> =
                 stints.iter().filter(|s| s.key == key).map(|s| s.car_name.as_str()).collect();
             println!("{:?} {} @ {}: {} pairs ({})", key.class, key.signature, key.layout, pairs.len(), names.into_iter().collect::<Vec<_>>().join(", "));
-            by_class.entry(key.class).or_default().extend(pairs);
+            by_class.entry(key.class).or_default().extend(pairs.iter().copied());
+            by_car.entry((key.class, key.signature.clone())).or_default().extend(pairs);
         }
 
         let mut calibrated = 0;
@@ -370,6 +373,17 @@ mod tests {
             );
             calibrated += 1;
             set.classes.insert(*class, cal);
+        }
+        for ((class, sig), pairs) in by_car.iter().filter(|(_, p)| p.len() >= MIN_CLASS_PAIRS) {
+            let start = set.classes.get(class).map_or_else(|| VehicleParams::for_class(*class), |c| c.params);
+            let cal = calibrate_from(*class, start, pairs, DEFAULT_FOLDS);
+            let names: std::collections::BTreeSet<&str> =
+                stints.iter().filter(|s| s.key.signature == *sig).map(|s| s.car_name.as_str()).collect();
+            println!("\nCAR {class:?} {sig} ({}): {} pairs", names.into_iter().collect::<Vec<_>>().join(", "), pairs.len());
+            println!("  no change  {:?} score {:.4}", cal.no_change, cal.no_change.score());
+            println!("  calibrated {:?} score {:.4}", cal.calibrated, cal.calibrated.score());
+            println!("  lambda {} pinned {:?} {:?}", cal.lambda, cal.pinned, cal.verification());
+            set.cars.insert(sig.clone(), cal);
         }
         assert!(calibrated > 0, "no class with {MIN_CLASS_PAIRS}+ holdout pairs");
         if let Some(target) = std::env::var_os("PITWALL_WRITE_CALIBRATION") {

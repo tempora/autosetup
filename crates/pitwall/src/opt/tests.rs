@@ -296,6 +296,13 @@ fn shipped_calibration_never_disables_load_sensitivity_or_roll_stiffness() {
             p1.understeer
         );
     }
+    // Per-car override is selected when present, falling back to class calibration otherwise.
+    let (porsche, v_porsche) = crate::physics::calibration::model_for_car(CarClass::Gt3, "6b630ff63cba95bd");
+    let (fallback, _) = crate::physics::calibration::model_for_car(CarClass::Gt3, "unknown-signature");
+    let (gt3, _) = crate::physics::calibration::model_for(CarClass::Gt3);
+    assert_eq!(fallback, gt3);
+    assert!(porsche.terms.load_sensitivity);
+    assert!(v_porsche.balance && v_porsche.grip, "Porsche 911 GT3 R per-car fit should verify balance & grip");
 }
 
 fn damper_moves(p: &DamperPlan, family: Family, front: bool) -> Vec<i32> {
@@ -630,7 +637,7 @@ mod release_gate {
             }
             planned += 1;
             let cells = m.cells_off_kerb();
-            let (model, verification) = crate::physics::calibration::model_for(m.class);
+            let (model, verification) = crate::physics::calibration::model_for_car(m.class, &meta.setup.signature());
             let run = |sliders: Sliders, flags: DriverFlags, toggles: Toggles| {
                 plan(&model, &PlanInput {
                     class: m.class,

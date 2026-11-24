@@ -450,5 +450,757 @@
       },
       "pinned": []
     }
+  },
+  "cars": {
+    "28d318721d20c0f3": {
+      "class": "Gt3",
+      "params": {
+        "mass_kg": 1320.0,
+        "static_front_weight": 0.48,
+        "cg_height_m": 0.33,
+        "wheelbase_m": 2.65,
+        "track_width": {
+          "front": 1.66,
+          "rear": 1.66
+        },
+        "spring_roll_range": {
+          "front": [
+            1.0,
+            2.2
+          ],
+          "rear": [
+            1.0,
+            2.2
+          ]
+        },
+        "arb_roll_range": {
+          "front": [
+            0.2,
+            2.0
+          ],
+          "rear": [
+            0.2,
+            2.0
+          ]
+        },
+        "brake_bias_range": [
+          0.5,
+          0.62
+        ],
+        "drive_front_share": 0.0,
+        "mu_nominal": 1.4200000000000002,
+        "fz_ref": 3300.0,
+        "load_sensitivity": 0.1532,
+        "aero_cl_a": 0.95,
+        "aero_wing_span": 0.3,
+        "aero_front_base": 0.41900000000000004,
+        "aero_rake_gain": 0.08,
+        "aero_wing_balance_gain": -0.06,
+        "understeer_gain_deg": 0.5,
+        "diff_gain_deg": 0.8300000000000001
+      },
+      "terms": {
+        "load_sensitivity": true,
+        "aero_balance": false,
+        "diff": false,
+        "longitudinal_transfer": false,
+        "friction_circle": false
+      },
+      "lambda": 0.3,
+      "no_change": {
+        "pairs": 12,
+        "ua_mae_deg": 0.12380830227649971,
+        "lat_g_mae": 0.0956259884282971,
+        "ua_direction_accuracy": 0.5833333333333334
+      },
+      "baseline": {
+        "pairs": 12,
+        "ua_mae_deg": 0.13358327531919803,
+        "lat_g_mae": 0.1209511827736133,
+        "ua_direction_accuracy": 0.75
+      },
+      "calibrated": {
+        "pairs": 12,
+        "ua_mae_deg": 0.125047741478362,
+        "lat_g_mae": 0.07379236136397395,
+        "ua_direction_accuracy": 0.6666666666666666
+      },
+      "ablations": [
+        {
+          "term": "AeroBalance",
+          "with": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281313535728025,
+            "lat_g_mae": 0.0932768034448928,
+            "ua_direction_accuracy": 0.75
+          },
+          "without": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281175013384982,
+            "lat_g_mae": 0.09312305159222727,
+            "ua_direction_accuracy": 0.75
+          }
+        },
+        {
+          "term": "Diff",
+          "with": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281313535728025,
+            "lat_g_mae": 0.0932768034448928,
+            "ua_direction_accuracy": 0.75
+          },
+          "without": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281313535728025,
+            "lat_g_mae": 0.0932768034448928,
+            "ua_direction_accuracy": 0.75
+          }
+        },
+        {
+          "term": "LongitudinalTransfer",
+          "with": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281313535728025,
+            "lat_g_mae": 0.0932768034448928,
+            "ua_direction_accuracy": 0.75
+          },
+          "without": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1265049020460449,
+            "lat_g_mae": 0.08626724752214647,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        },
+        {
+          "term": "FrictionCircle",
+          "with": {
+            "pairs": 12,
+            "ua_mae_deg": 0.1281313535728025,
+            "lat_g_mae": 0.0932768034448928,
+            "ua_direction_accuracy": 0.75
+          },
+          "without": {
+            "pairs": 12,
+            "ua_mae_deg": 0.12643646108346082,
+            "lat_g_mae": 0.08045988001183206,
+            "ua_direction_accuracy": 0.8333333333333334
+          }
+        }
+      ],
+      "corner_speed": {
+        "pairs": 0,
+        "mae": 0.0,
+        "no_change_mae": 0.0,
+        "direction_accuracy": 0.0
+      },
+      "traction": {
+        "pairs": 2,
+        "mae": 0.05232231308242591,
+        "no_change_mae": 0.05232231308242591,
+        "direction_accuracy": 0.0
+      },
+      "pinned": [
+        "understeer_gain_deg"
+      ]
+    },
+    "29d5d4a77b3dfe78": {
+      "class": "Gt3",
+      "params": {
+        "mass_kg": 1320.0,
+        "static_front_weight": 0.48,
+        "cg_height_m": 0.33,
+        "wheelbase_m": 2.65,
+        "track_width": {
+          "front": 1.66,
+          "rear": 1.66
+        },
+        "spring_roll_range": {
+          "front": [
+            1.0,
+            2.2
+          ],
+          "rear": [
+            1.0,
+            2.2
+          ]
+        },
+        "arb_roll_range": {
+          "front": [
+            0.2,
+            2.0
+          ],
+          "rear": [
+            0.2,
+            2.0
+          ]
+        },
+        "brake_bias_range": [
+          0.5,
+          0.62
+        ],
+        "drive_front_share": 0.0,
+        "mu_nominal": 1.4200000000000002,
+        "fz_ref": 3300.0,
+        "load_sensitivity": 0.1592,
+        "aero_cl_a": 0.95,
+        "aero_wing_span": 0.3,
+        "aero_front_base": 0.41900000000000004,
+        "aero_rake_gain": 0.08,
+        "aero_wing_balance_gain": -0.06,
+        "understeer_gain_deg": 0.7875000000000001,
+        "diff_gain_deg": 0.8300000000000001
+      },
+      "terms": {
+        "load_sensitivity": true,
+        "aero_balance": true,
+        "diff": false,
+        "longitudinal_transfer": true,
+        "friction_circle": false
+      },
+      "lambda": 1.0,
+      "no_change": {
+        "pairs": 15,
+        "ua_mae_deg": 0.341213796914623,
+        "lat_g_mae": 0.03710727383480519,
+        "ua_direction_accuracy": 0.26666666666666666
+      },
+      "baseline": {
+        "pairs": 15,
+        "ua_mae_deg": 0.35837070949921224,
+        "lat_g_mae": 0.0722729703078081,
+        "ua_direction_accuracy": 0.4666666666666667
+      },
+      "calibrated": {
+        "pairs": 15,
+        "ua_mae_deg": 0.3455352740577057,
+        "lat_g_mae": 0.03803904936963831,
+        "ua_direction_accuracy": 0.6
+      },
+      "ablations": [
+        {
+          "term": "AeroBalance",
+          "with": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3651474091097203,
+            "lat_g_mae": 0.05784066850530476,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 15,
+            "ua_mae_deg": 0.36744712363706167,
+            "lat_g_mae": 0.06083519569708121,
+            "ua_direction_accuracy": 0.5333333333333333
+          }
+        },
+        {
+          "term": "Diff",
+          "with": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3651474091097203,
+            "lat_g_mae": 0.05784066850530476,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3526974091097203,
+            "lat_g_mae": 0.05784066850530476,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        },
+        {
+          "term": "LongitudinalTransfer",
+          "with": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3651474091097203,
+            "lat_g_mae": 0.05784066850530476,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3520857506622304,
+            "lat_g_mae": 0.08770377515448564,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        },
+        {
+          "term": "FrictionCircle",
+          "with": {
+            "pairs": 15,
+            "ua_mae_deg": 0.3651474091097203,
+            "lat_g_mae": 0.05784066850530476,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 15,
+            "ua_mae_deg": 0.36616601133244575,
+            "lat_g_mae": 0.03843593872027966,
+            "ua_direction_accuracy": 0.6
+          }
+        }
+      ],
+      "corner_speed": {
+        "pairs": 2,
+        "mae": 0.016650977236104147,
+        "no_change_mae": 0.021964633131016598,
+        "direction_accuracy": 1.0
+      },
+      "traction": {
+        "pairs": 3,
+        "mae": 0.06397022161410128,
+        "no_change_mae": 0.09161857414264211,
+        "direction_accuracy": 0.3333333333333333
+      },
+      "pinned": []
+    },
+    "3b71a4e95f12356f": {
+      "class": "Lmp2Elms",
+      "params": {
+        "mass_kg": 1010.0,
+        "static_front_weight": 0.45,
+        "cg_height_m": 0.2,
+        "wheelbase_m": 3.0,
+        "track_width": {
+          "front": 1.6,
+          "rear": 1.55
+        },
+        "spring_roll_range": {
+          "front": [
+            1.2,
+            2.6
+          ],
+          "rear": [
+            1.2,
+            2.6
+          ]
+        },
+        "arb_roll_range": {
+          "front": [
+            0.3,
+            2.4
+          ],
+          "rear": [
+            0.3,
+            2.4
+          ]
+        },
+        "brake_bias_range": [
+          0.5,
+          0.6
+        ],
+        "drive_front_share": 0.0,
+        "mu_nominal": 1.9749999999999999,
+        "fz_ref": 3000.0,
+        "load_sensitivity": 0.1384,
+        "aero_cl_a": 3.2425625,
+        "aero_wing_span": 0.25,
+        "aero_front_base": 0.35,
+        "aero_rake_gain": 0.1,
+        "aero_wing_balance_gain": -0.08,
+        "understeer_gain_deg": 0.9175,
+        "diff_gain_deg": 0.5
+      },
+      "terms": {
+        "load_sensitivity": true,
+        "aero_balance": true,
+        "diff": false,
+        "longitudinal_transfer": true,
+        "friction_circle": false
+      },
+      "lambda": 0.3,
+      "no_change": {
+        "pairs": 27,
+        "ua_mae_deg": 0.1242706520119951,
+        "lat_g_mae": 0.07333308066438314,
+        "ua_direction_accuracy": 0.4444444444444444
+      },
+      "baseline": {
+        "pairs": 27,
+        "ua_mae_deg": 0.13848745466427845,
+        "lat_g_mae": 0.06264908904328843,
+        "ua_direction_accuracy": 0.7037037037037037
+      },
+      "calibrated": {
+        "pairs": 27,
+        "ua_mae_deg": 0.12618134995714983,
+        "lat_g_mae": 0.05503426523366971,
+        "ua_direction_accuracy": 0.8148148148148148
+      },
+      "ablations": [
+        {
+          "term": "AeroBalance",
+          "with": {
+            "pairs": 27,
+            "ua_mae_deg": 0.14020807673412777,
+            "lat_g_mae": 0.06342225799457649,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 27,
+            "ua_mae_deg": 0.13837434390001754,
+            "lat_g_mae": 0.06883119241605094,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        },
+        {
+          "term": "Diff",
+          "with": {
+            "pairs": 27,
+            "ua_mae_deg": 0.14020807673412777,
+            "lat_g_mae": 0.06342225799457649,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 27,
+            "ua_mae_deg": 0.1254037157606603,
+            "lat_g_mae": 0.06342225799457649,
+            "ua_direction_accuracy": 0.8148148148148148
+          }
+        },
+        {
+          "term": "LongitudinalTransfer",
+          "with": {
+            "pairs": 27,
+            "ua_mae_deg": 0.14020807673412777,
+            "lat_g_mae": 0.06342225799457649,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 27,
+            "ua_mae_deg": 0.14123055479797367,
+            "lat_g_mae": 0.07867932303351502,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        },
+        {
+          "term": "FrictionCircle",
+          "with": {
+            "pairs": 27,
+            "ua_mae_deg": 0.14020807673412777,
+            "lat_g_mae": 0.06342225799457649,
+            "ua_direction_accuracy": 0.6666666666666666
+          },
+          "without": {
+            "pairs": 27,
+            "ua_mae_deg": 0.1402697849340357,
+            "lat_g_mae": 0.05530647952411954,
+            "ua_direction_accuracy": 0.6666666666666666
+          }
+        }
+      ],
+      "corner_speed": {
+        "pairs": 6,
+        "mae": 0.026857929132804326,
+        "no_change_mae": 0.028847491112109398,
+        "direction_accuracy": 0.8333333333333334
+      },
+      "traction": {
+        "pairs": 7,
+        "mae": 0.05588131579854521,
+        "no_change_mae": 0.039224845726220696,
+        "direction_accuracy": 0.5714285714285714
+      },
+      "pinned": [
+        "cg_height_m",
+        "aero_front_base"
+      ]
+    },
+    "5596b8f7686d485e": {
+      "class": "Hyper",
+      "params": {
+        "mass_kg": 1110.0,
+        "static_front_weight": 0.47,
+        "cg_height_m": 0.52,
+        "wheelbase_m": 3.15,
+        "track_width": {
+          "front": 1.65,
+          "rear": 1.6
+        },
+        "spring_roll_range": {
+          "front": [
+            1.2,
+            2.6
+          ],
+          "rear": [
+            1.2,
+            2.6
+          ]
+        },
+        "arb_roll_range": {
+          "front": [
+            0.3,
+            2.4
+          ],
+          "rear": [
+            0.3,
+            2.4
+          ]
+        },
+        "brake_bias_range": [
+          0.48,
+          0.6
+        ],
+        "drive_front_share": 0.0,
+        "mu_nominal": 1.45,
+        "fz_ref": 3300.0,
+        "load_sensitivity": 0.22600000000000003,
+        "aero_cl_a": 1.575,
+        "aero_wing_span": 0.2,
+        "aero_front_base": 0.53,
+        "aero_rake_gain": 0.16875,
+        "aero_wing_balance_gain": -0.06,
+        "understeer_gain_deg": 3.7925,
+        "diff_gain_deg": 0.45
+      },
+      "terms": {
+        "load_sensitivity": true,
+        "aero_balance": true,
+        "diff": false,
+        "longitudinal_transfer": true,
+        "friction_circle": true
+      },
+      "lambda": 1.0,
+      "no_change": {
+        "pairs": 13,
+        "ua_mae_deg": 0.17272974610314412,
+        "lat_g_mae": 0.09162393811657758,
+        "ua_direction_accuracy": 0.23076923076923078
+      },
+      "baseline": {
+        "pairs": 13,
+        "ua_mae_deg": 0.14709867592749665,
+        "lat_g_mae": 0.07425003534016421,
+        "ua_direction_accuracy": 0.6923076923076923
+      },
+      "calibrated": {
+        "pairs": 13,
+        "ua_mae_deg": 0.14815185429878108,
+        "lat_g_mae": 0.07038083083754648,
+        "ua_direction_accuracy": 0.6923076923076923
+      },
+      "ablations": [
+        {
+          "term": "AeroBalance",
+          "with": {
+            "pairs": 13,
+            "ua_mae_deg": 0.14790722176705734,
+            "lat_g_mae": 0.07038083083754648,
+            "ua_direction_accuracy": 0.6923076923076923
+          },
+          "without": {
+            "pairs": 13,
+            "ua_mae_deg": 0.16933420752671305,
+            "lat_g_mae": 0.08550249129183674,
+            "ua_direction_accuracy": 0.6153846153846154
+          }
+        },
+        {
+          "term": "Diff",
+          "with": {
+            "pairs": 13,
+            "ua_mae_deg": 0.14790722176705734,
+            "lat_g_mae": 0.07038083083754648,
+            "ua_direction_accuracy": 0.6923076923076923
+          },
+          "without": {
+            "pairs": 13,
+            "ua_mae_deg": 0.14815185429878108,
+            "lat_g_mae": 0.07038083083754648,
+            "ua_direction_accuracy": 0.6923076923076923
+          }
+        },
+        {
+          "term": "LongitudinalTransfer",
+          "with": {
+            "pairs": 13,
+            "ua_mae_deg": 0.14790722176705734,
+            "lat_g_mae": 0.07038083083754648,
+            "ua_direction_accuracy": 0.6923076923076923
+          },
+          "without": {
+            "pairs": 13,
+            "ua_mae_deg": 0.1970969315059385,
+            "lat_g_mae": 0.08743070274237572,
+            "ua_direction_accuracy": 0.5384615384615384
+          }
+        },
+        {
+          "term": "FrictionCircle",
+          "with": {
+            "pairs": 13,
+            "ua_mae_deg": 0.14790722176705734,
+            "lat_g_mae": 0.07038083083754648,
+            "ua_direction_accuracy": 0.6923076923076923
+          },
+          "without": {
+            "pairs": 13,
+            "ua_mae_deg": 0.16216479616321808,
+            "lat_g_mae": 0.07187722131505282,
+            "ua_direction_accuracy": 0.6153846153846154
+          }
+        }
+      ],
+      "corner_speed": {
+        "pairs": 2,
+        "mae": 0.06789580642138077,
+        "no_change_mae": 0.07137053635050694,
+        "direction_accuracy": 1.0
+      },
+      "traction": {
+        "pairs": 1,
+        "mae": 0.10243426355376128,
+        "no_change_mae": 0.10243426355376128,
+        "direction_accuracy": 0.0
+      },
+      "pinned": []
+    },
+    "6b630ff63cba95bd": {
+      "class": "Gt3",
+      "params": {
+        "mass_kg": 1320.0,
+        "static_front_weight": 0.48,
+        "cg_height_m": 0.33,
+        "wheelbase_m": 2.65,
+        "track_width": {
+          "front": 1.66,
+          "rear": 1.66
+        },
+        "spring_roll_range": {
+          "front": [
+            1.0,
+            2.2
+          ],
+          "rear": [
+            1.0,
+            2.2
+          ]
+        },
+        "arb_roll_range": {
+          "front": [
+            0.2,
+            2.0
+          ],
+          "rear": [
+            0.2,
+            2.0
+          ]
+        },
+        "brake_bias_range": [
+          0.5,
+          0.62
+        ],
+        "drive_front_share": 0.0,
+        "mu_nominal": 1.4200000000000002,
+        "fz_ref": 3300.0,
+        "load_sensitivity": 0.1532,
+        "aero_cl_a": 0.95,
+        "aero_wing_span": 0.3,
+        "aero_front_base": 0.41900000000000004,
+        "aero_rake_gain": 0.08,
+        "aero_wing_balance_gain": -0.06,
+        "understeer_gain_deg": 1.0750000000000002,
+        "diff_gain_deg": 0.8300000000000001
+      },
+      "terms": {
+        "load_sensitivity": true,
+        "aero_balance": false,
+        "diff": true,
+        "longitudinal_transfer": false,
+        "friction_circle": true
+      },
+      "lambda": 1.0,
+      "no_change": {
+        "pairs": 35,
+        "ua_mae_deg": 0.15883272677945962,
+        "lat_g_mae": 0.0690425028795794,
+        "ua_direction_accuracy": 0.37142857142857144
+      },
+      "baseline": {
+        "pairs": 35,
+        "ua_mae_deg": 0.1540003764749413,
+        "lat_g_mae": 0.06298874773842897,
+        "ua_direction_accuracy": 0.6285714285714286
+      },
+      "calibrated": {
+        "pairs": 35,
+        "ua_mae_deg": 0.15060321895546944,
+        "lat_g_mae": 0.06309789620858947,
+        "ua_direction_accuracy": 0.7142857142857143
+      },
+      "ablations": [
+        {
+          "term": "AeroBalance",
+          "with": {
+            "pairs": 35,
+            "ua_mae_deg": 0.1544990001028032,
+            "lat_g_mae": 0.0641633675372887,
+            "ua_direction_accuracy": 0.6285714285714286
+          },
+          "without": {
+            "pairs": 35,
+            "ua_mae_deg": 0.15443543656407693,
+            "lat_g_mae": 0.06397530184995738,
+            "ua_direction_accuracy": 0.6571428571428571
+          }
+        },
+        {
+          "term": "Diff",
+          "with": {
+            "pairs": 35,
+            "ua_mae_deg": 0.1544990001028032,
+            "lat_g_mae": 0.0641633675372887,
+            "ua_direction_accuracy": 0.6285714285714286
+          },
+          "without": {
+            "pairs": 35,
+            "ua_mae_deg": 0.15998744905325746,
+            "lat_g_mae": 0.0641633675372887,
+            "ua_direction_accuracy": 0.6
+          }
+        },
+        {
+          "term": "LongitudinalTransfer",
+          "with": {
+            "pairs": 35,
+            "ua_mae_deg": 0.1544990001028032,
+            "lat_g_mae": 0.0641633675372887,
+            "ua_direction_accuracy": 0.6285714285714286
+          },
+          "without": {
+            "pairs": 35,
+            "ua_mae_deg": 0.1506506794539875,
+            "lat_g_mae": 0.06333901417959814,
+            "ua_direction_accuracy": 0.7142857142857143
+          }
+        },
+        {
+          "term": "FrictionCircle",
+          "with": {
+            "pairs": 35,
+            "ua_mae_deg": 0.1544990001028032,
+            "lat_g_mae": 0.0641633675372887,
+            "ua_direction_accuracy": 0.6285714285714286
+          },
+          "without": {
+            "pairs": 35,
+            "ua_mae_deg": 0.15533773095217035,
+            "lat_g_mae": 0.06660853602836168,
+            "ua_direction_accuracy": 0.6285714285714286
+          }
+        }
+      ],
+      "corner_speed": {
+        "pairs": 6,
+        "mae": 0.06350036054601566,
+        "no_change_mae": 0.06788037756366773,
+        "direction_accuracy": 0.6666666666666666
+      },
+      "traction": {
+        "pairs": 9,
+        "mae": 0.053695189292199644,
+        "no_change_mae": 0.03851814224688929,
+        "direction_accuracy": 0.2222222222222222
+      },
+      "pinned": []
+    }
   }
 }
