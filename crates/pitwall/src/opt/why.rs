@@ -56,8 +56,9 @@ fn direction(kind: DimKind, up: bool) -> &'static str {
     match (kind, up) {
         (DimKind::RideHeightFront | DimKind::RideHeightRear, true) => "higher",
         (DimKind::RideHeightFront | DimKind::RideHeightRear, false) => "lower",
-        (DimKind::BrakeBias, true) => "more to the front",
-        (DimKind::BrakeBias, false) => "more to the rear",
+        // A higher brake-balance index moves bias rearward.
+        (DimKind::BrakeBias, true) => "more to the rear",
+        (DimKind::BrakeBias, false) => "more to the front",
         (DimKind::DiffPreload | DimKind::DiffPower | DimKind::DiffCoast, true) => "more locking",
         (DimKind::DiffPreload | DimKind::DiffPower | DimKind::DiffCoast, false) => "less locking",
         (_, true) => "stiffer",

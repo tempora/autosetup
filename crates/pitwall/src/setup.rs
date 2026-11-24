@@ -132,7 +132,8 @@ impl CarSetup {
             diff_preload: self.fraction("VM_DIFF_PRELOAD").unwrap_or(0.5),
             diff_power: self.fraction("VM_DIFF_POWER").unwrap_or(0.5),
             diff_coast: self.fraction("VM_DIFF_COAST").unwrap_or(0.5),
-            brake_bias: self.fraction("VM_BRAKE_BALANCE").unwrap_or(0.5),
+            // LMU's index runs rearward (a higher index is less front bias).
+            brake_bias: self.fraction("VM_BRAKE_BALANCE").map_or(0.5, |f| 1.0 - f),
         }
     }
 }
@@ -147,6 +148,7 @@ pub struct MechanicalSetup {
     pub diff_preload: f64,
     pub diff_power: f64,
     pub diff_coast: f64,
+    // Front brake share across the setting's range: 1.0 = most front bias.
     pub brake_bias: f64,
 }
 

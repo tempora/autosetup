@@ -89,6 +89,26 @@ mod tests {
     }
 
     #[test]
+    fn higher_brake_balance_index_means_rearward_bias_through_to_the_model() {
+        use crate::setup::CarSetup;
+        // Labels as LMU logs them for a GT3: index 14 = 53.5 % front, index 54 = 43.5 % front.
+        let at = |index: i32, label: &str| {
+            CarSetup::from_lmu_json(&format!(
+                r#"{{"VM_BRAKE_BALANCE": {{"available": true, "minValue": 0, "maxValue": 61, "value": {index}, "stringValue": "{label}"}}}}"#
+            ))
+            .unwrap()
+            .mechanical_vector()
+        };
+        let (forward, rearward) = (at(14, "53.5:46.5"), at(54, "43.5:56.5"));
+        assert!(forward.brake_bias > rearward.brake_bias, "front share must fall as the index rises");
+
+        // Trail braking into a corner: more rear bias frees the front, less understeer.
+        let model = QssModel::new(VehicleParams::gt3_baseline());
+        let trail = CornerState { a_lon: Gs::new(-0.6), ..CornerState::steady(MetersPerSec::from_kmh(120.0), CornerPhase::Entry) };
+        assert!(model.evaluate(&rearward, trail).understeer < model.evaluate(&forward, trail).understeer);
+    }
+
+    #[test]
     fn holdout_validator_scores_direction_and_mae() {
         let model = QssModel::new(VehicleParams::gt3_baseline());
         let state = CornerState::steady(MetersPerSec::from_kmh(100.0), CornerPhase::Mid);

@@ -7,8 +7,8 @@
    including the unmoved one, so predictions include the rules' effect.
 
    Index direction is taken as the physical direction (a higher index is
-   stiffer / higher / more / more front bias), matching
-   CarSetup::mechanical_vector.  */
+   stiffer / higher / more), except brake balance, whose index runs rearward;
+   CarSetup::mechanical_vector maps both onto the model's conventions.  */
 
 use std::collections::BTreeSet;
 
