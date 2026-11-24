@@ -1,4 +1,5 @@
 pub mod chassis;
+pub mod lmu;
 pub mod metrics;
 pub mod opt;
 pub mod physics;
