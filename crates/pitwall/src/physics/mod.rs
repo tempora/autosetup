@@ -32,18 +32,23 @@ pub struct CornerState {
     pub phase: CornerPhase,
     // Measured longitudinal acceleration of the stint in this phase.
     pub a_lon: Gs,
+    // Measured lateral demand (p95 |a_lat|) the traction prediction is taken at.
+    pub a_lat: Gs,
 }
 
 impl CornerState {
     #[inline]
     pub const fn steady(speed: MetersPerSec, phase: CornerPhase) -> Self {
-        Self { speed, phase, a_lon: Gs::ZERO }
+        Self { speed, phase, a_lon: Gs::ZERO, a_lat: Gs::ZERO }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CornerPrediction {
     pub max_lat_g: Gs,
+    // Drive acceleration the driven axles can still deliver at the state's
+    // lateral demand (friction circle of each axle's total grip).
+    pub traction_g: Gs,
     pub understeer: Degrees,
     pub lltd_front: f64,
     pub vertical_front: f64,
@@ -299,6 +304,29 @@ impl QssModel {
         Axle::new(fx * front, fx * (1.0 - front))
     }
 
+    /* Drive acceleration (g) left at lateral demand `a_lat_g`: per axle, total
+       grip under its lateral load transfer minus the lateral force it carries,
+       on the friction circle; the driven axles split the drive force by
+       drive_front_share, so the first to saturate limits it.  */
+    fn traction(&self, fz_front: f64, fz_rear: f64, lltd_front: f64, a_lat_g: f64) -> f64 {
+        let p = &self.params;
+        let weight = p.mass_kg * GRAVITY;
+        let transfer = p.mass_kg * a_lat_g * GRAVITY * p.cg_height_m;
+        let left = |fz: f64, share: f64, lateral_share: f64, track: f64| {
+            let cap = self.axle_max_fy(fz, transfer * share / track);
+            let fy = lateral_share * weight * a_lat_g;
+            (cap * cap - fy * fy).max(0.0).sqrt()
+        };
+        let rear = left(fz_rear, 1.0 - lltd_front, 1.0 - p.static_front_weight, p.track_width.rear);
+        let front = left(fz_front, lltd_front, p.static_front_weight, p.track_width.front);
+        let drive = if p.drive_front_share > 0.0 {
+            (rear / (1.0 - p.drive_front_share)).min(front / p.drive_front_share)
+        } else {
+            rear
+        };
+        drive / weight
+    }
+
     fn diff_understeer(&self, setup: &MechanicalSetup, phase: CornerPhase) -> f64 {
         if !self.terms.diff {
             return 0.0;
@@ -365,12 +393,15 @@ impl MechanicalModel for QssModel {
             ay_g = 0.5 * ay_g + 0.5 * cap_f.min(cap_r);
         }
 
+        let traction_g = self.traction(fz_front, fz_rear, lltd_front, state.a_lat.raw());
+
         let imbalance = (cap_r - cap_f) / (cap_r + cap_f).max(1e-6);
         let understeer =
             Degrees::new(p.understeer_gain_deg * imbalance + self.diff_understeer(setup, state.phase));
 
         CornerPrediction {
             max_lat_g: Gs::new(ay_g),
+            traction_g: Gs::new(traction_g),
             understeer,
             lltd_front,
             vertical_front,

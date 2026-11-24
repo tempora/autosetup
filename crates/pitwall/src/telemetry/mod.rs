@@ -15,10 +15,34 @@ use crate::units::Seconds;
 pub const KERB_SURFACE_CODE: u8 = 5;
 pub const CLOCK_CHANNEL: &str = "GPS Time";
 
+// Minimum logging rates (Hz) for vital fixed-rate channels.
+pub const MIN_CHANNEL_RATES: &[(&str, f64)] = &[
+    (CLOCK_CHANNEL, 50.0),
+    ("Ground Speed", 50.0),
+    ("Steering Pos", 50.0),
+    ("Throttle Pos", 25.0),
+    ("Brake Pos", 25.0),
+    ("GPS Latitude", 10.0),
+    ("GPS Longitude", 10.0),
+    ("Lap Dist", 10.0),
+    ("RideHeights", 50.0),
+    ("Susp Pos", 50.0),
+    ("SurfaceTypes", 5.0),
+    ("TyresTempLeft", 5.0),
+    ("TyresTempCentre", 5.0),
+    ("TyresTempRight", 5.0),
+];
+
 #[derive(Debug, Error)]
 pub enum TelemetryError {
     #[error("missing required telemetry channel: {0}")]
     MissingChannel(String),
+    #[error("telemetry channel {channel} logged at {actual_hz:.1} Hz (minimum {min_hz:.0} Hz required)")]
+    ChannelTooSlow {
+        channel: String,
+        min_hz: f64,
+        actual_hz: f64,
+    },
     #[error("unexpected column count for channel {channel}: expected {expected}, got {actual}")]
     BadArity {
         channel: String,
@@ -29,6 +53,24 @@ pub enum TelemetryError {
     TooShort(f64),
     #[error("backend error: {0}")]
     Backend(String),
+}
+
+// Verifies every vital channel is present and logged at or above its minimum rate.
+pub fn check_channel_rates<S: TelemetrySource + ?Sized>(src: &S) -> Result<(), TelemetryError> {
+    for &(name, min_hz) in MIN_CHANNEL_RATES {
+        match src.channel_kind(name) {
+            None => return Err(TelemetryError::MissingChannel(name.to_string())),
+            Some(ChannelKind::FixedRate { hz }) if hz + 1e-6 < min_hz => {
+                return Err(TelemetryError::ChannelTooSlow {
+                    channel: name.to_string(),
+                    min_hz,
+                    actual_hz: hz,
+                });
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

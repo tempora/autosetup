@@ -135,6 +135,18 @@
           }
         }
       ],
+      "corner_speed": {
+        "pairs": 11,
+        "mae": 0.04057549687663313,
+        "no_change_mae": 0.04263885266985001,
+        "direction_accuracy": 0.7272727272727273
+      },
+      "traction": {
+        "pairs": 19,
+        "mae": 0.06425313066090442,
+        "no_change_mae": 0.04994857688305852,
+        "direction_accuracy": 0.15789473684210525
+      },
       "pinned": []
     },
     "Lmp2Elms": {
@@ -272,6 +284,18 @@
           }
         }
       ],
+      "corner_speed": {
+        "pairs": 6,
+        "mae": 0.027439192562686066,
+        "no_change_mae": 0.028847491112109398,
+        "direction_accuracy": 0.8333333333333334
+      },
+      "traction": {
+        "pairs": 7,
+        "mae": 0.05741397799030967,
+        "no_change_mae": 0.039224845726220696,
+        "direction_accuracy": 0.5714285714285714
+      },
       "pinned": [
         "cg_height_m",
         "aero_front_base"
@@ -412,6 +436,18 @@
           }
         }
       ],
+      "corner_speed": {
+        "pairs": 4,
+        "mae": 0.038387236277045544,
+        "no_change_mae": 0.03873242746658795,
+        "direction_accuracy": 0.75
+      },
+      "traction": {
+        "pairs": 2,
+        "mae": 0.07843124242359181,
+        "no_change_mae": 0.07843124242359181,
+        "direction_accuracy": 0.0
+      },
       "pinned": []
     }
   }

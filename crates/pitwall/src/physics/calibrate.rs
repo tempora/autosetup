@@ -10,16 +10,19 @@
    pair index.  `ablate` compares cross-validated accuracy with and without
    each physics term; `calibrate_class` drops every term that does not
    improve held-out accuracy by more than MIN_TERM_GAIN before the final fit.
-   Balance (understeer) and grip (lateral G) are verified separately: each
-   only when the cross-validated model beats NoChange (predicting no
-   difference between setups) on the same pairs by UA_MARGIN_DEG or
-   LAT_MARGIN_G.  */
+   Balance, grip and traction are verified separately against NoChange
+   (predicting no difference between setups) on the same pairs: balance by
+   cross-validated understeer error (UA_MARGIN_DEG); grip by predicted apex
+   speed change against measured v_min (SPEED_MARGIN), the quantity the
+   planner's objective rests on; traction by slow-exit a_lon.  */
 
 use serde::{Deserialize, Serialize};
 
 use crate::chassis::CarClass;
 use crate::physics::{QssModel, Term, Terms, VehicleParams};
-use crate::validation::{evaluate_holdout, GroupedPair, HoldoutPair, HoldoutReport, NoChange};
+use crate::validation::{
+    evaluate_corner_speed, evaluate_holdout, evaluate_traction, DeltaReport, GroupedPair, HoldoutPair, HoldoutReport, NoChange,
+};
 
 const STEPS: [f64; 3] = [0.25, 0.08, 0.025];
 const MAX_SWEEPS: usize = 25;
@@ -28,7 +31,10 @@ pub const MIN_TERM_GAIN: f64 = 1e-3;
 pub const DEFAULT_FOLDS: usize = 5;
 pub const LAMBDAS: [f64; 4] = [0.03, 0.1, 0.3, 1.0];
 pub const UA_MARGIN_DEG: f64 = 0.005;
-pub const LAT_MARGIN_G: f64 = 0.002;
+pub const TRACTION_MARGIN_G: f64 = 0.002;
+// Share of apex speed the model must beat NoChange by.
+pub const SPEED_MARGIN: f64 = 0.002;
+pub const MIN_DELTA_PAIRS: usize = 5;
 
 #[derive(Clone, Copy)]
 pub struct Knob {
@@ -213,6 +219,11 @@ pub struct ClassCalibration {
     // Cross-validated accuracy of the pruned, fitted model.
     pub calibrated: HoldoutReport,
     pub ablations: Vec<Ablation>,
+    // Apex speed and exit traction of the final model on every pair (the fit sees neither).
+    #[serde(default)]
+    pub corner_speed: DeltaReport,
+    #[serde(default)]
+    pub traction: DeltaReport,
     // Knobs left at a bound by the final fit.
     pub pinned: Vec<String>,
 }
@@ -222,7 +233,8 @@ impl ClassCalibration {
     pub fn verification(&self) -> Verification {
         Verification {
             balance: self.calibrated.ua_mae_deg < self.no_change.ua_mae_deg - UA_MARGIN_DEG,
-            grip: self.calibrated.lat_g_mae < self.no_change.lat_g_mae - LAT_MARGIN_G,
+            grip: self.corner_speed.beats_no_change(SPEED_MARGIN, MIN_DELTA_PAIRS),
+            traction: self.traction.beats_no_change(TRACTION_MARGIN_G, MIN_DELTA_PAIRS),
             pairs: self.calibrated.pairs,
         }
     }
@@ -233,6 +245,9 @@ impl ClassCalibration {
 pub struct Verification {
     pub balance: bool,
     pub grip: bool,
+    // Exit traction predictions beat "no change" on slow-corner exits.
+    #[serde(default)]
+    pub traction: bool,
     pub pairs: usize,
 }
 
@@ -260,6 +275,8 @@ pub fn calibrate_class(class: CarClass, pairs: &[GroupedPair], folds: usize) -> 
         calibrated: cross_validate(start, terms, pairs, folds, lambda),
         ablations,
         pinned: pinned(&params, &start).into_iter().map(String::from).collect(),
+        corner_speed: evaluate_corner_speed(&QssModel::with_terms(params, terms), &all),
+        traction: evaluate_traction(&QssModel::with_terms(params, terms), &all),
         params,
     }
 }

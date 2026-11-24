@@ -281,11 +281,15 @@ impl CarClass {
         0.85
     }
 
-    // Fast-neutral default balance window: (centre, half-width) in road-wheel deg.
-    // Used when no fingerprint is locked and no feel slider has been moved.
-    pub const fn fast_neutral(self, cell: BalanceCell) -> (Degrees, Degrees) {
+    /* Fast-neutral default balance window, (centre, half-width) in road-wheel
+       deg, from docs/approach-and-architecture.md §3; the feel sliders shift it.
+       None for Braking: that phase here is straight-line braking before
+       turn-in, where the understeer angle sits near zero by definition (the
+       doc's braking row is trail braking, which these phases count as Entry
+       and Mid), so it stays anchored on the stint as driven.  */
+    pub const fn fast_neutral(self, cell: BalanceCell) -> Option<(Degrees, Degrees)> {
         let centre = match (cell.phase, cell.band) {
-            (CornerPhase::Braking, _) => 0.25,
+            (CornerPhase::Braking, _) => return None,
             (CornerPhase::Entry, SpeedBand::Low) => -0.05,
             (CornerPhase::Entry, SpeedBand::High) => 0.25,
             (CornerPhase::Mid, SpeedBand::Low) => 0.10,
@@ -293,6 +297,6 @@ impl CarClass {
             (CornerPhase::Exit, SpeedBand::Low) => 0.35,
             (CornerPhase::Exit, SpeedBand::High) => 0.20,
         };
-        (Degrees::new(centre), self.feel_tolerance())
+        Some((Degrees::new(centre), self.feel_tolerance()))
     }
 }

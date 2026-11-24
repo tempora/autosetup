@@ -98,6 +98,7 @@ fn capitalise(s: &str) -> String {
 
 fn rule_label(r: Rule) -> &'static str {
     match r {
+        Rule::AeroTrim => "Rear wing",
         Rule::TyrePressure => "Tyre pressure",
         Rule::Camber => "Camber",
         Rule::BrakeDucts => "Brake ducts",
@@ -175,14 +176,22 @@ pub fn explain(p: &Proposal) -> Why {
         let dua = after.predicted_ua - after.measured_ua;
         let dlat = after.predicted_lat - after.measured_lat;
         if dua.raw().abs() > NOTABLE_DEG || dlat.raw().abs() > NOTABLE_G {
-            why.effect.push(format!(
-                "{}: {:.2}° {} understeer, {:+.3} g grip",
+            let mut line = format!(
+                "{}: {:.2}° {} understeer",
                 capitalise(&place(after.cell)),
                 dua.raw().abs(),
-                if dua.raw() < 0.0 { "less" } else { "more" },
-                dlat.raw()
-            ));
+                if dua.raw() < 0.0 { "less" } else { "more" }
+            );
+            // Same line through the corner: v scales with the square root of grip.
+            if after.cell.phase != CornerPhase::Braking && after.measured_lat.raw() > 0.0 {
+                let dv = after.v_min.to_kmh() * ((after.predicted_lat / after.measured_lat).max(0.0).sqrt() - 1.0);
+                line += &format!(", {dv:+.1} km/h");
+            }
+            why.effect.push(line);
         }
+    }
+    if s.chosen.pace.abs() > 1e-4 {
+        why.effect.push(format!("Overall: about {:.1} % less time spent cornering.", 100.0 * s.chosen.pace));
     }
 
     let v = p.verification;
@@ -227,9 +236,9 @@ pub fn explain(p: &Proposal) -> Why {
             .map(|(cell, d)| format!("{} {}", if d.raw() < 0.0 { "looser" } else { "lazier" }, place(*cell)))
             .collect();
         why.notes.push(format!(
-            "More grip is available just outside your balance: {} gives {:+.3} g, but the car would feel {}.",
+            "More pace is available just outside your balance: {} would cut a further {:.1} % of cornering time, but the car would feel {}.",
             moves.join(" and "),
-            h.extra_grip_g,
+            100.0 * h.extra_time,
             away.join(", ")
         ));
     }

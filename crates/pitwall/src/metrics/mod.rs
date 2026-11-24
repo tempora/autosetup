@@ -23,7 +23,7 @@ mod tests;
 use serde::Serialize;
 
 use crate::chassis::CarClass;
-use crate::telemetry::{SessionMeta, TelemetryError, TelemetrySource};
+use crate::telemetry::{check_channel_rates, SessionMeta, TelemetryError, TelemetrySource};
 use balance::{aggregate, observe, CellStats, PhaseObs, SampleBalance};
 use corners::{corner_map, passes, Corner};
 use laps::{segment_laps, Lap};
@@ -62,6 +62,7 @@ pub fn analyse_stint<S: TelemetrySource + ?Sized>(src: &S) -> Result<StintMetric
     if (t1 - t0).raw() < MIN_STINT_S {
         return Err(TelemetryError::TooShort((t1 - t0).raw()));
     }
+    check_channel_rates(src)?;
     let laps = segment_laps(src)?;
     let sig = Signals::load(src)?;
     let susp = Suspension::load(src, &sig)?;

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::chassis::CarClass;
 use crate::metrics::summary::StintSummary;
-use crate::opt::solve::DriverFlags;
+use crate::opt::solve::{AeroTrim, DriverFlags};
 use crate::setup::CarSetup;
 
 const CROWN_TARGET: f64 = 5.0;
@@ -29,6 +29,7 @@ const MIN_RIDE_HEIGHT_MM: f64 = 2.0;
 const THIRD_PACKERS_LO: f64 = 0.05;
 const MAX_PLATFORM_CHANGES: usize = 1;
 const BRAKE_PRESSURE_STEP: i32 = 2;
+const WING_TRIM_STEP: i32 = 2;
 const FRONT_RH: [&str; 2] = ["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"];
 const REAR_RH: [&str; 2] = ["WM_RIDEHEIGHT-W_RL", "WM_RIDEHEIGHT-W_RR"];
 
@@ -75,6 +76,7 @@ impl ClassRules {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Rule {
+    AeroTrim,
     TyrePressure,
     Camber,
     BrakeDucts,
@@ -295,9 +297,34 @@ fn packers_in(b: &mut Builder, frac: Option<f64>, key: &str, axle: &str, why: &s
     }
 }
 
+fn aero_trim(b: &mut Builder, trim: AeroTrim) {
+    if trim == AeroTrim::Keep {
+        return;
+    }
+    const KEY: &str = "VM_REAR_WING";
+    let Some(p) = b.setup.params.get(KEY).filter(|_| b.usable(KEY)) else { return };
+    let hi = p.max_exclusive - 1;
+    let (target, label) = match trim {
+        AeroTrim::Keep => return,
+        AeroTrim::LowWing => (p.min, "low-wing trim"),
+        AeroTrim::MidWing => (p.min + (hi - p.min) / 2, "mid-wing trim"),
+        AeroTrim::HighWing => (hi, "high-wing trim"),
+    };
+    let delta = (target - p.value).clamp(-WING_TRIM_STEP, WING_TRIM_STEP);
+    if delta != 0 {
+        b.add(
+            Rule::AeroTrim,
+            &[KEY],
+            delta,
+            format!("You chose {label} → step rear wing toward {target}"),
+        );
+    }
+}
+
 pub fn apply_rules(input: &RuleInput) -> Vec<RuleChange> {
     let k = ClassRules::of(input.class);
     let mut b = Builder { setup: input.setup, locks: input.locks, out: Vec::new() };
+    aero_trim(&mut b, input.flags.aero_trim);
     tyres(&mut b, input.summary, &k);
     brakes(&mut b, input.summary, &k);
     brake_pressure(&mut b, &k, input.flags);

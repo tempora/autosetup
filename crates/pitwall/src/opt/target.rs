@@ -144,7 +144,7 @@ impl BalanceTarget {
                 let shift: f64 = FeelAxis::ALL.iter().map(|&a| a.weight(c.cell) * effective.get(a).raw()).sum();
                 let (base_centre, base_tol) = match anchor {
                     Anchor::Fingerprint => (c.ua, class.feel_tolerance()),
-                    Anchor::FastNeutral => class.fast_neutral(c.cell),
+                    Anchor::FastNeutral => class.fast_neutral(c.cell).unwrap_or((c.ua, class.feel_tolerance())),
                 };
                 let mut tol = base_tol.raw();
                 if shift.abs() > 1e-9 {

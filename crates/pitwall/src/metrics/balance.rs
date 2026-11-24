@@ -157,6 +157,8 @@ pub struct CellStats {
     // Per-pass means.
     pub countersteer_s: Seconds,
     pub tc_s: Seconds,
+    // Total time the stint spent in this cell (phase weight × sample period).
+    pub time_s: Seconds,
 }
 
 // Random-effects pooled mean and standard error of (value, variance) pairs.
@@ -197,6 +199,7 @@ pub fn aggregate<'a>(obs: impl IntoIterator<Item = &'a PhaseObs> + Clone) -> Vec
                 a_lon: Gs::new(weighted_mean(&col(&|o| o.a_lon.raw()), &col(&|o| o.weight))?),
                 countersteer_s: Seconds::new(mean(&col(&|o| o.countersteer_s.raw()))?),
                 tc_s: Seconds::new(mean(&col(&|o| o.tc_s.raw()))?),
+                time_s: Seconds::new(col(&|o| o.weight).iter().sum::<f64>() * DT),
             })
         })
         .collect()

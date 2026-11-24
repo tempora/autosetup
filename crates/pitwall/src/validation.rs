@@ -20,9 +20,11 @@ use crate::metrics::StintMetrics;
 use crate::physics::{CornerState, MechanicalModel};
 use crate::setup::MechanicalSetup;
 use crate::telemetry::SessionMeta;
-use crate::units::{Degrees, Gs};
+use crate::units::{Degrees, Gs, MetersPerSec};
 
 pub const MIN_CELL_PASSES: usize = 5;
+// Exits below this apex speed are traction limited rather than power limited.
+pub const SLOW_EXIT_MAX: MetersPerSec = MetersPerSec::new(140.0 / 3.6);
 const SETUP_CHANGE_EPS: f64 = 1e-9;
 const DIRECTION_DEADBAND_DEG: f64 = 0.05;
 // Degrees of understeer error per g of lateral error in the combined score.
@@ -40,7 +42,7 @@ impl StintObservation {
     pub fn from_cell(setup: MechanicalSetup, cell: &CellStats) -> Self {
         Self {
             setup,
-            state: CornerState { speed: cell.v_min, phase: cell.cell.phase, a_lon: cell.a_lon },
+            state: CornerState { speed: cell.v_min, phase: cell.cell.phase, a_lon: cell.a_lon, a_lat: cell.a_lat_p95 },
             measured_ua: cell.ua,
             measured_lat_g: cell.a_lat_p95,
         }
@@ -54,6 +56,7 @@ impl MechanicalModel for NoChange {
     fn evaluate(&self, _: &MechanicalSetup, _: CornerState) -> crate::physics::CornerPrediction {
         crate::physics::CornerPrediction {
             max_lat_g: Gs::ZERO,
+            traction_g: Gs::ZERO,
             understeer: Degrees::ZERO,
             lltd_front: 0.5,
             vertical_front: 0.5,
@@ -146,6 +149,77 @@ pub fn evaluate_holdout<'a, M: MechanicalModel>(
         lat_g_mae: if lat_n > 0 { lat_err_sum / lat_n as f64 } else { 0.0 },
         ua_direction_accuracy: dir_hits as f64 / nf,
     }
+}
+
+/* A predicted against a measured change on holdout pairs, next to NoChange's
+   error (|measured change|).  Two are scored:
+     corner speed  apex cells: predicted Δv/v = √((a + Δa_pred)/a) − 1 on the
+                   same line, against measured Δv_min/v_min; v_min and p95
+                   a_lat come apart on real stints, so this checks grip
+                   predictions against what the car actually carried
+     traction      slow-corner exits (traction rather than power limited):
+                   predicted Δtraction_g against measured Δa_lon  */
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeltaReport {
+    pub pairs: usize,
+    pub mae: f64,
+    pub no_change_mae: f64,
+    pub direction_accuracy: f64,
+}
+
+impl DeltaReport {
+    fn from_errors(errs: &[(f64, f64)]) -> Self {
+        if errs.is_empty() {
+            return Self::default();
+        }
+        let n = errs.len() as f64;
+        Self {
+            pairs: errs.len(),
+            mae: errs.iter().map(|(p, m)| (p - m).abs()).sum::<f64>() / n,
+            no_change_mae: errs.iter().map(|(_, m)| m.abs()).sum::<f64>() / n,
+            direction_accuracy: errs.iter().filter(|(p, m)| sign(*p) == sign(*m)).count() as f64 / n,
+        }
+    }
+
+    // The model beats NoChange by `margin` on at least `min_pairs` pairs.
+    pub fn beats_no_change(&self, margin: f64, min_pairs: usize) -> bool {
+        self.pairs >= min_pairs && self.mae < self.no_change_mae - margin
+    }
+}
+
+pub fn evaluate_corner_speed<'a, M: MechanicalModel>(
+    model: &M,
+    pairs: impl IntoIterator<Item = &'a HoldoutPair>,
+) -> DeltaReport {
+    let errs: Vec<(f64, f64)> = pairs
+        .into_iter()
+        .filter(|p| p.baseline.state.phase == CornerPhase::Mid && p.baseline.measured_lat_g.raw() > 0.0)
+        .map(|p| {
+            let a = model.evaluate(&p.baseline.setup, p.baseline.state).max_lat_g;
+            let b = model.evaluate(&p.holdout.setup, p.holdout.state).max_lat_g;
+            let lat = p.baseline.measured_lat_g.raw();
+            let pred = ((lat + (b - a).raw()) / lat).max(0.0).sqrt() - 1.0;
+            let meas = p.holdout.state.speed / p.baseline.state.speed - 1.0;
+            (pred, meas)
+        })
+        .collect();
+    DeltaReport::from_errors(&errs)
+}
+
+pub fn evaluate_traction<'a, M: MechanicalModel>(
+    model: &M,
+    pairs: impl IntoIterator<Item = &'a HoldoutPair>,
+) -> DeltaReport {
+    let errs: Vec<(f64, f64)> = pairs
+        .into_iter()
+        .filter(|p| p.baseline.state.phase == CornerPhase::Exit && p.baseline.state.speed < SLOW_EXIT_MAX)
+        .map(|p| {
+            let a = model.evaluate(&p.baseline.setup, p.baseline.state).traction_g;
+            let b = model.evaluate(&p.holdout.setup, p.holdout.state).traction_g;
+            ((b - a).raw(), (p.holdout.state.a_lon - p.baseline.state.a_lon).raw())
+        })
+        .collect();
+    DeltaReport::from_errors(&errs)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -281,6 +355,8 @@ mod tests {
             for a in &cal.ablations {
                 println!("  {:?}: gain {:+.4} -> {}", a.term, a.gain(), if a.improves() { "kept" } else { "pruned" });
             }
+            println!("  corner spd {:?}", cal.corner_speed);
+            println!("  traction   {:?}", cal.traction);
             println!("  lambda {} pinned {:?} {:?}", cal.lambda, cal.pinned, cal.verification());
             println!("  params {:?}", cal.params);
 

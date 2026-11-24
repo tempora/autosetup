@@ -20,13 +20,14 @@ use crate::chassis::{Axle, CarClass, Wheel};
 use crate::metrics::laps::{clock_span, lap_distance};
 use crate::metrics::stats::{correlation, gradient, interp, moving_average};
 use crate::setup::CarSetup;
-use crate::telemetry::{TelemetryError, TelemetrySource};
+use crate::telemetry::{ChannelKind, TelemetryError, TelemetrySource};
 use crate::units::{Degrees, Meters, Seconds, GRAVITY};
 
 pub const GRID_HZ: f64 = 50.0;
 pub const DT: f64 = 1.0 / GRID_HZ;
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const YAW_MAX_LAG_S: f64 = 0.4;
+const GPS_SMOOTH_S: f64 = 0.3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SteeringGeometry {
@@ -214,10 +215,15 @@ fn yaw_rate<S: TelemetrySource + ?Sized>(
         .map(|v| v.to_radians() * EARTH_RADIUS_M * mean_lat.to_radians().cos())
         .collect();
     let y: Vec<f64> = lat.values[..n].iter().map(|v| v.to_radians() * EARTH_RADIUS_M).collect();
-    let vx = gradient(&moving_average(&x, 3), &tg);
-    let vy = gradient(&moving_average(&y, 3), &tg);
+    let gps_hz = match src.channel_kind("GPS Latitude") {
+        Some(ChannelKind::FixedRate { hz }) if hz > 0.0 => hz,
+        _ => 10.0,
+    };
+    let smooth = ((GPS_SMOOTH_S * gps_hz).round() as usize).max(1);
+    let vx = gradient(&moving_average(&x, smooth), &tg);
+    let vy = gradient(&moving_average(&y, smooth), &tg);
     let heading = unwrap_angle(vx.iter().zip(&vy).map(|(vx, vy)| vy.atan2(*vx)));
-    let yaw_native: Vec<f64> = moving_average(&gradient(&heading, &tg), 3)
+    let yaw_native: Vec<f64> = moving_average(&gradient(&heading, &tg), smooth)
         .into_iter()
         .zip(vx.iter().zip(&vy))
         .map(|(r, (vx, vy))| if vx.hypot(*vy) < 5.0 { 0.0 } else { r })

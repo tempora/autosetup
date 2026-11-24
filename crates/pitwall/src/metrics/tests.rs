@@ -93,11 +93,28 @@ fn sampled(hz: f64, f: impl Fn(f64) -> Vec<f64>) -> Vec<Vec<f64>> {
     (0..n).map(|i| f(i as f64 / hz)).collect()
 }
 
+#[derive(Clone, Copy)]
+struct Rates {
+    gps: f64,
+    susp: f64,
+    surface: f64,
+}
+
+impl Default for Rates {
+    fn default() -> Self {
+        Self { gps: 10.0, susp: 100.0, surface: 5.0 }
+    }
+}
+
 /* Constant-speed slalom: curvature is a sine of distance, the road-wheel angle
    is `steer_gain` × the kinematic (neutral) angle L·κ, so the true understeer
    angle is (steer_gain − 1)·L·|κ| with the same sign through left and right
-   turns.  GPS is integrated from the path at 10 Hz.  */
+   turns.  GPS is integrated from the path at `rates.gps` Hz.  */
 fn build_fixture(tag: &str, steer_gain: f64) -> Fixture {
+    build_fixture_with_rates(tag, steer_gain, Rates::default())
+}
+
+fn build_fixture_with_rates(tag: &str, steer_gain: f64, rates: Rates) -> Fixture {
     let path = std::env::temp_dir().join(format!("pitwall_metrics_{tag}_{}.duckdb", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let conn = Connection::open(&path).unwrap();
@@ -136,11 +153,11 @@ fn build_fixture(tag: &str, steer_gain: f64) -> Fixture {
     b.fixed("Throttle Pos", 50.0, "%", &sampled(50.0, |_| vec![60.0]));
     b.fixed("Brake Pos", 50.0, "%", &sampled(50.0, |_| vec![0.0]));
     b.fixed("Lap Dist", 10.0, "m", &sampled(10.0, |t| vec![dist(t) % LAP_LEN]));
-    b.fixed("GPS Latitude", 10.0, "deg", &sampled(10.0, |t| {
+    b.fixed("GPS Latitude", rates.gps, "deg", &sampled(rates.gps, |t| {
         let (_, py) = pos[((t * CLOCK_HZ).round() as usize).min(n - 1)];
         vec![lat0 + (py / r_earth).to_degrees()]
     }));
-    b.fixed("GPS Longitude", 10.0, "deg", &sampled(10.0, |t| {
+    b.fixed("GPS Longitude", rates.gps, "deg", &sampled(rates.gps, |t| {
         let (px, _) = pos[((t * CLOCK_HZ).round() as usize).min(n - 1)];
         vec![(px / (r_earth * lat0.to_radians().cos())).to_degrees()]
     }));
@@ -151,13 +168,13 @@ fn build_fixture(tag: &str, steer_gain: f64) -> Fixture {
         b.fixed(side, 100.0, "C", &sampled(100.0, |_| vec![85.0; 4]));
     }
     // Kerb windows: fast 20 Hz FL motion strictly inside the SurfaceTypes == 5 span.
-    b.fixed("Susp Pos", 100.0, "m", &sampled(100.0, |t| {
+    b.fixed("Susp Pos", rates.susp, "m", &sampled(rates.susp, |t| {
         let fast = KERB_WINDOWS.iter().any(|&(a, b)| t >= a + 0.05 && t < b - 0.05);
         let slow = 0.002 * (TAU * t).sin();
         let fl = if fast { 0.005 * (TAU * 20.0 * t).sin() } else { slow };
         vec![SUSP_BASE_M + fl, SUSP_BASE_M + slow, SUSP_BASE_M + slow, SUSP_BASE_M + slow]
     }));
-    b.fixed("SurfaceTypes", 5.0, "", &sampled(5.0, |t| {
+    b.fixed("SurfaceTypes", rates.surface, "", &sampled(rates.surface, |t| {
         vec![if in_kerb(t) { f64::from(KERB_SURFACE_CODE) } else { 0.0 }, 0.0, 0.0, 0.0]
     }));
 
@@ -281,6 +298,30 @@ fn kerb_samples_are_split_strictly_by_surface_type() {
     assert_eq!(m.kerbs.events, 2);
     assert!(m.observations.iter().any(|o| o.kerb));
     assert!(m.observations.iter().any(|o| !o.kerb));
+}
+
+#[test]
+fn slow_vital_channel_is_rejected_and_high_rate_gps_matches_default() {
+    let slow_susp = build_fixture_with_rates("slow_susp", 1.25, Rates { susp: 20.0, ..Rates::default() });
+    match analyse_stint(&DuckDbRecording::open(&slow_susp.path).unwrap()) {
+        Err(TelemetryError::ChannelTooSlow { channel, min_hz, actual_hz }) => {
+            assert_eq!(channel, "Susp Pos");
+            assert_eq!(min_hz, 50.0);
+            assert!((actual_hz - 20.0).abs() < 1e-6);
+        }
+        other => panic!("expected ChannelTooSlow for Susp Pos, got {other:?}"),
+    }
+
+    let slow_surf = build_fixture_with_rates("slow_surf", 1.25, Rates { surface: 1.0, ..Rates::default() });
+    match analyse_stint(&DuckDbRecording::open(&slow_surf.path).unwrap()) {
+        Err(TelemetryError::ChannelTooSlow { channel, .. }) => assert_eq!(channel, "SurfaceTypes"),
+        other => panic!("expected ChannelTooSlow for SurfaceTypes, got {other:?}"),
+    }
+
+    let default_gps = analyse(&build_fixture("gps10", 1.25));
+    let fast_gps = analyse(&build_fixture_with_rates("gps50", 1.25, Rates { gps: 50.0, ..Rates::default() }));
+    let diff = (cell_ua(&default_gps, CornerPhase::Mid) - cell_ua(&fast_gps, CornerPhase::Mid)).abs();
+    assert!(diff < 0.05, "50 Hz GPS diverged from 10 Hz GPS: diff {diff:.4} deg");
 }
 
 /* Plausibility on real LMU stints: every recording with a flying lap yields

@@ -11,7 +11,7 @@ use crate::metrics::balance::CellStats;
 use crate::metrics::summary::StintSummary;
 use crate::opt::dampers::{DamperPlan, DamperStint, Family, Metric};
 use crate::opt::rules::Rule;
-use crate::opt::solve::{DriverFlags, Gate, Outcome, Toggles};
+use crate::opt::solve::{AeroTrim, DriverFlags, Gate, Outcome, Toggles};
 use crate::opt::space::DimKind;
 use crate::opt::target::{Anchor, FeelAxis, Sliders};
 use crate::opt::why::explain;
@@ -155,6 +155,7 @@ fn cells() -> Vec<CellStats> {
             a_lon: Gs::new(lon),
             countersteer_s: Seconds::ZERO,
             tc_s: Seconds::ZERO,
+            time_s: Seconds::new(if phase == CornerPhase::Braking { 10.0 } else { 20.0 }),
         })
         .collect()
 }
@@ -220,6 +221,48 @@ fn mean_predicted(p: &Proposal, phase: CornerPhase) -> Option<f64> {
 
 fn moved_up(p: &Proposal, kind: DimKind) -> bool {
     p.solution.changes.iter().any(|c| c.kind == kind && c.to > c.from)
+}
+
+#[test]
+fn aero_trim_steps_wing_toward_target_and_feeds_qss_balance() {
+    let mut base = Case::new();
+    for c in &mut base.cells {
+        if let Some((centre, _)) = CarClass::Gt3.fast_neutral(c.cell) {
+            c.ua = centre;
+        }
+    }
+    let keep = base.run();
+    assert!(rule(&keep, Rule::AeroTrim).is_empty());
+    assert_eq!(keep.setup_from(&base.setup).params["VM_REAR_WING"].value, 5);
+
+    base.flags.aero_trim = AeroTrim::LowWing;
+    let low = base.run();
+    let r_low = rule(&low, Rule::AeroTrim);
+    assert_eq!(r_low.len(), 1);
+    assert_eq!((r_low[0].from, r_low[0].to), (5, 3));
+    assert_eq!(low.setup_from(&base.setup).params["VM_REAR_WING"].value, 3);
+
+    base.flags.aero_trim = AeroTrim::HighWing;
+    let high = base.run();
+    let r_high = rule(&high, Rule::AeroTrim);
+    assert_eq!(r_high.len(), 1);
+    assert_eq!((r_high[0].from, r_high[0].to), (5, 7));
+    // Lower wing shifts aero balance forward (less high-speed understeer) inside QSS.
+    let hi_ua = |p: &Proposal| {
+        p.solution
+            .base
+            .cells
+            .iter()
+            .find(|c| c.cell == BalanceCell { phase: CornerPhase::Mid, band: SpeedBand::High })
+            .unwrap()
+            .predicted_ua
+            .raw()
+    };
+    assert!(hi_ua(&low) < hi_ua(&high) - 0.01, "low wing {:.3} vs high wing {:.3}", hi_ua(&low), hi_ua(&high));
+
+    // Locking VM_REAR_WING blocks AeroTrim.
+    base.locks.insert("VM_REAR_WING".into());
+    assert!(rule(&base.run(), Rule::AeroTrim).is_empty());
 }
 
 #[test]
@@ -349,7 +392,9 @@ fn pointier_slider_moves_turn_in_toward_rotation() {
     let mut base = Case::new();
     // Start inside the fast-neutral window so Pointier is tested purely on slider delta.
     for c in &mut base.cells {
-        c.ua = CarClass::Gt3.fast_neutral(c.cell).0;
+        if let Some((centre, _)) = CarClass::Gt3.fast_neutral(c.cell) {
+            c.ua = centre;
+        }
     }
     let off = base.run();
     let on = base.slider(FeelAxis::Front, -1.0).run();
@@ -363,7 +408,9 @@ fn pointier_slider_moves_turn_in_toward_rotation() {
 fn safer_slider_moves_exit_toward_understeer() {
     let mut base = Case::new();
     for c in &mut base.cells {
-        c.ua = CarClass::Gt3.fast_neutral(c.cell).0;
+        if let Some((centre, _)) = CarClass::Gt3.fast_neutral(c.cell) {
+            c.ua = centre;
+        }
     }
     let off = base.run();
     let on = base.slider(FeelAxis::Rear, 1.0).run();
@@ -569,7 +616,7 @@ mod release_gate {
             let label = path.file_name().unwrap().to_string_lossy().to_string();
             groups.entry((meta.setup.signature(), meta.layout.clone())).or_default().push((label, meta, m));
         }
-        let mut changed = 0;
+        let mut acting: BTreeMap<&str, usize> = BTreeMap::new();
         let mut planned = 0;
         let mut fast_softened = 0;
         let mut damper_candidates = 0;
@@ -609,6 +656,11 @@ mod release_gate {
                 ("Kerbs unstable", run(Sliders::default().with(FeelAxis::Front, -step), DriverFlags { kerbs_unstable: true, ..DriverFlags::default() }, Toggles::default())),
                 ("Lock-ups", run(Sliders::default(), DriverFlags { lockups: true, ..DriverFlags::default() }, Toggles::default())),
                 ("Countersteer guard off", run(Sliders::default(), DriverFlags::default(), Toggles { countersteer_guard: false })),
+                ("Lazier", run(Sliders::default().with(FeelAxis::Front, step), DriverFlags::default(), Toggles::default())),
+                ("Looser", run(Sliders::default().with(FeelAxis::Rear, -step), DriverFlags::default(), Toggles::default())),
+                ("Planted", run(Sliders::default().with(FeelAxis::Fast, step), DriverFlags::default(), Toggles::default())),
+                // The OFF proposal, driven and found undrivable.
+                ("Undrivable", run(Sliders::default(), DriverFlags { undrivable: Some(base.setup_from(&meta.setup)), ..DriverFlags::default() }, Toggles::default())),
             ];
             for (name, p) in &toggles {
                 let w = explain(p);
@@ -618,19 +670,6 @@ mod release_gate {
                 }
             }
 
-            // OFF may already use each setting's full reach toward rotation, so ON
-            // must never give less rotation, and must add some on some stint.
-            let pointier = &toggles[0].1;
-            if let (Some(e_on), Some(e_off)) = (mean_predicted(pointier, CornerPhase::Entry), mean_predicted(&base, CornerPhase::Entry)) {
-                assert!(e_on <= e_off + 1e-9, "{car} @ {layout}: Pointier gave less turn-in rotation ({e_on:.3} > {e_off:.3})");
-                if e_on < e_off - 1e-6 {
-                    changed += 1;
-                }
-            }
-            let safer = &toggles[1].1;
-            if let (Some(x_on), Some(x_off)) = (mean_predicted(safer, CornerPhase::Exit), mean_predicted(&base, CornerPhase::Exit)) {
-                assert!(x_on >= x_off - 1e-9, "{car} @ {layout}: Safer gave less exit understeer ({x_on:.3} < {x_off:.3})");
-            }
             for kind in [DimKind::ArbFront, DimKind::ArbRear, DimKind::SpringFront, DimKind::SpringRear] {
                 assert!(!moved_up(&toggles[2].1, kind), "{car} @ {layout}: stiffened {kind:?} with kerbs unstable");
             }
@@ -642,6 +681,49 @@ mod release_gate {
             for r in toggles[3].1.rules.iter().filter(|r| r.rule == Rule::BrakePressure) {
                 assert!(r.to < r.from, "{car} @ {layout}: lock-ups raised brake pressure");
             }
+            /* Sliders move the target, not the stint: each slider's cells must end no
+               further outside the band it asks for than the stint as driven, and a
+               slider counts as acting when its proposal differs from the OFF one.  */
+            let sliders: [(&str, usize, FeelAxis); 5] = [
+                ("Pointier", 0, FeelAxis::Front),
+                ("Safer", 1, FeelAxis::Rear),
+                ("Lazier", 5, FeelAxis::Front),
+                ("Looser", 6, FeelAxis::Rear),
+                ("Planted", 7, FeelAxis::Fast),
+            ];
+            for (name, i, axis) in sliders {
+                let p = &toggles[i].1;
+                let excess = |predicted: bool| -> f64 {
+                    p.solution
+                        .chosen
+                        .cells
+                        .iter()
+                        .filter(|c| axis.weight(c.cell) > 0.0)
+                        .filter_map(|c| {
+                            let t = c.target?;
+                            Some(c.weight * t.excess(if predicted { c.predicted_ua } else { c.measured_ua }))
+                        })
+                        .sum()
+                };
+                let (as_driven, proposed) = (excess(false), excess(true));
+                assert!(
+                    proposed <= as_driven + 1e-9,
+                    "{car} @ {layout}: {name} took its cells further from the asked balance ({as_driven:.3} -> {proposed:.3})"
+                );
+                if p.solution.changes != base.solution.changes {
+                    *acting.entry(name).or_default() += 1;
+                }
+            }
+            // Undrivable: none of the OFF proposal's moves is repeated as far or further.
+            for c in &base.solution.changes {
+                let step = c.to - c.from;
+                assert!(
+                    toggles[8].1.solution.changes.iter().all(|d| d.kind != c.kind || (d.to - d.from) * step.signum() < step.abs()),
+                    "{car} @ {layout}: undrivable stint's {:?} move repeated",
+                    c.kind
+                );
+            }
+
             // Kerbs unstable: no fast damper stiffens, and one softens if any can.
             let is_fast = |c: &&crate::opt::dampers::DamperChange| matches!(c.setting.family, Family::FastBump | Family::FastRebound);
             let kerbs = &toggles[2].1.dampers;
@@ -664,9 +746,9 @@ mod release_gate {
                 }
             }
         }
-        println!("\n{planned} stints planned, Pointier added turn-in rotation on {changed}, unflagged fast-damper softening on {fast_softened}");
+        println!("\n{planned} stints planned; slider changed the proposal: {acting:?}; unflagged fast-damper softening on {fast_softened}");
         assert!(damper_candidates > 0, "the damper block evaluated nothing");
         assert!(planned > 0, "no flying stint to plan");
-        assert!(changed > 0, "Pointier never added turn-in rotation: the planner is degenerate");
+        assert!(acting.values().any(|&n| n > 0), "no slider ever changed a proposal: the planner is degenerate");
     }
 }

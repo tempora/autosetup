@@ -22,7 +22,8 @@
               stint by more than KERB_MARGIN (judged per metric: a product
               of per-metric probabilities collapses with every metric added)
      balance  slow dampers move balance (fixed directions, STEP_DEG a click);
-              a move may not take the main proposal further outside its band
+              a move may not take any cell further outside its band than the
+              main proposal leaves it
      kerbs unstable  no fast damper stiffens; kerb weight rises; at least one
               fast damper softens when any can
    At most two settings move (pairs of the best TOP_SINGLES single moves).
@@ -515,24 +516,20 @@ pub fn plan_dampers(input: &DamperInput<'_>) -> DamperPlan {
     let shares = |idx: &[i32]| -> Vec<f64> {
         model.dims.iter().enumerate().map(|(i, d)| d.share(idx[i]) - d.share(base[i])).collect()
     };
-    let balance_excess = |idx: &[i32]| -> f64 {
-        input
-            .chosen
-            .cells
-            .iter()
-            .filter_map(|p| {
-                let t = input.target.get(p.cell)?;
-                let shift: f64 = model
-                    .dims
-                    .iter()
-                    .enumerate()
-                    .map(|(i, d)| f64::from(idx[i] - base[i]) * d.setting.balance_per_click(p.cell))
-                    .sum();
-                Some(p.weight * t.excess(p.predicted_ua + Degrees::new(shift)))
-            })
-            .sum()
+    // Any cell taken further outside its band than the main proposal leaves it.
+    let balance_worse = |idx: &[i32]| -> bool {
+        input.chosen.cells.iter().any(|p| {
+            let Some(t) = input.target.get(p.cell) else { return false };
+            let shift: f64 = model
+                .dims
+                .iter()
+                .enumerate()
+                .map(|(i, d)| f64::from(idx[i] - base[i]) * d.setting.balance_per_click(p.cell))
+                .sum();
+            let e = t.excess(p.predicted_ua + Degrees::new(shift));
+            e > 0.0 && e > t.excess(p.predicted_ua) + 1e-9
+        })
     };
-    let base_excess = input.chosen.band_excess;
     // Gate a candidate; None when rejected (and counted).
     let gate = |idx: &[i32], plan: &mut DamperPlan| -> Option<Scored> {
         plan.candidates += 1;
@@ -547,8 +544,7 @@ pub fn plan_dampers(input: &DamperInput<'_>) -> DamperPlan {
             plan.rejected_kerb += 1;
             return None;
         }
-        let excess = balance_excess(idx);
-        if excess > base_excess + 1e-9 && excess > 0.0 {
+        if balance_worse(idx) {
             plan.rejected_balance += 1;
             return None;
         }

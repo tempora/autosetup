@@ -4,15 +4,17 @@
    apex speed and measured a_lon, so the driver's pedal habits cancel in the
    delta instead of being baked into the candidate.
 
-   Ranking is lexicographic: first the time-weighted band excess (distance
-   outside the target band, in tolerances), then pace (time-weighted
-   predicted gain in p95 lateral G over cornering cells, minus a small cost
-   per click moved).  Local search walks single- and two-click moves from the
+   Cells are weighted by the time the stint spent in them.  Ranking is
+   lexicographic: first the time-weighted band excess (distance outside the
+   target band, in tolerances), then pace: the share of cornering time saved,
+   Σ time_share · Δv/v with Δv/v = ½ Δa_lat/a_lat (v² = a·R on the same line),
+   less a small cost per click moved.  Local search walks single- and two-click moves from the
    stint's setup within each Dim's reach.
 
    Gates reject candidates and are counted on every result, so a broken gate
    shows as a rejection count rather than an empty "already optimal" answer:
-     Balance         band excess worse than the stint's own
+     Balance         takes any cell further outside its band than the unmoved
+                     setup (no cell's balance is traded for another's)
      Undrivable      repeats, as far or further, a move of a stint flagged undrivable
      KerbStiffening  stiffens a bar or spring while kerbs are flagged unstable
      Countersteer    (proposal, switchable) adds rotation in a cell where the stint
@@ -28,13 +30,14 @@ use crate::opt::space::{Candidate, DimKind, Space};
 use crate::opt::target::{BalanceTarget, CellTarget};
 use crate::physics::{CornerState, MechanicalModel};
 use crate::setup::CarSetup;
-use crate::units::{Degrees, Gs};
+use crate::units::{Degrees, Gs, MetersPerSec};
 use crate::validation::MIN_CELL_PASSES;
 
-const CHANGE_COST_G: f64 = 0.001;
+// Share of cornering time a click must save to be worth moving.
+const CHANGE_COST: f64 = 0.0003;
 const EXCESS_EPS: f64 = 0.05;
 const MAX_STEPS: usize = 20;
-pub const HINT_MIN_G: f64 = 0.01;
+pub const HINT_MIN: f64 = 0.003;
 pub const COUNTERSTEER_S_PER_PASS: f64 = 0.05;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -45,10 +48,20 @@ pub enum Gate {
     Countersteer,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AeroTrim {
+    #[default]
+    Keep,
+    LowWing,
+    MidWing,
+    HighWing,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DriverFlags {
     pub kerbs_unstable: bool,
     pub lockups: bool,
+    pub aero_trim: AeroTrim,
     // Setup of a stint the driver could not drive.
     pub undrivable: Option<CarSetup>,
 }
@@ -73,6 +86,8 @@ pub struct CellPrediction {
     pub predicted_ua: Degrees,
     pub measured_lat: Gs,
     pub predicted_lat: Gs,
+    // The cell's apex speed as driven.
+    pub v_min: MetersPerSec,
     pub target: Option<CellTarget>,
     pub countersteer_s: f64,
 }
@@ -91,7 +106,8 @@ pub struct Evaluated {
     pub candidate: Candidate,
     pub cells: Vec<CellPrediction>,
     pub band_excess: f64,
-    pub pace_g: f64,
+    // Share of cornering time saved against the stint as driven.
+    pub pace: f64,
     pub clicks: i32,
     pub failed: Vec<Gate>,
 }
@@ -106,7 +122,8 @@ pub enum Outcome {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaceHint {
     pub changes: Vec<Change>,
-    pub extra_grip_g: f64,
+    // Further share of cornering time saved.
+    pub extra_time: f64,
     // Cells the hint would take outside the band: (cell, predicted − centre).
     pub leaves_band: Vec<(BalanceCell, Degrees)>,
 }
@@ -137,14 +154,14 @@ impl<M: MechanicalModel> Solver<'_, M> {
     }
 
     fn state(c: &CellStats) -> CornerState {
-        CornerState { speed: c.v_min, phase: c.cell.phase, a_lon: c.a_lon }
+        CornerState { speed: c.v_min, phase: c.cell.phase, a_lon: c.a_lon, a_lat: c.a_lat_p95 }
     }
 
     fn predict(&self, cand: &[i32]) -> Vec<CellPrediction> {
         let base_setup = self.space.setup.mechanical_vector();
         let cand_setup = self.space.mechanical(cand);
         let usable = self.usable();
-        let total: f64 = usable.iter().map(|c| c.passes as f64).sum::<f64>().max(1.0);
+        let total: f64 = usable.iter().map(|c| c.time_s.raw()).sum::<f64>().max(1e-9);
         usable
             .into_iter()
             .map(|c| {
@@ -152,11 +169,12 @@ impl<M: MechanicalModel> Solver<'_, M> {
                 let p1 = self.model.evaluate(&cand_setup, Self::state(c));
                 CellPrediction {
                     cell: c.cell,
-                    weight: c.passes as f64 / total,
+                    weight: c.time_s.raw() / total,
                     measured_ua: c.ua,
                     predicted_ua: c.ua + (p1.understeer - p0.understeer),
                     measured_lat: c.a_lat_p95,
                     predicted_lat: c.a_lat_p95 + (p1.max_lat_g - p0.max_lat_g),
+                    v_min: c.v_min,
                     target: self.target.get(c.cell).copied(),
                     countersteer_s: c.countersteer_s.raw(),
                 }
@@ -164,20 +182,29 @@ impl<M: MechanicalModel> Solver<'_, M> {
             .collect()
     }
 
-    fn evaluate(&self, cand: &[i32], base_excess: Option<f64>) -> Evaluated {
+    // `base`: the unmoved candidate's cells, which no cell may end further outside its band than.
+    fn evaluate(&self, cand: &[i32], base: Option<&[CellPrediction]>) -> Evaluated {
         let cells = self.predict(cand);
         let band_excess: f64 = cells.iter().filter_map(|p| Some(p.weight * p.target?.excess(p.predicted_ua))).sum();
         let base_idx = self.space.base();
         let clicks: i32 = cand.iter().zip(&base_idx).map(|(a, b)| (a - b).abs()).sum();
-        let pace_g = cells
+        let cornering: f64 = cells.iter().filter(|p| p.cell.phase != CornerPhase::Braking).map(|p| p.weight).sum();
+        let pace = cells
             .iter()
-            .filter(|p| p.cell.phase != CornerPhase::Braking)
-            .map(|p| p.weight * (p.predicted_lat - p.measured_lat).raw())
+            .filter(|p| p.cell.phase != CornerPhase::Braking && p.measured_lat.raw() > 0.0)
+            .map(|p| p.weight / cornering.max(1e-9) * 0.5 * ((p.predicted_lat - p.measured_lat) / p.measured_lat))
             .sum::<f64>()
-            - CHANGE_COST_G * f64::from(clicks);
+            - CHANGE_COST * f64::from(clicks);
 
         let mut failed = Vec::new();
-        if base_excess.is_some_and(|b| band_excess > b + 1e-9 && band_excess > 0.0) {
+        let cell_worse = |p: &CellPrediction, b: &CellPrediction| match p.target {
+            Some(t) => {
+                let e = t.excess(p.predicted_ua);
+                e > 0.0 && e > t.excess(b.predicted_ua) + 1e-9
+            }
+            None => false,
+        };
+        if base.is_some_and(|b| cells.iter().zip(b).any(|(p, b)| cell_worse(p, b))) {
             failed.push(Gate::Balance);
         }
         if self.repeats_undrivable(cand) {
@@ -198,7 +225,7 @@ impl<M: MechanicalModel> Solver<'_, M> {
         {
             failed.push(Gate::Countersteer);
         }
-        Evaluated { candidate: cand.to_vec(), cells, band_excess, pace_g, clicks, failed }
+        Evaluated { candidate: cand.to_vec(), cells, band_excess, pace, clicks, failed }
     }
 
     fn repeats_undrivable(&self, cand: &[i32]) -> bool {
@@ -219,7 +246,7 @@ impl<M: MechanicalModel> Solver<'_, M> {
         if (a.band_excess - b.band_excess).abs() > EXCESS_EPS {
             a.band_excess < b.band_excess
         } else {
-            a.pace_g > b.pace_g + 1e-9
+            a.pace > b.pace + 1e-9
         }
     }
 
@@ -254,7 +281,7 @@ impl<M: MechanicalModel> Solver<'_, M> {
                 .neighbours(&current.candidate)
                 .into_iter()
                 .filter(|c| seen.insert(c.clone()))
-                .map(|c| self.evaluate(&c, Some(base.band_excess)))
+                .map(|c| self.evaluate(&c, Some(&base.cells)))
                 .collect();
             let best = step
                 .iter()
@@ -285,11 +312,11 @@ impl<M: MechanicalModel> Solver<'_, M> {
         let hint = all
             .iter()
             .filter(|e| e.failed == [Gate::Balance])
-            .max_by(|a, b| a.pace_g.total_cmp(&b.pace_g))
-            .filter(|e| e.pace_g - current.pace_g > HINT_MIN_G)
+            .max_by(|a, b| a.pace.total_cmp(&b.pace))
+            .filter(|e| e.pace - current.pace > HINT_MIN)
             .map(|e| PaceHint {
                 changes: self.changes(&current.candidate, &e.candidate),
-                extra_grip_g: e.pace_g - current.pace_g,
+                extra_time: e.pace - current.pace,
                 leaves_band: e
                     .cells
                     .iter()
