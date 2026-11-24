@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::units::{Meters, MetersPerSec, MmPerSec};
+
 // Canonical LMU wheel order: FL, FR, RL, RR.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Wheel<T> {
@@ -113,7 +115,7 @@ impl Axle<f64> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CornerPhase {
     Braking,
     Entry,
@@ -121,14 +123,136 @@ pub enum CornerPhase {
     Exit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl CornerPhase {
+    pub const ALL: [Self; 4] = [Self::Braking, Self::Entry, Self::Mid, Self::Exit];
+
+    #[inline]
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SpeedBand {
     Low,
     High,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl SpeedBand {
+    pub const ALL: [Self; 2] = [Self::Low, Self::High];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BalanceCell {
     pub phase: CornerPhase,
     pub band: SpeedBand,
+}
+
+impl BalanceCell {
+    pub fn all() -> impl Iterator<Item = Self> {
+        CornerPhase::ALL
+            .into_iter()
+            .flat_map(|phase| SpeedBand::ALL.into_iter().map(move |band| Self { phase, band }))
+    }
+}
+
+// Turning direction: the sign of steering and of yaw rate (+ right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Direction {
+    Left,
+    Right,
+}
+
+impl Direction {
+    #[inline]
+    pub fn from_sign(x: f64) -> Option<Self> {
+        if x > 0.0 {
+            Some(Self::Right)
+        } else if x < 0.0 {
+            Some(Self::Left)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub const fn sign(self) -> f64 {
+        match self {
+            Self::Left => -1.0,
+            Self::Right => 1.0,
+        }
+    }
+}
+
+// Samples split by whether the wheel was on a kerb (SurfaceTypes == 5).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct KerbSplit<T> {
+    pub off: T,
+    pub on: T,
+}
+
+impl<T> KerbSplit<T> {
+    #[inline]
+    pub fn get_mut(&mut self, on_kerb: bool) -> &mut T {
+        if on_kerb {
+            &mut self.on
+        } else {
+            &mut self.off
+        }
+    }
+}
+
+/* Car classes in v1.0 scope; everything else maps to Other with generic
+   defaults.  Constants mirror classes.toml (band_split_kmh, damper_knee_mm_s)
+   and the per-class wheelbase fallback used by the understeer angle.  */
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CarClass {
+    Gt3,
+    Lmp2,
+    Lmp2Elms,
+    Hyper,
+    Other,
+}
+
+impl CarClass {
+    pub fn parse(raw: &str) -> Self {
+        let s = raw.trim().to_ascii_uppercase();
+        if s.starts_with("GT3") || s.starts_with("LMGT3") {
+            Self::Gt3
+        } else if s.starts_with("LMP2") && s.contains("ELMS") {
+            Self::Lmp2Elms
+        } else if s.starts_with("LMP2") {
+            Self::Lmp2
+        } else if s.starts_with("HYPER") || s.starts_with("LMH") || s.starts_with("LMDH") {
+            Self::Hyper
+        } else {
+            Self::Other
+        }
+    }
+
+    pub const fn wheelbase(self) -> Meters {
+        Meters::new(match self {
+            Self::Gt3 => 2.65,
+            Self::Lmp2 | Self::Lmp2Elms => 3.00,
+            Self::Hyper => 3.15,
+            Self::Other => 2.80,
+        })
+    }
+
+    // Apex speed separating low- from high-speed corners.
+    pub fn band_split(self) -> MetersPerSec {
+        MetersPerSec::from_kmh(match self {
+            Self::Gt3 | Self::Other => 140.0,
+            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 150.0,
+        })
+    }
+
+    // Shaft speed separating slow from fast damper circuits.
+    pub const fn damper_knee(self) -> MmPerSec {
+        MmPerSec::new(match self {
+            Self::Hyper => 22.0,
+            Self::Lmp2Elms => 40.0,
+            Self::Gt3 | Self::Lmp2 | Self::Other => 50.0,
+        })
+    }
 }

@@ -5,14 +5,15 @@ use ::duckdb::{AccessMode, Config, Connection};
 
 use crate::chassis::Wheel;
 use crate::setup::CarSetup;
-use crate::telemetry::{ChannelKind, SessionMeta, TelemetryError, TelemetrySource, TimeSeries};
+use crate::telemetry::{
+    ChannelKind, SessionMeta, TelemetryError, TelemetrySource, TimeSeries, CLOCK_CHANNEL,
+};
 use crate::units::Seconds;
-
-const CLOCK_CHANNEL: &str = "GPS Time";
 
 pub struct DuckDbRecording {
     conn: Connection,
     frequencies: HashMap<String, f64>,
+    units: HashMap<String, String>,
     event_tables: HashMap<String, bool>,
     clock: Vec<Seconds>,
     clock_hz: f64,
@@ -26,7 +27,7 @@ impl DuckDbRecording {
         let conn = Connection::open_with_flags(path.as_ref(), cfg)
             .map_err(|e| TelemetryError::Backend(e.to_string()))?;
 
-        let frequencies = read_frequencies(&conn)?;
+        let (frequencies, units) = read_channel_list(&conn)?;
         let event_tables = read_event_table_flags(&conn)?;
         let clock_hz = frequencies.get(CLOCK_CHANNEL).copied().unwrap_or(100.0);
         let clock = read_clock(&conn)?;
@@ -34,6 +35,7 @@ impl DuckDbRecording {
         Ok(Self {
             conn,
             frequencies,
+            units,
             event_tables,
             clock,
             clock_hz,
@@ -93,6 +95,12 @@ impl TelemetrySource for DuckDbRecording {
 
         Ok(SessionMeta {
             track: kv.get("TrackName").cloned().unwrap_or_default(),
+            layout: kv
+                .get("TrackLayout")
+                .filter(|s| !s.is_empty())
+                .or_else(|| kv.get("TrackName"))
+                .cloned()
+                .unwrap_or_default(),
             car_name,
             car_class: kv.get("CarClass").cloned().unwrap_or_default(),
             session_type: kv.get("SessionType").cloned().unwrap_or_default(),
@@ -108,6 +116,10 @@ impl TelemetrySource for DuckDbRecording {
         } else {
             None
         }
+    }
+
+    fn channel_unit(&self, name: &str) -> Option<&str> {
+        self.units.get(name).map(String::as_str)
     }
 
     fn scalar_channel(&self, name: &str) -> Result<TimeSeries<f64>, TelemetryError> {
@@ -229,22 +241,27 @@ fn escape_ident(name: &str) -> String {
     name.replace('"', "\"\"")
 }
 
-fn read_frequencies(conn: &Connection) -> Result<HashMap<String, f64>, TelemetryError> {
+type ChannelList = (HashMap<String, f64>, HashMap<String, String>);
+
+fn read_channel_list(conn: &Connection) -> Result<ChannelList, TelemetryError> {
     let mut stmt = conn
-        .prepare("select channelName, cast(frequency as double) from channelsList")
-        .or_else(|_| conn.prepare("select * from channelsList"))
+        .prepare(
+            "select channelName, cast(frequency as double), coalesce(cast(unit as varchar), '')              from channelsList",
+        )
         .map_err(|e| TelemetryError::Backend(e.to_string()))?;
     let rows = stmt
         .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?, row.get::<_, String>(2)?))
         })
         .map_err(|e| TelemetryError::Backend(e.to_string()))?;
-    let mut out = HashMap::new();
+    let mut freqs = HashMap::new();
+    let mut units = HashMap::new();
     for r in rows {
-        let (name, hz) = r.map_err(|e| TelemetryError::Backend(e.to_string()))?;
-        out.insert(name, hz);
+        let (name, hz, unit) = r.map_err(|e| TelemetryError::Backend(e.to_string()))?;
+        freqs.insert(name.clone(), hz);
+        units.insert(name, unit);
     }
-    Ok(out)
+    Ok((freqs, units))
 }
 
 fn read_event_table_flags(conn: &Connection) -> Result<HashMap<String, bool>, TelemetryError> {

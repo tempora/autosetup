@@ -13,6 +13,7 @@ use crate::setup::CarSetup;
 use crate::units::Seconds;
 
 pub const KERB_SURFACE_CODE: u8 = 5;
+pub const CLOCK_CHANNEL: &str = "GPS Time";
 
 #[derive(Debug, Error)]
 pub enum TelemetryError {
@@ -24,6 +25,8 @@ pub enum TelemetryError {
         expected: usize,
         actual: usize,
     },
+    #[error("recording too short to analyse: {0:.2} s")]
+    TooShort(f64),
     #[error("backend error: {0}")]
     Backend(String),
 }
@@ -63,9 +66,28 @@ impl<T: Copy> TimeSeries<T> {
     }
 }
 
-impl TimeSeries<f64> {
+// Linear blend between two samples; implemented for every continuous sample type.
+pub trait Lerp: Copy {
+    fn lerp(a: Self, b: Self, frac: f64) -> Self;
+}
+
+impl Lerp for f64 {
+    #[inline]
+    fn lerp(a: Self, b: Self, frac: f64) -> Self {
+        a + frac * (b - a)
+    }
+}
+
+impl<T: Lerp> Lerp for Wheel<T> {
+    #[inline]
+    fn lerp(a: Self, b: Self, frac: f64) -> Self {
+        a.zip_with(b, |x, y| T::lerp(x, y, frac))
+    }
+}
+
+impl<T: Lerp> TimeSeries<T> {
     // Piecewise-linear resampling with endpoint clamping; requires increasing self.times.
-    pub fn sample_linear(&self, target_times: &[Seconds]) -> Vec<f64> {
+    pub fn sample_linear(&self, target_times: &[Seconds]) -> Vec<T> {
         debug_assert!(!self.is_empty());
         let last = self.len() - 1;
         target_times
@@ -83,8 +105,7 @@ impl TimeSeries<f64> {
                 if dt <= 0.0 {
                     self.values[lo]
                 } else {
-                    let frac = (t - self.times[lo]).raw() / dt;
-                    self.values[lo] + frac * (self.values[hi] - self.values[lo])
+                    T::lerp(self.values[lo], self.values[hi], (t - self.times[lo]).raw() / dt)
                 }
             })
             .collect()
@@ -94,6 +115,8 @@ impl TimeSeries<f64> {
 #[derive(Debug, Clone)]
 pub struct SessionMeta {
     pub track: String,
+    // TrackLayout, falling back to TrackName.
+    pub layout: String,
     pub car_name: String,
     pub car_class: String,
     pub session_type: String,
@@ -103,6 +126,8 @@ pub struct SessionMeta {
 pub trait TelemetrySource {
     fn metadata(&self) -> Result<SessionMeta, TelemetryError>;
     fn channel_kind(&self, name: &str) -> Option<ChannelKind>;
+    // Unit string from channelsList; None for event tables and unknown channels.
+    fn channel_unit(&self, name: &str) -> Option<&str>;
     fn scalar_channel(&self, name: &str) -> Result<TimeSeries<f64>, TelemetryError>;
     fn wheel_channel(&self, name: &str) -> Result<TimeSeries<Wheel<f64>>, TelemetryError>;
     fn wheel_surface(&self) -> Result<TimeSeries<Wheel<u8>>, TelemetryError>;

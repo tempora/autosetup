@@ -1,9 +1,13 @@
 pub mod chassis;
+pub mod metrics;
 pub mod physics;
 pub mod setup;
 pub mod telemetry;
 pub mod units;
 pub mod validation;
+
+#[cfg(all(test, feature = "duckdb-native"))]
+mod testdata;
 
 #[cfg(test)]
 mod tests {
@@ -20,10 +24,7 @@ mod tests {
         let mut stiffer_rear = base;
         stiffer_rear.arb.rear = 0.9;
 
-        let state = CornerState {
-            speed: MetersPerSec::from_kmh(100.0),
-            phase: CornerPhase::Mid,
-        };
+        let state = CornerState::steady(MetersPerSec::from_kmh(100.0), CornerPhase::Mid);
         let p0 = model.evaluate(&base, state);
         let p1 = model.evaluate(&stiffer_rear, state);
 
@@ -41,10 +42,7 @@ mod tests {
         extreme_front.arb.rear = 0.0;
         extreme_front.spring.rear = 0.0;
 
-        let state = CornerState {
-            speed: MetersPerSec::from_kmh(110.0),
-            phase: CornerPhase::Mid,
-        };
+        let state = CornerState::steady(MetersPerSec::from_kmh(110.0), CornerPhase::Mid);
         let p_bal = model.evaluate(&balanced, state);
         let p_ext = model.evaluate(&extreme_front, state);
 
@@ -53,12 +51,45 @@ mod tests {
     }
 
     #[test]
+    fn qss_trail_braking_with_more_front_bias_adds_entry_understeer() {
+        let model = QssModel::new(VehicleParams::gt3_baseline());
+        let rear_bias = MechanicalSetup { brake_bias: 0.0, ..MechanicalSetup::default() };
+        let front_bias = MechanicalSetup { brake_bias: 1.0, ..MechanicalSetup::default() };
+        let trail = CornerState { a_lon: Gs::new(-0.6), ..CornerState::steady(MetersPerSec::from_kmh(120.0), CornerPhase::Entry) };
+
+        let p_rear = model.evaluate(&rear_bias, trail);
+        let p_front = model.evaluate(&front_bias, trail);
+        assert!(p_front.understeer > p_rear.understeer);
+
+        // Trail braking costs lateral grip compared with a coasting entry.
+        let coast = model.evaluate(&front_bias, CornerState { a_lon: Gs::ZERO, ..trail });
+        assert!(p_front.max_lat_g < coast.max_lat_g);
+    }
+
+    #[test]
+    fn qss_entry_lateral_capacity_falls_monotonically_with_braking_and_never_collapses() {
+        let model = QssModel::new(VehicleParams::gt3_baseline());
+        let setup = MechanicalSetup::default();
+        let lat_at = |a_lon: f64| {
+            let state = CornerState { a_lon: Gs::new(a_lon), ..CornerState::steady(MetersPerSec::from_kmh(150.0), CornerPhase::Entry) };
+            model.evaluate(&setup, state).max_lat_g.raw()
+        };
+        let sweep: Vec<f64> = (0..=30).map(|k| lat_at(-0.1 * k as f64)).collect();
+        assert!(sweep.iter().all(|g| g.is_finite() && *g > 0.0), "{sweep:?}");
+        assert!(sweep.windows(2).all(|w| w[1] <= w[0] + 1e-9), "not monotone: {sweep:?}");
+
+        // Straight-line braking spends no lateral grip on the friction circle.
+        let braking = |a_lon: f64| {
+            let state = CornerState { a_lon: Gs::new(a_lon), ..CornerState::steady(MetersPerSec::from_kmh(150.0), CornerPhase::Braking) };
+            model.evaluate(&setup, state).max_lat_g.raw()
+        };
+        assert!(braking(-1.5) > lat_at(-1.5));
+    }
+
+    #[test]
     fn holdout_validator_scores_direction_and_mae() {
         let model = QssModel::new(VehicleParams::gt3_baseline());
-        let state = CornerState {
-            speed: MetersPerSec::from_kmh(100.0),
-            phase: CornerPhase::Mid,
-        };
+        let state = CornerState::steady(MetersPerSec::from_kmh(100.0), CornerPhase::Mid);
         let a = MechanicalSetup::default();
         let mut b = a;
         b.arb.rear = 0.85;

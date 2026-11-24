@@ -122,6 +122,34 @@ pub struct MechanicalSetup {
     pub brake_bias: f64,
 }
 
+impl MechanicalSetup {
+    #[inline]
+    pub fn to_array(&self) -> [f64; 11] {
+        [
+            self.spring.front,
+            self.spring.rear,
+            self.arb.front,
+            self.arb.rear,
+            self.ride_height.front,
+            self.ride_height.rear,
+            self.wing,
+            self.diff_preload,
+            self.diff_power,
+            self.diff_coast,
+            self.brake_bias,
+        ]
+    }
+
+    // Largest normalised difference over all mechanical coordinates.
+    pub fn max_abs_diff(&self, other: &Self) -> f64 {
+        self.to_array()
+            .iter()
+            .zip(other.to_array())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max)
+    }
+}
+
 impl Default for MechanicalSetup {
     fn default() -> Self {
         Self {
