@@ -24,11 +24,10 @@ use serde::{Deserialize, Serialize};
 use crate::chassis::CarClass;
 use crate::metrics::balance::CellStats;
 use crate::metrics::summary::StintSummary;
-use crate::metrics::suspension::{DamperMetrics, KerbSummary};
 use crate::physics::calibrate::Verification;
 use crate::physics::MechanicalModel;
 use crate::setup::CarSetup;
-use dampers::{plan_dampers, DamperInput, DamperPlan};
+use dampers::{plan_dampers, DamperInput, DamperPlan, DamperStint};
 use rules::{apply_rules, RuleChange, RuleInput};
 use solve::{DriverFlags, Solution, Solver, Toggles};
 use space::Space;
@@ -39,8 +38,8 @@ pub struct PlanInput<'a> {
     pub setup: &'a CarSetup,
     pub cells: &'a [CellStats],
     pub summary: &'a StintSummary,
-    pub dampers: &'a DamperMetrics,
-    pub kerbs: &'a KerbSummary,
+    // Damper metrics of this car and layout's stints, the current one last.
+    pub damper_history: &'a [DamperStint],
     pub fingerprint: Option<&'a [CellStats]>,
     pub sliders: Sliders,
     pub flags: DriverFlags,
@@ -111,11 +110,12 @@ pub fn plan<M: MechanicalModel>(model: &M, input: &PlanInput<'_>) -> Proposal {
     .solve();
     let dampers = plan_dampers(&DamperInput {
         setup: input.setup,
-        class: input.class,
-        dampers: input.dampers,
-        kerbs: input.kerbs,
-        flags: &input.flags,
-        locks: &input.locks,
+        history: input.damper_history,
+        kerbs_unstable: input.flags.kerbs_unstable,
+        main_changes: !solution.changes.is_empty(),
+        locks: &search_locks,
+        target: &target,
+        chosen: &solution.chosen,
     });
     Proposal { verification: input.verification, rules, dampers, target, solution }
 }

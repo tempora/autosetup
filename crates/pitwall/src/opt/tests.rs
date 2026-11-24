@@ -6,11 +6,10 @@
 
 use std::collections::BTreeSet;
 
-use crate::chassis::{Axle, BalanceCell, CarClass, CornerPhase, SpeedBand, Wheel};
+use crate::chassis::{BalanceCell, CarClass, CornerPhase, SpeedBand, Wheel};
 use crate::metrics::balance::CellStats;
 use crate::metrics::summary::StintSummary;
-use crate::metrics::suspension::{AxleDamperShape, DamperMetrics, KerbSummary};
-use crate::opt::dampers::DamperKind;
+use crate::opt::dampers::{DamperPlan, DamperStint, Family, Metric};
 use crate::opt::rules::Rule;
 use crate::opt::solve::{DriverFlags, Gate, Outcome, Toggles};
 use crate::opt::space::DimKind;
@@ -20,7 +19,7 @@ use crate::opt::{plan, PlanInput, Proposal};
 use crate::physics::calibrate::Verification;
 use crate::physics::{CornerState, MechanicalModel, QssModel, VehicleParams};
 use crate::setup::{CarSetup, MechanicalSetup};
-use crate::units::{Degrees, Gs, MetersPerSec, MmPerSec, Seconds};
+use crate::units::{Degrees, Gs, MetersPerSec, Seconds};
 
 fn param(min: i32, max: i32, value: i32) -> String {
     format!(r#"{{"available": true, "minValue": {min}, "maxValue": {max}, "value": {value}, "stringValue": "{value}"}}"#)
@@ -99,7 +98,39 @@ fn gt3_setup() -> CarSetup {
         ("VM_BRAKE_BALANCE", param(0, 41, 20)),
         ("VM_BRAKE_PRESSURE", param(0, 21, 18)),
     ];
-    with_tyres_and_brakes(&entries)
+    let mut all: Vec<(&str, String)> = entries.to_vec();
+    for family in ["SLOWBUMP", "SLOWREBOUND", "FASTBUMP", "FASTREBOUND"] {
+        for w in WHEEL_SUFFIX {
+            let key: &'static str = Box::leak(format!("WM_{family}-W_{w}").into_boxed_str());
+            all.push((key, param(0, 12, 5)));
+        }
+    }
+    with_tyres_and_brakes(&all)
+}
+
+// A stint's damper metrics at their variance floor.
+fn damper_stint(setup: CarSetup, values: &[(Metric, f64)]) -> DamperStint {
+    DamperStint {
+        setup,
+        values: values.iter().map(|&(m, v)| (m, (v, (0.2 * m.scale()).powi(2)))).collect(),
+    }
+}
+
+fn usual_damper_values() -> Vec<(Metric, f64)> {
+    vec![
+        (Metric::CvFront, 0.20),
+        (Metric::CvRear, 0.20),
+        (Metric::SymFront, 0.03),
+        (Metric::SymRear, 0.03),
+        (Metric::KneeFront, 0.05),
+        (Metric::KneeRear, 0.05),
+        (Metric::Shape, 0.3),
+        (Metric::PeakLoad, 1.6),
+        (Metric::AirtimeS, 0.03),
+        (Metric::PitchDeg, 0.4),
+        (Metric::HeaveMm, 6.0),
+        (Metric::YawDist, 0.15),
+    ]
 }
 
 fn cells() -> Vec<CellStats> {
@@ -131,8 +162,7 @@ fn cells() -> Vec<CellStats> {
 struct Case {
     class: CarClass,
     summary: StintSummary,
-    dampers: DamperMetrics,
-    kerbs: KerbSummary,
+    damper_history: Vec<DamperStint>,
     setup: CarSetup,
     cells: Vec<CellStats>,
     sliders: Sliders,
@@ -146,8 +176,7 @@ impl Case {
         Self {
             class: CarClass::Gt3,
             summary: StintSummary::default(),
-            dampers: DamperMetrics::default(),
-            kerbs: KerbSummary::default(),
+            damper_history: vec![damper_stint(gt3_setup(), &usual_damper_values())],
             setup: gt3_setup(),
             cells: cells(),
             sliders: Sliders::default(),
@@ -171,8 +200,7 @@ impl Case {
                 setup: &self.setup,
                 cells: &self.cells,
                 summary: &self.summary,
-                dampers: &self.dampers,
-                kerbs: &self.kerbs,
+                damper_history: &self.damper_history,
                 fingerprint: None,
                 sliders: self.sliders,
                 flags: self.flags.clone(),
@@ -227,51 +255,93 @@ fn shipped_calibration_never_disables_load_sensitivity_or_roll_stiffness() {
     }
 }
 
-#[test]
-fn kerbs_unstable_softens_fast_dampers_and_blocks_slow_stiffening() {
-    let mut case = Case::new();
-    case.dampers.axles = Axle::new(
-        Some(AxleDamperShape { symmetry: 0.01, slow_share: 0.65 }),
-        Some(AxleDamperShape { symmetry: 0.01, slow_share: 0.85 }),
-    );
-    let off = case.run();
-    assert!(
-        off.dampers.changes.iter().any(|c| c.kind == DamperKind::SlowBumpFront && c.to > c.from),
-        "underdamped slow share should stiffen slow bump when kerbs are stable: {:?}",
-        off.dampers
-    );
-    case.flags.kerbs_unstable = true;
-    let on = case.run();
-    assert!(
-        on.dampers.changes.iter().any(|c| c.kind == DamperKind::FastBumpFront && c.to < c.from),
-        "kerbs_unstable must actively soften fast bump: {:?}",
-        on.dampers
-    );
-    assert!(on.dampers.changes.iter().all(|c| c.to < c.from), "no damper may stiffen when kerbs_unstable: {:?}", on.dampers);
-    let out = on.setup_from(&case.setup);
-    assert!(out.params["WM_FASTBUMP-W_FL"].value < case.setup.params["WM_FASTBUMP-W_FL"].value);
+fn damper_moves(p: &DamperPlan, family: Family, front: bool) -> Vec<i32> {
+    p.changes
+        .iter()
+        .filter(|c| c.setting.family == family && !c.setting.third && (c.setting.axle == crate::opt::dampers::Axle::Front) == front)
+        .map(|c| c.to - c.from)
+        .collect()
+}
+
+// Stints of the test car with front fast bump at each index and the kerb
+// numbers `peak(index)` measured there.
+fn fast_bump_history(indices: &[i32], peak: impl Fn(i32) -> f64) -> Vec<DamperStint> {
+    indices
+        .iter()
+        .map(|&i| {
+            let mut setup = gt3_setup();
+            setup.set_value("WM_FASTBUMP-W_FL", i);
+            setup.set_value("WM_FASTBUMP-W_FR", i);
+            let mut v = usual_damper_values();
+            for (m, x) in v.iter_mut() {
+                if *m == Metric::PeakLoad {
+                    *x = peak(i);
+                }
+            }
+            damper_stint(setup, &v)
+        })
+        .collect()
 }
 
 #[test]
-fn harsh_kerb_telemetry_and_skewed_histograms_drive_dampers() {
+fn damper_effects_are_learned_from_this_cars_stints() {
+    // Kerb peaks grow with front fast bump, as the prior expects: soften it.
     let mut case = Case::new();
-    case.kerbs = KerbSummary { events: 12, peak_load: Some(2.2), airtime_s: Some(0.06), ..KerbSummary::default() };
+    case.damper_history = fast_bump_history(&[3, 7, 4, 6, 5], |i| 1.2 + 0.15 * f64::from(i));
     let p = case.run();
-    assert!(p.dampers.changes.iter().any(|c| c.kind == DamperKind::FastBumpFront && c.to < c.from));
-    assert!(p.dampers.changes.iter().any(|c| c.kind == DamperKind::FastReboundFront && c.to < c.from));
+    assert!(
+        damper_moves(&p.dampers, Family::FastBump, true).iter().any(|&d| d < 0),
+        "kerb peaks rise with fast bump, yet it was not softened: {:?}\n{}",
+        p.dampers,
+        explain(&p)
+    );
 
-    let mut skew = Case::new();
-    for _ in 0..80 {
-        skew.dampers.wheels.fl.off.push(MmPerSec::new(20.0));
-        skew.dampers.wheels.fr.off.push(MmPerSec::new(20.0));
-    }
-    for _ in 0..20 {
-        skew.dampers.wheels.fl.off.push(MmPerSec::new(-20.0));
-        skew.dampers.wheels.fr.off.push(MmPerSec::new(-20.0));
-    }
-    skew.dampers.axles.front = Some(AxleDamperShape { symmetry: 0.30, slow_share: 0.85 });
-    let p_skew = skew.run();
-    assert!(p_skew.dampers.changes.iter().any(|c| c.kind == DamperKind::SlowBumpFront && c.to < c.from));
+    // This car's stints say the opposite: softer front fast bump hit the kerbs harder.
+    case.damper_history = fast_bump_history(&[3, 7, 4, 6, 3, 7, 5], |i| 2.6 - 0.15 * f64::from(i));
+    let q = case.run();
+    assert!(
+        damper_moves(&q.dampers, Family::FastBump, true).iter().all(|&d| d > 0),
+        "the stints show softer is worse, yet front fast bump was softened: {:?}\n{}",
+        q.dampers,
+        explain(&q)
+    );
+}
+
+#[test]
+fn kerb_gate_judges_each_metric_and_never_collapses() {
+    // One stint, every kerb number uncertain: softening fast dampers must still pass.
+    let p = Case::new().run();
+    let d = &p.dampers;
+    assert!(d.candidates > 0);
+    let passed = d.candidates - d.rejected_kerb - d.rejected_balance - d.rejected_unstable;
+    assert!(passed > 0, "every damper move rejected: {d:?}");
+}
+
+#[test]
+fn kerbs_unstable_softens_a_fast_damper_and_never_stiffens_one() {
+    let mut case = Case::new();
+    case.flags.kerbs_unstable = true;
+    let p = case.run();
+    let fast: Vec<i32> = [(Family::FastBump, true), (Family::FastBump, false), (Family::FastRebound, true), (Family::FastRebound, false)]
+        .into_iter()
+        .flat_map(|(f, front)| damper_moves(&p.dampers, f, front))
+        .collect();
+    assert!(fast.iter().any(|&d| d < 0), "no fast damper softened: {:?}", p.dampers);
+    assert!(fast.iter().all(|&d| d < 0), "a fast damper stiffened: {:?}", p.dampers);
+    assert!(p.dampers.rejected_unstable > 0);
+    let out = p.setup_from(&case.setup);
+    assert!(p.dampers.changes.iter().all(|c| c.keys.iter().all(|k| out.params[k].value == c.to)));
+}
+
+#[test]
+fn slow_damper_moves_that_add_turn_in_understeer_are_held_by_the_balance_band() {
+    // The fast-neutral target wants less turn-in understeer than the stint has;
+    // the main block cannot reach it, so anything adding entry understeer is out.
+    let p = Case::new().run();
+    assert!(p.solution.chosen.band_excess > 0.0);
+    assert!(p.dampers.rejected_balance > 0, "{:?}", p.dampers);
+    assert!(damper_moves(&p.dampers, Family::SlowBump, true).iter().all(|&d| d <= 0));
+    assert!(damper_moves(&p.dampers, Family::SlowRebound, false).iter().all(|&d| d >= 0));
 }
 
 #[test]
@@ -486,20 +556,28 @@ mod release_gate {
     #[test]
     #[ignore = "requires local LMU .duckdb recordings (PITWALL_TELEMETRY_DIR)"]
     fn release_gate_prints_proposals_with_toggles_off_and_on() {
-        let mut latest: BTreeMap<(String, String), std::path::PathBuf> = BTreeMap::new();
+        // Every analysable stint, grouped by car model and layout, in time order.
+        type Recorded = (String, crate::telemetry::SessionMeta, crate::metrics::StintMetrics);
+        let mut groups: BTreeMap<(String, String), Vec<Recorded>> = BTreeMap::new();
         for path in local_recordings() {
             let Ok(rec) = DuckDbRecording::open(&path) else { continue };
             let Ok(meta) = rec.metadata() else { continue };
-            if !meta.setup.params.is_empty() {
-                latest.insert((meta.car_name.clone(), meta.layout.clone()), path);
+            if meta.setup.params.is_empty() {
+                continue;
             }
+            let Ok(m) = analyse_stint(&rec) else { continue };
+            let label = path.file_name().unwrap().to_string_lossy().to_string();
+            groups.entry((meta.setup.signature(), meta.layout.clone())).or_default().push((label, meta, m));
         }
         let mut changed = 0;
         let mut planned = 0;
-        for ((car, layout), path) in latest {
-            let rec = DuckDbRecording::open(&path).unwrap();
-            let meta = rec.metadata().unwrap();
-            let Ok(m) = analyse_stint(&rec) else { continue };
+        let mut fast_softened = 0;
+        let mut damper_candidates = 0;
+        for ((_, layout), mut stints) in groups {
+            stints.sort_by(|a, b| a.0.cmp(&b.0));
+            let history: Vec<DamperStint> = stints.iter().map(|(_, meta, m)| DamperStint::new(meta.setup.clone(), m)).collect();
+            let Some((_, meta, m)) = stints.last() else { continue };
+            let car = meta.car_name.clone();
             if !m.laps.iter().any(|l| l.is_flying()) {
                 continue;
             }
@@ -512,8 +590,7 @@ mod release_gate {
                     setup: &meta.setup,
                     cells: &cells,
                     summary: &m.summary,
-                    dampers: &m.dampers,
-                    kerbs: &m.kerbs,
+                    damper_history: &history,
                     fingerprint: None,
                     sliders,
                     flags,
@@ -565,6 +642,20 @@ mod release_gate {
             for r in toggles[3].1.rules.iter().filter(|r| r.rule == Rule::BrakePressure) {
                 assert!(r.to < r.from, "{car} @ {layout}: lock-ups raised brake pressure");
             }
+            // Kerbs unstable: no fast damper stiffens, and one softens if any can.
+            let is_fast = |c: &&crate::opt::dampers::DamperChange| matches!(c.setting.family, Family::FastBump | Family::FastRebound);
+            let kerbs = &toggles[2].1.dampers;
+            assert!(kerbs.changes.iter().filter(is_fast).all(|c| c.to < c.from), "{car} @ {layout}: fast damper stiffened with kerbs unstable");
+            let can_soften = ["WM_FASTBUMP-W_FL", "WM_FASTBUMP-W_RL", "WM_FASTREBOUND-W_FL", "WM_FASTREBOUND-W_RL"]
+                .iter()
+                .any(|k| meta.setup.params.get(*k).is_some_and(|p| p.adjustable() && p.value > p.min));
+            if can_soften {
+                assert!(kerbs.changes.iter().filter(is_fast).any(|c| c.to < c.from), "{car} @ {layout}: kerbs unstable softened no fast damper");
+            }
+            if base.dampers.changes.iter().filter(is_fast).any(|c| c.to < c.from) {
+                fast_softened += 1;
+            }
+            damper_candidates += base.dampers.candidates;
             if m.class == CarClass::Gt3 {
                 for p in std::iter::once(&base).chain(toggles.iter().map(|t| &t.1)) {
                     let out = p.setup_from(&meta.setup);
@@ -573,7 +664,8 @@ mod release_gate {
                 }
             }
         }
-        println!("\n{planned} stints planned, Pointier added turn-in rotation on {changed}");
+        println!("\n{planned} stints planned, Pointier added turn-in rotation on {changed}, unflagged fast-damper softening on {fast_softened}");
+        assert!(damper_candidates > 0, "the damper block evaluated nothing");
         assert!(planned > 0, "no flying stint to plan");
         assert!(changed > 0, "Pointier never added turn-in rotation: the planner is degenerate");
     }

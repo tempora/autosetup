@@ -152,7 +152,24 @@ pub fn explain(p: &Proposal) -> Why {
 
     why.changes = s.changes.iter().map(change_line).collect();
     why.changes.extend(p.rules.iter().map(|r| format!("{}: {} → {} ({})", rule_label(r.rule), r.from, r.to, r.reason)));
-    why.changes.extend(p.dampers.changes.iter().map(|d| format!("{}: {} → {} ({})", capitalise(d.kind.label()), d.from, d.to, d.reason)));
+    let dp = &p.dampers;
+    let damper_reason = if dp.exploring {
+        "learning what it does to the tyre load and kerbs".to_string()
+    } else if dp.kerb_change.abs() > dp.contact_change.abs() {
+        "takes the kerbs better".to_string()
+    } else {
+        "steadier tyre load".to_string()
+    };
+    why.changes.extend(dp.changes.iter().map(|d| {
+        format!(
+            "{}: {} → {} ({}, {})",
+            capitalise(&d.setting.label()),
+            d.from,
+            d.to,
+            if d.to > d.from { "stiffer" } else { "softer" },
+            damper_reason
+        )
+    }));
 
     for after in &s.chosen.cells {
         let dua = after.predicted_ua - after.measured_ua;
@@ -187,11 +204,19 @@ pub fn explain(p: &Proposal) -> Why {
     for (gate, n) in &s.rejected {
         why.notes.push(format!("{n} of {} nearby setups {}.", s.candidates, gate_words(*gate)));
     }
-    if p.dampers.rejected_kerb > 0 {
+    for (n, words) in [
+        (dp.rejected_kerb, "would make a kerb number worse"),
+        (dp.rejected_balance, "would move the balance further from what you want"),
+        (dp.rejected_unstable, "would stiffen a fast damper while the car is unstable over kerbs"),
+    ] {
+        if n > 0 {
+            why.notes.push(format!("{n} of {} damper moves {words}.", dp.candidates));
+        }
+    }
+    if !dp.changes.is_empty() && dp.stints < 3 {
         why.notes.push(format!(
-            "{} damper stiffening move{} skipped while the car is unstable over kerbs.",
-            p.dampers.rejected_kerb,
-            if p.dampers.rejected_kerb == 1 { "" } else { "s" }
+            "Damper effects are learned from your stints of this car and track; only {} so far, so the damper moves lean on general rules.",
+            dp.stints
         ));
     }
     if let Some(h) = &s.hint {
