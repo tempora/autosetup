@@ -54,8 +54,6 @@ fn balance_word(ua: Degrees) -> &'static str {
 
 fn direction(kind: DimKind, up: bool) -> &'static str {
     match (kind, up) {
-        (DimKind::Wing, true) => "more wing",
-        (DimKind::Wing, false) => "less wing",
         (DimKind::RideHeightFront | DimKind::RideHeightRear, true) => "higher",
         (DimKind::RideHeightFront | DimKind::RideHeightRear, false) => "lower",
         (DimKind::BrakeBias, true) => "more to the front",
@@ -67,10 +65,9 @@ fn direction(kind: DimKind, up: bool) -> &'static str {
     }
 }
 
-// "softer front anti-roll bar", "less wing", "brake bias more to the rear".
+// "softer front anti-roll bar", "brake bias more to the rear".
 fn move_words(kind: DimKind, up: bool) -> String {
     match kind {
-        DimKind::Wing => direction(kind, up).to_string(),
         DimKind::BrakeBias => format!("{} {}", kind.label(), direction(kind, up)),
         DimKind::DiffPreload | DimKind::DiffPower | DimKind::DiffCoast => {
             format!("{} {}", if up { "more" } else { "less" }, kind.label())
@@ -97,6 +94,19 @@ fn change_line(c: &Change) -> String {
 fn capitalise(s: &str) -> String {
     let mut c = s.chars();
     c.next().map_or_else(String::new, |f| f.to_uppercase().collect::<String>() + c.as_str())
+}
+
+fn rule_label(r: Rule) -> &'static str {
+    match r {
+        Rule::TyrePressure => "Tyre pressure",
+        Rule::Camber => "Camber",
+        Rule::BrakeDucts => "Brake ducts",
+        Rule::Regen => "Regen",
+        Rule::BrakePressure => "Brake pressure",
+        Rule::FrontRideHeightAtMin => "Front ride height",
+        Rule::RideHeight => "Ride height",
+        Rule::ThirdPackers => "Third packers",
+    }
 }
 
 fn gate_words(g: Gate) -> &'static str {
@@ -141,10 +151,8 @@ pub fn explain(p: &Proposal) -> Why {
     }
 
     why.changes = s.changes.iter().map(change_line).collect();
-    why.changes.extend(p.rules.iter().map(|r| match r.rule {
-        Rule::FrontRideHeightAtMin => format!("Front ride height: {} → {} (a GT3 always runs it at the minimum)", r.from, r.to),
-        Rule::LockupsBrakePressure => format!("Brake pressure: {} → {} (you flagged lock-ups)", r.from, r.to),
-    }));
+    why.changes.extend(p.rules.iter().map(|r| format!("{}: {} → {} ({})", rule_label(r.rule), r.from, r.to, r.reason)));
+    why.changes.extend(p.dampers.changes.iter().map(|d| format!("{}: {} → {} ({})", capitalise(d.kind.label()), d.from, d.to, d.reason)));
 
     for after in &s.chosen.cells {
         let dua = after.predicted_ua - after.measured_ua;
@@ -178,6 +186,13 @@ pub fn explain(p: &Proposal) -> Why {
     }
     for (gate, n) in &s.rejected {
         why.notes.push(format!("{n} of {} nearby setups {}.", s.candidates, gate_words(*gate)));
+    }
+    if p.dampers.rejected_kerb > 0 {
+        why.notes.push(format!(
+            "{} damper stiffening move{} skipped while the car is unstable over kerbs.",
+            p.dampers.rejected_kerb,
+            if p.dampers.rejected_kerb == 1 { "" } else { "s" }
+        ));
     }
     if let Some(h) = &s.hint {
         let moves: Vec<String> = h.changes.iter().map(|c| move_words(c.kind, c.to > c.from)).collect();

@@ -10,11 +10,13 @@
    steering and shifted back by its best-correlating lag (≤ 0.4 s).
    `Steering Pos` is -1..1 in older files and -100..100 (unit '%') since
    October 2026.  `TyresTempLeft/Right` are car-frame sides: the inner edge is
-   Right on the left-hand wheels and Left on the right-hand ones.  */
+   Right on the left-hand wheels and Left on the right-hand ones.  Brake
+   temperatures are °C; third-spring deflection (m) is optional because only
+   cars with a third element log it.  */
 
 use serde::{Deserialize, Serialize};
 
-use crate::chassis::{CarClass, Wheel};
+use crate::chassis::{Axle, CarClass, Wheel};
 use crate::metrics::laps::{clock_span, lap_distance};
 use crate::metrics::stats::{correlation, gradient, interp, moving_average};
 use crate::setup::CarSetup;
@@ -94,6 +96,10 @@ pub struct Signals {
     pub tc: Vec<bool>,
     pub abs: Vec<bool>,
     pub tyre_temp: Vec<Wheel<TreadTemps>>,
+    // Brake disc temperature, °C.
+    pub brake_temp: Vec<Wheel<f64>>,
+    // Front / rear third-spring deflection, m; None where the car logs none.
+    pub third: Option<Vec<Axle<f64>>>,
 }
 
 impl Signals {
@@ -160,8 +166,18 @@ impl Signals {
             })
             .collect();
 
+        let third = match (src.channel_kind("Front3rdDeflection"), src.channel_kind("Rear3rdDeflection")) {
+            (Some(_), Some(_)) => {
+                let (f, r) = (linear("Front3rdDeflection")?, linear("Rear3rdDeflection")?);
+                Some(f.into_iter().zip(r).map(|(f, r)| Axle::new(f, r)).collect())
+            }
+            _ => None,
+        };
+
         Ok(Self {
             dist: lap_distance(src, &t)?,
+            brake_temp: wheel("Brakes Temp")?,
+            third,
             throttle: linear("Throttle Pos")?.into_iter().map(|v| v / 100.0).collect(),
             brake: linear("Brake Pos")?.into_iter().map(|v| v / 100.0).collect(),
             ride_height: wheel("RideHeights")?,

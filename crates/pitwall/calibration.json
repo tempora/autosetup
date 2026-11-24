@@ -5,7 +5,7 @@
       "params": {
         "mass_kg": 1320.0,
         "static_front_weight": 0.48,
-        "cg_height_m": 0.44,
+        "cg_height_m": 0.388,
         "wheelbase_m": 2.65,
         "track_width": {
           "front": 1.66,
@@ -38,23 +38,23 @@
         "drive_front_share": 0.0,
         "mu_nominal": 1.43,
         "fz_ref": 3300.0,
-        "load_sensitivity": 0.14,
-        "aero_cl_a": 0.95,
+        "load_sensitivity": 0.07280000000000003,
+        "aero_cl_a": 0.9262499999999999,
         "aero_wing_span": 0.3,
-        "aero_front_base": 0.414,
-        "aero_rake_gain": 0.13875,
+        "aero_front_base": 0.424,
+        "aero_rake_gain": 0.08,
         "aero_wing_balance_gain": -0.06,
-        "understeer_gain_deg": 11.099999999999998,
-        "diff_gain_deg": 1.74
+        "understeer_gain_deg": 3.4699999999999998,
+        "diff_gain_deg": 0.81
       },
       "terms": {
-        "load_sensitivity": false,
+        "load_sensitivity": true,
         "aero_balance": true,
         "diff": true,
         "longitudinal_transfer": false,
         "friction_circle": false
       },
-      "lambda": 0.0,
+      "lambda": 0.03,
       "no_change": {
         "pairs": 87,
         "ua_mae_deg": 0.2077041146379836,
@@ -69,84 +69,69 @@
       },
       "calibrated": {
         "pairs": 87,
-        "ua_mae_deg": 0.2032314652431288,
-        "lat_g_mae": 0.06711039990018995,
-        "ua_direction_accuracy": 0.6206896551724138
+        "ua_mae_deg": 0.20588276642117245,
+        "lat_g_mae": 0.06669258748133981,
+        "ua_direction_accuracy": 0.6781609195402298
       },
       "ablations": [
-        {
-          "term": "LoadSensitivity",
-          "with": {
-            "pairs": 87,
-            "ua_mae_deg": 0.20209921454226937,
-            "lat_g_mae": 0.08055709027753039,
-            "ua_direction_accuracy": 0.4482758620689655
-          },
-          "without": {
-            "pairs": 87,
-            "ua_mae_deg": 0.19963977010958792,
-            "lat_g_mae": 0.07799979771434144,
-            "ua_direction_accuracy": 0.4482758620689655
-          }
-        },
         {
           "term": "AeroBalance",
           "with": {
             "pairs": 87,
-            "ua_mae_deg": 0.20209921454226937,
-            "lat_g_mae": 0.08055709027753039,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.21071801789307518,
+            "lat_g_mae": 0.07934508552109044,
+            "ua_direction_accuracy": 0.7011494252873564
           },
           "without": {
             "pairs": 87,
-            "ua_mae_deg": 0.20308590476578992,
-            "lat_g_mae": 0.08926415570256381,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.21323054684122872,
+            "lat_g_mae": 0.08471259031518912,
+            "ua_direction_accuracy": 0.67816091954023
           }
         },
         {
           "term": "Diff",
           "with": {
             "pairs": 87,
-            "ua_mae_deg": 0.20209921454226937,
-            "lat_g_mae": 0.08055709027753039,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.21071801789307518,
+            "lat_g_mae": 0.07934508552109044,
+            "ua_direction_accuracy": 0.7011494252873564
           },
           "without": {
             "pairs": 87,
-            "ua_mae_deg": 0.2122508906951246,
-            "lat_g_mae": 0.0813602212802676,
-            "ua_direction_accuracy": 0.42528735632183906
+            "ua_mae_deg": 0.21604697944459567,
+            "lat_g_mae": 0.07934410488282148,
+            "ua_direction_accuracy": 0.7011494252873564
           }
         },
         {
           "term": "LongitudinalTransfer",
           "with": {
             "pairs": 87,
-            "ua_mae_deg": 0.20209921454226937,
-            "lat_g_mae": 0.08055709027753039,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.21071801789307518,
+            "lat_g_mae": 0.07934508552109044,
+            "ua_direction_accuracy": 0.7011494252873564
           },
           "without": {
             "pairs": 87,
-            "ua_mae_deg": 0.20108663275135888,
-            "lat_g_mae": 0.07758806824903411,
-            "ua_direction_accuracy": 0.6551724137931036
+            "ua_mae_deg": 0.20601169701539657,
+            "lat_g_mae": 0.07735563135306801,
+            "ua_direction_accuracy": 0.6091954022988506
           }
         },
         {
           "term": "FrictionCircle",
           "with": {
             "pairs": 87,
-            "ua_mae_deg": 0.20209921454226937,
-            "lat_g_mae": 0.08055709027753039,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.21071801789307518,
+            "lat_g_mae": 0.07934508552109044,
+            "ua_direction_accuracy": 0.7011494252873564
           },
           "without": {
             "pairs": 87,
-            "ua_mae_deg": 0.19963977010958792,
-            "lat_g_mae": 0.07026472420012846,
-            "ua_direction_accuracy": 0.4482758620689655
+            "ua_mae_deg": 0.20737195105623363,
+            "lat_g_mae": 0.06851364422686314,
+            "ua_direction_accuracy": 0.6666666666666667
           }
         }
       ],
@@ -157,7 +142,7 @@
       "params": {
         "mass_kg": 1010.0,
         "static_front_weight": 0.45,
-        "cg_height_m": 0.226,
+        "cg_height_m": 0.2,
         "wheelbase_m": 3.0,
         "track_width": {
           "front": 1.6,
@@ -188,15 +173,15 @@
           0.6
         ],
         "drive_front_share": 0.0,
-        "mu_nominal": 1.8299999999999998,
+        "mu_nominal": 2.095,
         "fz_ref": 3000.0,
-        "load_sensitivity": 0.132,
-        "aero_cl_a": 3.5,
+        "load_sensitivity": 0.1792,
+        "aero_cl_a": 2.9925,
         "aero_wing_span": 0.25,
         "aero_front_base": 0.35,
         "aero_rake_gain": 0.1,
         "aero_wing_balance_gain": -0.08,
-        "understeer_gain_deg": 1.26,
+        "understeer_gain_deg": 1.1324999999999998,
         "diff_gain_deg": 0.5
       },
       "terms": {
@@ -204,7 +189,7 @@
         "aero_balance": true,
         "diff": false,
         "longitudinal_transfer": true,
-        "friction_circle": false
+        "friction_circle": true
       },
       "lambda": 0.03,
       "no_change": {
@@ -221,89 +206,74 @@
       },
       "calibrated": {
         "pairs": 27,
-        "ua_mae_deg": 0.12743189485582918,
-        "lat_g_mae": 0.05643118132153579,
-        "ua_direction_accuracy": 0.48148148148148145
+        "ua_mae_deg": 0.1286077806498329,
+        "lat_g_mae": 0.07543863518608784,
+        "ua_direction_accuracy": 0.7777777777777778
       },
       "ablations": [
-        {
-          "term": "LoadSensitivity",
-          "with": {
-            "pairs": 27,
-            "ua_mae_deg": 0.14625055363059883,
-            "lat_g_mae": 0.06931142654148903,
-            "ua_direction_accuracy": 0.37037037037037035
-          },
-          "without": {
-            "pairs": 27,
-            "ua_mae_deg": 0.1460757356141674,
-            "lat_g_mae": 0.08452016333241584,
-            "ua_direction_accuracy": 0.37037037037037035
-          }
-        },
         {
           "term": "AeroBalance",
           "with": {
             "pairs": 27,
-            "ua_mae_deg": 0.14625055363059883,
-            "lat_g_mae": 0.06931142654148903,
-            "ua_direction_accuracy": 0.37037037037037035
+            "ua_mae_deg": 0.14349892957447405,
+            "lat_g_mae": 0.07543863518608784,
+            "ua_direction_accuracy": 0.6296296296296297
           },
           "without": {
             "pairs": 27,
-            "ua_mae_deg": 0.14158824096625797,
-            "lat_g_mae": 0.08703474116135233,
-            "ua_direction_accuracy": 0.4074074074074074
+            "ua_mae_deg": 0.1397387478946007,
+            "lat_g_mae": 0.08651873297031752,
+            "ua_direction_accuracy": 0.6666666666666666
           }
         },
         {
           "term": "Diff",
           "with": {
             "pairs": 27,
-            "ua_mae_deg": 0.14625055363059883,
-            "lat_g_mae": 0.06931142654148903,
-            "ua_direction_accuracy": 0.37037037037037035
+            "ua_mae_deg": 0.14349892957447405,
+            "lat_g_mae": 0.07543863518608784,
+            "ua_direction_accuracy": 0.6296296296296297
           },
           "without": {
             "pairs": 27,
-            "ua_mae_deg": 0.13144570446011922,
-            "lat_g_mae": 0.06903997311771108,
-            "ua_direction_accuracy": 0.4444444444444444
+            "ua_mae_deg": 0.1286077806498329,
+            "lat_g_mae": 0.07543863518608784,
+            "ua_direction_accuracy": 0.7777777777777778
           }
         },
         {
           "term": "LongitudinalTransfer",
           "with": {
             "pairs": 27,
-            "ua_mae_deg": 0.14625055363059883,
-            "lat_g_mae": 0.06931142654148903,
-            "ua_direction_accuracy": 0.37037037037037035
+            "ua_mae_deg": 0.14349892957447405,
+            "lat_g_mae": 0.07543863518608784,
+            "ua_direction_accuracy": 0.6296296296296297
           },
           "without": {
             "pairs": 27,
-            "ua_mae_deg": 0.14312916458750086,
-            "lat_g_mae": 0.09280673588338244,
-            "ua_direction_accuracy": 0.4074074074074074
+            "ua_mae_deg": 0.14464469482879674,
+            "lat_g_mae": 0.09371255872041727,
+            "ua_direction_accuracy": 0.6666666666666666
           }
         },
         {
           "term": "FrictionCircle",
           "with": {
             "pairs": 27,
-            "ua_mae_deg": 0.14625055363059883,
-            "lat_g_mae": 0.06931142654148903,
-            "ua_direction_accuracy": 0.37037037037037035
+            "ua_mae_deg": 0.14349892957447405,
+            "lat_g_mae": 0.07543863518608784,
+            "ua_direction_accuracy": 0.6296296296296297
           },
           "without": {
             "pairs": 27,
-            "ua_mae_deg": 0.1423955198172669,
-            "lat_g_mae": 0.05640069613145297,
-            "ua_direction_accuracy": 0.4074074074074074
+            "ua_mae_deg": 0.1398893130513526,
+            "lat_g_mae": 0.0789852270389402,
+            "ua_direction_accuracy": 0.6666666666666666
           }
         }
       ],
       "pinned": [
-        "aero_cl_a",
+        "cg_height_m",
         "aero_front_base"
       ]
     },
@@ -312,7 +282,7 @@
       "params": {
         "mass_kg": 1110.0,
         "static_front_weight": 0.47,
-        "cg_height_m": 0.32,
+        "cg_height_m": 0.51,
         "wheelbase_m": 3.15,
         "track_width": {
           "front": 1.65,
@@ -343,25 +313,25 @@
           0.6
         ],
         "drive_front_share": 0.0,
-        "mu_nominal": 1.6699999999999997,
+        "mu_nominal": 1.4749999999999999,
         "fz_ref": 3300.0,
-        "load_sensitivity": 0.16,
-        "aero_cl_a": 0.5,
+        "load_sensitivity": 0.23320000000000002,
+        "aero_cl_a": 1.575,
         "aero_wing_span": 0.2,
-        "aero_front_base": 0.43,
-        "aero_rake_gain": 0.12000000000000001,
+        "aero_front_base": 0.53,
+        "aero_rake_gain": 0.1625,
         "aero_wing_balance_gain": -0.06,
-        "understeer_gain_deg": 5.0,
-        "diff_gain_deg": 0.5
+        "understeer_gain_deg": 4.08,
+        "diff_gain_deg": 0.45
       },
       "terms": {
-        "load_sensitivity": false,
+        "load_sensitivity": true,
         "aero_balance": true,
-        "diff": false,
+        "diff": true,
         "longitudinal_transfer": true,
         "friction_circle": true
       },
-      "lambda": 0.3,
+      "lambda": 0.03,
       "no_change": {
         "pairs": 20,
         "ua_mae_deg": 0.17308139701045772,
@@ -376,83 +346,68 @@
       },
       "calibrated": {
         "pairs": 20,
-        "ua_mae_deg": 0.16294699229257498,
-        "lat_g_mae": 0.0774156676620558,
-        "ua_direction_accuracy": 0.7
+        "ua_mae_deg": 0.147440095691649,
+        "lat_g_mae": 0.0783067438500593,
+        "ua_direction_accuracy": 0.85
       },
       "ablations": [
-        {
-          "term": "LoadSensitivity",
-          "with": {
-            "pairs": 20,
-            "ua_mae_deg": 0.15844475980256004,
-            "lat_g_mae": 0.08200206633224391,
-            "ua_direction_accuracy": 0.7
-          },
-          "without": {
-            "pairs": 20,
-            "ua_mae_deg": 0.1617705217043397,
-            "lat_g_mae": 0.0774156676620558,
-            "ua_direction_accuracy": 0.75
-          }
-        },
         {
           "term": "AeroBalance",
           "with": {
             "pairs": 20,
-            "ua_mae_deg": 0.15844475980256004,
-            "lat_g_mae": 0.08200206633224391,
-            "ua_direction_accuracy": 0.7
+            "ua_mae_deg": 0.147440095691649,
+            "lat_g_mae": 0.0783067438500593,
+            "ua_direction_accuracy": 0.85
           },
           "without": {
             "pairs": 20,
-            "ua_mae_deg": 0.21398559041329088,
-            "lat_g_mae": 0.11039216843242661,
-            "ua_direction_accuracy": 0.4
+            "ua_mae_deg": 0.19148738553226446,
+            "lat_g_mae": 0.08456392261136517,
+            "ua_direction_accuracy": 0.6
           }
         },
         {
           "term": "Diff",
           "with": {
             "pairs": 20,
-            "ua_mae_deg": 0.15844475980256004,
-            "lat_g_mae": 0.08200206633224391,
-            "ua_direction_accuracy": 0.7
+            "ua_mae_deg": 0.147440095691649,
+            "lat_g_mae": 0.0783067438500593,
+            "ua_direction_accuracy": 0.85
           },
           "without": {
             "pairs": 20,
-            "ua_mae_deg": 0.1594227467046673,
-            "lat_g_mae": 0.08190311262760201,
-            "ua_direction_accuracy": 0.7
+            "ua_mae_deg": 0.15085714344682108,
+            "lat_g_mae": 0.07878153709869448,
+            "ua_direction_accuracy": 0.75
           }
         },
         {
           "term": "LongitudinalTransfer",
           "with": {
             "pairs": 20,
-            "ua_mae_deg": 0.15844475980256004,
-            "lat_g_mae": 0.08200206633224391,
-            "ua_direction_accuracy": 0.7
+            "ua_mae_deg": 0.147440095691649,
+            "lat_g_mae": 0.0783067438500593,
+            "ua_direction_accuracy": 0.85
           },
           "without": {
             "pairs": 20,
-            "ua_mae_deg": 0.23427098688487807,
-            "lat_g_mae": 0.09615339231440712,
-            "ua_direction_accuracy": 0.45
+            "ua_mae_deg": 0.18187489043444188,
+            "lat_g_mae": 0.08080692199501545,
+            "ua_direction_accuracy": 0.6
           }
         },
         {
           "term": "FrictionCircle",
           "with": {
             "pairs": 20,
-            "ua_mae_deg": 0.15844475980256004,
-            "lat_g_mae": 0.08200206633224391,
-            "ua_direction_accuracy": 0.7
+            "ua_mae_deg": 0.147440095691649,
+            "lat_g_mae": 0.0783067438500593,
+            "ua_direction_accuracy": 0.85
           },
           "without": {
             "pairs": 20,
-            "ua_mae_deg": 0.160509208200955,
-            "lat_g_mae": 0.08227853344033303,
+            "ua_mae_deg": 0.15840813849122337,
+            "lat_g_mae": 0.07732585097467773,
             "ua_direction_accuracy": 0.7
           }
         }

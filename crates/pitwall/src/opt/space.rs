@@ -19,7 +19,6 @@ use crate::setup::{CarSetup, MechanicalSetup};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DimKind {
-    Wing,
     RideHeightFront,
     RideHeightRear,
     ArbFront,
@@ -33,8 +32,9 @@ pub enum DimKind {
 }
 
 impl DimKind {
-    pub const ALL: [Self; 11] = [
-        Self::Wing,
+    // Wing is excluded from the pure-mechanical QSS search until a calibrated
+    // drag model exists: without drag, adding wing would look like free grip.
+    pub const ALL: [Self; 10] = [
         Self::RideHeightFront,
         Self::RideHeightRear,
         Self::ArbFront,
@@ -49,7 +49,6 @@ impl DimKind {
 
     pub const fn keys(self) -> &'static [&'static str] {
         match self {
-            Self::Wing => &["VM_REAR_WING"],
             Self::RideHeightFront => &["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"],
             Self::RideHeightRear => &["WM_RIDEHEIGHT-W_RL", "WM_RIDEHEIGHT-W_RR"],
             Self::ArbFront => &["VM_FRONT_ANTISWAY"],
@@ -66,7 +65,7 @@ impl DimKind {
     // Clicks one proposal may move this setting.
     pub const fn reach(self) -> i32 {
         match self {
-            Self::Wing | Self::ArbFront | Self::ArbRear | Self::DiffPower | Self::DiffCoast => 1,
+            Self::ArbFront | Self::ArbRear | Self::DiffPower | Self::DiffCoast => 1,
             Self::SpringFront | Self::SpringRear => 1,
             Self::RideHeightFront | Self::RideHeightRear | Self::DiffPreload | Self::BrakeBias => 2,
         }
@@ -78,7 +77,6 @@ impl DimKind {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Wing => "rear wing",
             Self::RideHeightFront => "front ride height",
             Self::RideHeightRear => "rear ride height",
             Self::ArbFront => "front anti-roll bar",

@@ -3,10 +3,11 @@
    `plan` takes one stint's balance cells, the driver's feel sliders and
    flags, and returns a Proposal carrying the chosen changes, every gate's
    rejection count, an optional pace hint just outside the band, and the
-   predictions behind the choice.  Rules (GT3 front ride height, lock-ups)
-   are fixed on every candidate, never searched, and included in every
+   predictions behind the choice.  Rule-moved keys (rules.rs) are fixed on
+   every candidate, excluded from the search, and included in every
    prediction.  */
 
+pub mod dampers;
 pub mod rules;
 pub mod solve;
 pub mod space;
@@ -22,10 +23,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::chassis::CarClass;
 use crate::metrics::balance::CellStats;
+use crate::metrics::summary::StintSummary;
+use crate::metrics::suspension::{DamperMetrics, KerbSummary};
 use crate::physics::calibrate::Verification;
 use crate::physics::MechanicalModel;
 use crate::setup::CarSetup;
-use rules::{apply_rules, RuleChange};
+use dampers::{plan_dampers, DamperInput, DamperPlan};
+use rules::{apply_rules, RuleChange, RuleInput};
 use solve::{DriverFlags, Solution, Solver, Toggles};
 use space::Space;
 use target::{BalanceTarget, Sliders};
@@ -34,6 +38,9 @@ pub struct PlanInput<'a> {
     pub class: CarClass,
     pub setup: &'a CarSetup,
     pub cells: &'a [CellStats],
+    pub summary: &'a StintSummary,
+    pub dampers: &'a DamperMetrics,
+    pub kerbs: &'a KerbSummary,
     pub fingerprint: Option<&'a [CellStats]>,
     pub sliders: Sliders,
     pub flags: DriverFlags,
@@ -49,10 +56,11 @@ pub struct Proposal {
     pub target: BalanceTarget,
     pub solution: Solution,
     pub rules: Vec<RuleChange>,
+    pub dampers: DamperPlan,
 }
 
 impl Proposal {
-    // The stint's setup with every proposed change and rule applied.
+    // The stint's setup with every proposed change, rule, and damper move applied.
     pub fn setup_from(&self, base: &CarSetup) -> CarSetup {
         let mut out = base.clone();
         for c in &self.solution.changes {
@@ -65,18 +73,32 @@ impl Proposal {
                 out.set_value(key, r.to);
             }
         }
+        for d in &self.dampers.changes {
+            for key in &d.keys {
+                out.set_value(key, d.to);
+            }
+        }
         out
     }
 
     pub fn is_empty(&self) -> bool {
-        self.solution.changes.is_empty() && self.rules.is_empty()
+        self.solution.changes.is_empty() && self.rules.is_empty() && self.dampers.changes.is_empty()
     }
 }
 
 pub fn plan<M: MechanicalModel>(model: &M, input: &PlanInput<'_>) -> Proposal {
-    let rules = apply_rules(input.setup, input.class, &input.flags, &input.locks);
-    let fixed = rules.iter().flat_map(|r| r.keys.iter().map(|k| (k.clone(), r.to))).collect();
-    let space = Space::new(input.setup, input.class, &input.locks).with_fixed(fixed);
+    let rules = apply_rules(&RuleInput {
+        setup: input.setup,
+        class: input.class,
+        flags: &input.flags,
+        locks: &input.locks,
+        summary: input.summary,
+    });
+    let fixed: Vec<(String, i32)> = rules.iter().flat_map(|r| r.keys.iter().map(|k| (k.clone(), r.to))).collect();
+    // A key a rule moves is not also searched.
+    let mut search_locks = input.locks.clone();
+    search_locks.extend(fixed.iter().map(|(k, _)| k.clone()));
+    let space = Space::new(input.setup, input.class, &search_locks).with_fixed(fixed);
     let target = BalanceTarget::new(input.class, input.cells, input.fingerprint, input.sliders);
     let solution = Solver {
         model,
@@ -87,5 +109,13 @@ pub fn plan<M: MechanicalModel>(model: &M, input: &PlanInput<'_>) -> Proposal {
         toggles: input.toggles,
     }
     .solve();
-    Proposal { verification: input.verification, rules, target, solution }
+    let dampers = plan_dampers(&DamperInput {
+        setup: input.setup,
+        class: input.class,
+        dampers: input.dampers,
+        kerbs: input.kerbs,
+        flags: &input.flags,
+        locks: &input.locks,
+    });
+    Proposal { verification: input.verification, rules, dampers, target, solution }
 }

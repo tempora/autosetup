@@ -9,7 +9,8 @@
    Histograms bin shaft velocity on a fixed BIN_MM_S grid over ±RANGE_MM_S
    (faster samples land in the end bins).  Per axle: symmetry = |bump share −
    ½|, slow share = share below the class damper knee; shape = L1 distance
-   between front and rear normalised off-kerb histograms.
+   between front and rear normalised off-kerb histograms.  Load variation is
+   the spring proxy for tyre load: std/mean of compression per lap and wheel.
 
    Kerb events merge any-wheel contacts closer than MERGE_S.  Per event:
    peak_load (max spring compression / the wheel's usual off-kerb median),
@@ -38,6 +39,9 @@ const BEFORE_S: f64 = 0.5;
 const YAW_S: f64 = 0.5;
 const UNLOADED: f64 = 0.1;
 const MIN_P90_EVENTS: usize = 4;
+const MIN_CV_SAMPLES: usize = 20;
+// A wheel compressed less than this on average is too light to judge its load.
+const MIN_LOAD_MM: f64 = 2.0;
 
 #[derive(Debug, Clone)]
 pub struct Suspension {
@@ -210,6 +214,30 @@ pub struct DamperMetrics {
     pub axles: Axle<Option<AxleDamperShape>>,
     // L1 distance between normalised front and rear off-kerb histograms, 0..2.
     pub front_rear_shape: Option<f64>,
+    // Spring-load variation (std/mean of compression) per non-pit lap and wheel, off kerbs.
+    pub load_cv: Axle<Vec<f64>>,
+}
+
+impl Default for DamperMetrics {
+    fn default() -> Self {
+        Self {
+            knee: MmPerSec::new(50.0),
+            wheels: Wheel::default(),
+            axles: Axle::new(None, None),
+            front_rear_shape: None,
+            load_cv: Axle::default(),
+        }
+    }
+}
+
+impl DamperMetrics {
+    // Off-kerb bump share (fraction of samples > 0 mm/s) per axle.
+    pub fn axle_bump_shares(&self) -> Axle<Option<f64>> {
+        Axle::new(
+            self.wheels.fl.off.merge(&self.wheels.fr.off).bump_share(),
+            self.wheels.rl.off.merge(&self.wheels.rr.off).bump_share(),
+        )
+    }
 }
 
 pub fn damper_metrics(susp: &Suspension, laps: &[Lap], knee: MmPerSec) -> DamperMetrics {
@@ -232,7 +260,32 @@ pub fn damper_metrics(susp: &Suspension, laps: &[Lap], knee: MmPerSec) -> Damper
         (Some(f), Some(r)) => Some(f.iter().zip(&r).map(|(a, b)| (a - b).abs()).sum()),
         _ => None,
     };
-    DamperMetrics { knee, wheels, axles, front_rear_shape }
+    DamperMetrics { knee, wheels, axles, front_rear_shape, load_cv: load_cv(susp, laps) }
+}
+
+fn load_cv(susp: &Suspension, laps: &[Lap]) -> Axle<Vec<f64>> {
+    let mut out: Axle<Vec<f64>> = Axle::default();
+    for lap in laps.iter().filter(|l| !l.in_pits) {
+        let lo = susp.t.partition_point(|&t| t < lap.start.raw());
+        let hi = susp.t.partition_point(|&t| t < lap.end.raw());
+        for w in 0..4 {
+            let x: Vec<f64> = (lo..hi)
+                .filter(|&i| susp.speed[i] > MIN_SPEED && !*susp.kerb[i].as_array()[w])
+                .map(|i| *susp.pos[i].as_array()[w])
+                .filter(|v| v.is_finite())
+                .collect();
+            if x.len() < MIN_CV_SAMPLES {
+                continue;
+            }
+            let m = x.iter().sum::<f64>() / x.len() as f64;
+            if m * 1e3 < MIN_LOAD_MM {
+                continue;
+            }
+            let sd = (x.iter().map(|v| (v - m).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+            if w < 2 { &mut out.front } else { &mut out.rear }.push(sd / m);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

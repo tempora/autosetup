@@ -14,6 +14,7 @@ pub mod corners;
 pub mod laps;
 pub mod signals;
 pub mod stats;
+pub mod summary;
 pub mod suspension;
 
 #[cfg(all(test, feature = "duckdb-native"))]
@@ -43,6 +44,7 @@ pub struct StintMetrics {
     pub dampers: DamperMetrics,
     pub kerb_events: Vec<KerbEvent>,
     pub kerbs: KerbSummary,
+    pub summary: summary::StintSummary,
 }
 
 impl StintMetrics {
@@ -99,6 +101,7 @@ pub fn analyse_stint<S: TelemetrySource + ?Sized>(src: &S) -> Result<StintMetric
         cells: aggregate(&observations),
         dampers: damper_metrics(&susp, &laps, class.damper_knee()),
         kerbs: summarise_kerbs(&kerb_events),
+        summary: summary::summarise(&sig, &per, &laps, &meta.setup),
         kerb_events,
         laps,
         corners,

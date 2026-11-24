@@ -107,7 +107,7 @@ impl CellTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Anchor {
     Fingerprint,
-    Stint,
+    FastNeutral,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,15 +118,17 @@ pub struct BalanceTarget {
 }
 
 impl BalanceTarget {
-    /* `anchor`: the fingerprint's cells when one is locked, else the stint's
-       own.  `stint`: the stint the sliders were set on (its measurement
-       resolution bounds the band).  */
+    /* Anchors the target balance on a locked fingerprint if present, else the
+       class's fast-neutral window, then shifts every covered cell by the feel
+       sliders.  Keeping sliders as an offset on top of the anchor guarantees
+       monotonicity (pulling Pointier never asks for less rotation than zero
+       sliders) and eliminates the old stint-anchoring handcuff.  */
     pub fn new(class: CarClass, stint: &[CellStats], fingerprint: Option<&[CellStats]>, sliders: Sliders) -> Self {
         let sliders = sliders.clamped(class);
-        let anchor_cells = fingerprint.unwrap_or(stint);
         let resolution = |cell: BalanceCell| -> f64 {
             stint.iter().find(|c| c.cell == cell).map_or(RES_MIN_DEG, |c| c.ua_se.raw().max(RES_MIN_DEG))
         };
+        let anchor_cells = fingerprint.unwrap_or(stint);
         // An axis whose move no covered cell can resolve changes nothing.
         let effective = FeelAxis::ALL.into_iter().fold(Sliders::default(), |acc, axis| {
             let v = sliders.get(axis).raw();
@@ -135,26 +137,27 @@ impl BalanceTarget {
                 .any(|c| axis.weight(c.cell) > 0.0 && (v * axis.weight(c.cell)).abs() >= resolution(c.cell));
             acc.with(axis, Degrees::new(if resolves { v } else { 0.0 }))
         });
+        let anchor = if fingerprint.is_some() { Anchor::Fingerprint } else { Anchor::FastNeutral };
         let cells = anchor_cells
             .iter()
             .map(|c| {
                 let shift: f64 = FeelAxis::ALL.iter().map(|&a| a.weight(c.cell) * effective.get(a).raw()).sum();
-                let mut tol = class.feel_tolerance().raw();
+                let (base_centre, base_tol) = match anchor {
+                    Anchor::Fingerprint => (c.ua, class.feel_tolerance()),
+                    Anchor::FastNeutral => class.fast_neutral(c.cell),
+                };
+                let mut tol = base_tol.raw();
                 if shift.abs() > 1e-9 {
                     tol = tol.min(0.5 * shift.abs());
                 }
                 CellTarget {
                     cell: c.cell,
-                    centre: c.ua + Degrees::new(shift),
+                    centre: base_centre + Degrees::new(shift),
                     tolerance: Degrees::new(tol.max(resolution(c.cell))),
                 }
             })
             .collect();
-        Self {
-            anchor: if fingerprint.is_some() { Anchor::Fingerprint } else { Anchor::Stint },
-            sliders: effective,
-            cells,
-        }
+        Self { anchor, sliders: effective, cells }
     }
 
     pub fn get(&self, cell: BalanceCell) -> Option<&CellTarget> {

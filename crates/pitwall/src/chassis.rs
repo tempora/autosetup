@@ -275,4 +275,24 @@ impl CarClass {
             Self::Gt3 | Self::Lmp2 | Self::Other => 50.0,
         })
     }
+
+    // Target share of off-kerb shaft-velocity samples below the damper knee.
+    pub const fn damper_ls_target(self) -> f64 {
+        0.85
+    }
+
+    // Fast-neutral default balance window: (centre, half-width) in road-wheel deg.
+    // Used when no fingerprint is locked and no feel slider has been moved.
+    pub const fn fast_neutral(self, cell: BalanceCell) -> (Degrees, Degrees) {
+        let centre = match (cell.phase, cell.band) {
+            (CornerPhase::Braking, _) => 0.25,
+            (CornerPhase::Entry, SpeedBand::Low) => -0.05,
+            (CornerPhase::Entry, SpeedBand::High) => 0.25,
+            (CornerPhase::Mid, SpeedBand::Low) => 0.10,
+            (CornerPhase::Mid, SpeedBand::High) => 0.35,
+            (CornerPhase::Exit, SpeedBand::Low) => 0.35,
+            (CornerPhase::Exit, SpeedBand::High) => 0.20,
+        };
+        (Degrees::new(centre), self.feel_tolerance())
+    }
 }

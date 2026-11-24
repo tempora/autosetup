@@ -296,11 +296,14 @@ mod tests {
             set.classes.insert(*class, cal);
         }
         assert!(calibrated > 0, "no class with {MIN_CLASS_PAIRS}+ holdout pairs");
-        if std::env::var_os("PITWALL_WRITE_CALIBRATION").is_some() {
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(CALIBRATION_FILE);
+        if let Some(target) = std::env::var_os("PITWALL_WRITE_CALIBRATION") {
+            let path = if target == "1" || target.is_empty() {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(CALIBRATION_FILE)
+            } else {
+                std::path::PathBuf::from(target)
+            };
             std::fs::write(&path, set.to_json()).unwrap();
-            println!("
-wrote {}", path.display());
+            println!("\nwrote {}", path.display());
         }
     }
 }

@@ -93,6 +93,28 @@ define_terms! {
     FrictionCircle => friction_circle,
 }
 
+impl Term {
+    // Terms that ablation may switch off. LoadSensitivity is core to 4-wheel
+    // LLTD: without it, lateral load transfer cancels and springs/ARBs do zero.
+    pub const OPTIONAL: &'static [Term] = &[
+        Term::AeroBalance,
+        Term::Diff,
+        Term::LongitudinalTransfer,
+        Term::FrictionCircle,
+    ];
+}
+
+impl Terms {
+    // Minimum physically meaningful 4-wheel model (LLTD active via tyre load sensitivity).
+    pub const CORE: Self = Self {
+        load_sensitivity: true,
+        aero_balance: false,
+        diff: false,
+        longitudinal_transfer: false,
+        friction_circle: false,
+    };
+}
+
 impl Default for Terms {
     fn default() -> Self {
         Self::ALL

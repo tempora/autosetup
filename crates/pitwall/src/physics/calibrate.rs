@@ -26,7 +26,7 @@ const MAX_SWEEPS: usize = 25;
 const MIN_IMPROVEMENT: f64 = 1e-9;
 pub const MIN_TERM_GAIN: f64 = 1e-3;
 pub const DEFAULT_FOLDS: usize = 5;
-pub const LAMBDAS: [f64; 5] = [0.0, 0.03, 0.1, 0.3, 1.0];
+pub const LAMBDAS: [f64; 4] = [0.03, 0.1, 0.3, 1.0];
 pub const UA_MARGIN_DEG: f64 = 0.005;
 pub const LAT_MARGIN_G: f64 = 0.002;
 
@@ -52,21 +52,35 @@ macro_rules! knobs {
 }
 
 knobs! {
-    understeer_gain_deg in (0.0, 12.0),
+    understeer_gain_deg in (0.5, 12.0),
     diff_gain_deg in (0.0, 2.0),
     mu_nominal in (1.2, 2.2),
-    load_sensitivity in (0.0, 0.35),
+    load_sensitivity in (0.06, 0.30),
     cg_height_m in (0.20, 0.60),
     aero_cl_a in (0.3, 3.5),
     aero_front_base in (0.35, 0.55),
     aero_rake_gain in (0.0, 0.25),
 }
 
+// Effective bounds for a knob, keeping aero_cl_a within ±50% of the class baseline
+// so coordinate descent cannot turn a prototype into a low-downforce car on noise.
+fn knob_bounds(knob: &Knob, start: &VehicleParams) -> (f64, f64) {
+    if knob.name == "aero_cl_a" {
+        let base = (knob.get)(start);
+        ((0.5 * base).max(knob.lo), (1.5 * base).min(knob.hi))
+    } else {
+        (knob.lo, knob.hi)
+    }
+}
+
 fn penalty(params: &VehicleParams, start: &VehicleParams, lambda: f64) -> f64 {
     lambda
         * KNOBS
             .iter()
-            .map(|k| (((k.get)(params) - (k.get)(start)) / (k.hi - k.lo)).powi(2))
+            .map(|k| {
+                let (lo, hi) = knob_bounds(k, start);
+                (((k.get)(params) - (k.get)(start)) / (hi - lo)).powi(2)
+            })
             .sum::<f64>()
 }
 
@@ -84,10 +98,11 @@ pub fn fit(start: VehicleParams, terms: Terms, pairs: &[HoldoutPair], lambda: f6
         for _ in 0..MAX_SWEEPS {
             let mut improved = false;
             for knob in KNOBS {
-                let step = frac * (knob.hi - knob.lo);
+                let (lo, hi) = knob_bounds(knob, &start);
+                let step = frac * (hi - lo);
                 for dir in [1.0, -1.0] {
                     let mut cand = best;
-                    (knob.set)(&mut cand, ((knob.get)(&best) + dir * step).clamp(knob.lo, knob.hi));
+                    (knob.set)(&mut cand, ((knob.get)(&best) + dir * step).clamp(lo, hi));
                     let s = objective(cand, &start, terms, pairs, lambda);
                     if s < best_score - MIN_IMPROVEMENT {
                         best = cand;
@@ -106,12 +121,13 @@ pub fn fit(start: VehicleParams, terms: Terms, pairs: &[HoldoutPair], lambda: f6
 }
 
 // Knobs the fit left at a bound of their range.
-pub fn pinned(params: &VehicleParams) -> Vec<&'static str> {
+pub fn pinned(params: &VehicleParams, start: &VehicleParams) -> Vec<&'static str> {
     KNOBS
         .iter()
         .filter(|k| {
+            let (lo, hi) = knob_bounds(k, start);
             let v = (k.get)(params);
-            (v - k.lo).abs() < 1e-9 || (v - k.hi).abs() < 1e-9
+            (v - lo).abs() < 1e-9 || (v - hi).abs() < 1e-9
         })
         .map(|k| k.name)
         .collect()
@@ -172,7 +188,7 @@ impl Ablation {
 
 pub fn ablate(start: VehicleParams, terms: Terms, pairs: &[GroupedPair], folds: usize, lambda: f64) -> Vec<Ablation> {
     let with = cross_validate(start, terms, pairs, folds, lambda);
-    Term::ALL
+    Term::OPTIONAL
         .iter()
         .filter(|&&t| terms.enabled(t))
         .map(|&term| Ablation {
@@ -223,13 +239,17 @@ pub struct Verification {
 pub fn calibrate_class(class: CarClass, pairs: &[GroupedPair], folds: usize) -> ClassCalibration {
     let start = VehicleParams::for_class(class);
     let all: Vec<HoldoutPair> = pairs.iter().map(|p| p.pair).collect();
-    let lambda = LAMBDAS
-        .iter()
-        .map(|&l| (l, cross_validate(start, Terms::ALL, pairs, folds, l).score()))
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map_or(0.0, |(l, _)| l);
-    let ablations = ablate(start, Terms::ALL, pairs, folds, lambda);
+    let pick_lambda = |terms: Terms| {
+        LAMBDAS
+            .iter()
+            .map(|&l| (l, cross_validate(start, terms, pairs, folds, l).score()))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map_or(LAMBDAS[0], |(l, _)| l)
+    };
+    let init_lambda = pick_lambda(Terms::ALL);
+    let ablations = ablate(start, Terms::ALL, pairs, folds, init_lambda);
     let terms = ablations.iter().fold(Terms::ALL, |t, a| t.with(a.term, a.improves()));
+    let lambda = pick_lambda(terms);
     let params = fit(start, terms, &all, lambda);
     ClassCalibration {
         class,
@@ -239,7 +259,7 @@ pub fn calibrate_class(class: CarClass, pairs: &[GroupedPair], folds: usize) -> 
         baseline: evaluate_holdout(&QssModel::new(start), &all),
         calibrated: cross_validate(start, terms, pairs, folds, lambda),
         ablations,
-        pinned: pinned(&params).into_iter().map(String::from).collect(),
+        pinned: pinned(&params, &start).into_iter().map(String::from).collect(),
         params,
     }
 }

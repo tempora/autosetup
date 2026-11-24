@@ -146,6 +146,7 @@ fn build_fixture(tag: &str, steer_gain: f64) -> Fixture {
     }));
     b.fixed("RideHeights", 100.0, "m", &sampled(100.0, |_| vec![0.05, 0.05, 0.07, 0.07]));
     b.fixed("TC", 100.0, "", &sampled(100.0, |_| vec![0.0]));
+    b.fixed("Brakes Temp", 50.0, "C", &sampled(50.0, |_| vec![600.0, 600.0, 500.0, 500.0]));
     for side in ["TyresTempLeft", "TyresTempCentre", "TyresTempRight"] {
         b.fixed(side, 100.0, "C", &sampled(100.0, |_| vec![85.0; 4]));
     }

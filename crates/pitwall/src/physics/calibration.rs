@@ -33,8 +33,13 @@ impl CalibrationSet {
 
     pub fn model_for(&self, class: CarClass) -> (QssModel, Verification) {
         match self.classes.get(&class) {
-            Some(c) => (QssModel::with_terms(c.params, c.terms), c.verification()),
-            None => (QssModel::with_terms(VehicleParams::for_class(class), Terms::NONE), Verification::default()),
+            Some(c) => {
+                // Load sensitivity is core to 4-wheel LLTD; never let a stale file disable springs/ARBs.
+                let mut terms = c.terms;
+                terms.load_sensitivity = true;
+                (QssModel::with_terms(c.params, terms), c.verification())
+            }
+            None => (QssModel::with_terms(VehicleParams::for_class(class), Terms::CORE), Verification::default()),
         }
     }
 }
