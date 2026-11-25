@@ -1,4 +1,5 @@
 pub mod chassis;
+pub mod knowledge;
 pub mod lmu;
 pub mod metrics;
 pub mod opt;

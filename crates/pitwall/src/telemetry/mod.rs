@@ -162,6 +162,8 @@ pub struct SessionMeta {
     pub car_name: String,
     pub car_class: String,
     pub session_type: String,
+    // RecordingTime as Unix seconds (UTC); None when absent or malformed.
+    pub recorded_at: Option<i64>,
     pub setup: CarSetup,
 }
 

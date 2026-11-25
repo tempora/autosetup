@@ -8,71 +8,24 @@
      platform  GT3 front ride height at its minimum, always; otherwise a ride
                height up (or, on prototypes barely using their third packers,
                a packer step) when an axle bottoms or runs under the minimum.
-   Each key moves once per proposal; locked keys never move.  Index direction
-   is taken as label direction (a higher index is more pressure, less
-   negative camber, more closed ducts, higher ride height) until per-car
-   click-to-label scales exist.  */
+   Each key moves once per proposal; locked keys never move.  A higher index
+   is more pressure, less negative camber, higher ride height (checked
+   against every real car's label scale) and more closed ducts.  */
 
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
 use crate::chassis::CarClass;
+use crate::knowledge::ClassKnowledge;
 use crate::metrics::summary::StintSummary;
 use crate::opt::solve::{AeroTrim, DriverFlags};
 use crate::setup::CarSetup;
 
-const CROWN_TARGET: f64 = 5.0;
-const CROWN_BAND: f64 = 3.0;
-const BOTTOMING_S: f64 = 0.2;
-const MIN_RIDE_HEIGHT_MM: f64 = 2.0;
-const THIRD_PACKERS_LO: f64 = 0.05;
-const MAX_PLATFORM_CHANGES: usize = 1;
 const BRAKE_PRESSURE_STEP: i32 = 2;
 const WING_TRIM_STEP: i32 = 2;
 const FRONT_RH: [&str; 2] = ["WM_RIDEHEIGHT-W_FL", "WM_RIDEHEIGHT-W_FR"];
 const REAR_RH: [&str; 2] = ["WM_RIDEHEIGHT-W_RL", "WM_RIDEHEIGHT-W_RR"];
-
-// Per-class rule targets (classes.toml).
-struct ClassRules {
-    spread_front: (f64, f64),
-    spread_rear: (f64, f64),
-    brake_temp_front: (f64, f64),
-    brake_temp_rear: (f64, f64),
-    brake_pressure_pct: Option<(f64, f64)>,
-    regen_at_max: bool,
-}
-
-impl ClassRules {
-    const fn of(class: CarClass) -> Self {
-        match class {
-            CarClass::Hyper => Self {
-                spread_front: (3.0, 10.0),
-                spread_rear: (3.0, 12.0),
-                brake_temp_front: (380.0, 1000.0),
-                brake_temp_rear: (300.0, 1000.0),
-                brake_pressure_pct: Some((93.0, 100.0)),
-                regen_at_max: true,
-            },
-            CarClass::Lmp2 | CarClass::Lmp2Elms => Self {
-                spread_front: (5.0, 12.0),
-                spread_rear: (6.0, 13.0),
-                brake_temp_front: (400.0, 1000.0),
-                brake_temp_rear: (400.0, 1000.0),
-                brake_pressure_pct: Some((90.0, 94.0)),
-                regen_at_max: false,
-            },
-            CarClass::Gt3 | CarClass::Other => Self {
-                spread_front: (5.0, 12.0),
-                spread_rear: (6.0, 13.0),
-                brake_temp_front: (450.0, 850.0),
-                brake_temp_rear: (450.0, 850.0),
-                brake_pressure_pct: None,
-                regen_at_max: false,
-            },
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Rule {
@@ -140,15 +93,16 @@ impl Builder<'_> {
 
 const WHEEL_KEYS: [&str; 4] = ["FL", "FR", "RL", "RR"];
 
-fn tyres(b: &mut Builder, s: &StintSummary, k: &ClassRules) {
+fn tyres(b: &mut Builder, s: &StintSummary, k: &ClassKnowledge) {
+    let (target, band) = (k.crown_target, k.crown_band);
     if let Some(crown) = s.t_crown {
         let crowns = crown.into_array();
         for (axle, wheels) in [("front", [0usize, 1]), ("rear", [2, 3])] {
             let mut by_steps: Vec<(i32, Vec<usize>)> = Vec::new();
             for w in wheels {
                 let c = crowns[w];
-                if c > CROWN_TARGET + CROWN_BAND {
-                    let steps = (((c - CROWN_TARGET).abs() - CROWN_BAND) / 1.5).ceil().min(3.0) as i32;
+                if c > target + band {
+                    let steps = (((c - target).abs() - band) / 1.5).ceil().min(3.0) as i32;
                     match by_steps.iter_mut().find(|(n, _)| *n == steps) {
                         Some((_, ws)) => ws.push(w),
                         None => by_steps.push((steps, vec![w])),
@@ -165,8 +119,8 @@ fn tyres(b: &mut Builder, s: &StintSummary, k: &ClassRules) {
                     -steps,
                     format!(
                         "{axle} tread centre {avg:+.1} °C against the edges (normal {:.0} to {:.0}) → pressure down",
-                        CROWN_TARGET - CROWN_BAND,
-                        CROWN_TARGET + CROWN_BAND
+                        target - band,
+                        target + band
                     ),
                 );
             }
@@ -196,7 +150,7 @@ fn tyres(b: &mut Builder, s: &StintSummary, k: &ClassRules) {
     }
 }
 
-fn brakes(b: &mut Builder, s: &StintSummary, k: &ClassRules) {
+fn brakes(b: &mut Builder, s: &StintSummary, k: &ClassKnowledge) {
     if k.regen_at_max {
         if let Some(p) = b.setup.params.get("VM_REGEN_LEVEL") {
             let top = p.max_exclusive - 1;
@@ -222,7 +176,7 @@ fn kgf(text: &str) -> Option<f64> {
     text[..end].trim().parse().ok()
 }
 
-fn brake_pressure(b: &mut Builder, k: &ClassRules, flags: &DriverFlags) {
+fn brake_pressure(b: &mut Builder, k: &ClassKnowledge, flags: &DriverFlags) {
     const KEY: &str = "VM_BRAKE_PRESSURE";
     let Some((lo_pct, hi_pct)) = k.brake_pressure_pct else { return };
     let has_abs = b.setup.params.get("VM_ANTILOCKBRAKESYSTEMMAP").is_some_and(|p| p.adjustable());
@@ -248,8 +202,9 @@ fn at_clicks(pct: f64, full: f64, now: f64) -> f64 {
     ((pct / 100.0 * full - now) * 1e6).round() / 1e6
 }
 
-fn platform(b: &mut Builder, class: CarClass, s: &StintSummary) {
-    let pinned = class.front_ride_height_at_min();
+fn platform(b: &mut Builder, k: &ClassKnowledge, s: &StintSummary) {
+    let pinned = k.front_rh_at_min;
+    let (limit_s, min_mm) = (k.bottoming_s, k.min_ride_height_mm);
     if pinned {
         if let Some(p) = b.setup.params.get(FRONT_RH[0]) {
             let min = p.min;
@@ -259,35 +214,35 @@ fn platform(b: &mut Builder, class: CarClass, s: &StintSummary) {
     let Some(rh) = s.rh_min_mm else { return };
     let mut done = 0;
     let bottoming = s.bottoming_s.unwrap_or(0.0);
-    let front_low = !pinned && (bottoming > BOTTOMING_S || rh.fl.min(rh.fr) < MIN_RIDE_HEIGHT_MM);
+    let front_low = !pinned && (bottoming > limit_s || rh.fl.min(rh.fr) < min_mm);
     if front_low {
-        let why = if bottoming > BOTTOMING_S {
+        let why = if bottoming > limit_s {
             format!("The front bottoms {bottoming:.2} s a lap")
         } else {
             format!("The front ride height drops to {:.1} mm", rh.fl.min(rh.fr))
         };
-        let steps = if bottoming > 3.0 * BOTTOMING_S { 2 } else { 1 };
-        if packers_in(b, s.third_packers.front, "VM_FRONT_3RD_PACKERS", "front", &why)
+        let steps = if bottoming > 3.0 * limit_s { 2 } else { 1 };
+        if packers_in(b, k, s.third_packers.front, "VM_FRONT_3RD_PACKERS", "front", &why)
             || b.add(Rule::RideHeight, &FRONT_RH, steps, format!("{why} → raise the front"))
         {
             done += 1;
         }
     }
     let bottoming_rear = s.bottoming_rear_s.unwrap_or(0.0);
-    if done < MAX_PLATFORM_CHANGES && (bottoming_rear > BOTTOMING_S || rh.rl.min(rh.rr) < MIN_RIDE_HEIGHT_MM) {
-        let why = if bottoming_rear > BOTTOMING_S {
+    if done < k.max_platform_changes && (bottoming_rear > limit_s || rh.rl.min(rh.rr) < min_mm) {
+        let why = if bottoming_rear > limit_s {
             format!("The rear bottoms {bottoming_rear:.2} s a lap")
         } else {
             format!("The rear ride height drops to {:.1} mm", rh.rl.min(rh.rr))
         };
-        let _ = packers_in(b, s.third_packers.rear, "VM_REAR_3RD_PACKERS", "rear", &why)
+        let _ = packers_in(b, k, s.third_packers.rear, "VM_REAR_3RD_PACKERS", "rear", &why)
             || b.add(Rule::RideHeight, &REAR_RH, 1, format!("{why} → raise the rear"));
     }
 }
 
-fn packers_in(b: &mut Builder, frac: Option<f64>, key: &str, axle: &str, why: &str) -> bool {
+fn packers_in(b: &mut Builder, k: &ClassKnowledge, frac: Option<f64>, key: &str, axle: &str, why: &str) -> bool {
     match frac {
-        Some(f) if f < THIRD_PACKERS_LO && b.usable(key) => b.add(
+        Some(f) if f < k.third_packers_lo && b.usable(key) => b.add(
             Rule::ThirdPackers,
             &[key],
             1,
@@ -322,12 +277,12 @@ fn aero_trim(b: &mut Builder, trim: AeroTrim) {
 }
 
 pub fn apply_rules(input: &RuleInput) -> Vec<RuleChange> {
-    let k = ClassRules::of(input.class);
+    let k = input.class.knowledge();
     let mut b = Builder { setup: input.setup, locks: input.locks, out: Vec::new() };
     aero_trim(&mut b, input.flags.aero_trim);
-    tyres(&mut b, input.summary, &k);
-    brakes(&mut b, input.summary, &k);
-    brake_pressure(&mut b, &k, input.flags);
-    platform(&mut b, input.class, input.summary);
+    tyres(&mut b, input.summary, k);
+    brakes(&mut b, input.summary, k);
+    brake_pressure(&mut b, k, input.flags);
+    platform(&mut b, k, input.summary);
     b.out
 }

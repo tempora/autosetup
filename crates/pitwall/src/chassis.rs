@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::knowledge::ClassKnowledge;
 use crate::units::{Degrees, Meters, MetersPerSec, MmPerSec};
 
 // Canonical LMU wheel order: FL, FR, RL, RR.
@@ -203,8 +204,8 @@ impl<T> KerbSplit<T> {
 }
 
 /* Car classes in v1.0 scope; everything else maps to Other with generic
-   defaults.  Constants mirror classes.toml (band_split_kmh, damper_knee_mm_s)
-   and the per-class wheelbase fallback used by the understeer angle.  */
+   defaults.  Class constants come from classes.toml (knowledge.rs); the
+   accessors below return them in typed units.  */
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CarClass {
     Gt3,
@@ -215,6 +216,8 @@ pub enum CarClass {
 }
 
 impl CarClass {
+    pub const ALL: [Self; 5] = [Self::Gt3, Self::Lmp2, Self::Lmp2Elms, Self::Hyper, Self::Other];
+
     pub fn parse(raw: &str) -> Self {
         let s = raw.trim().to_ascii_uppercase();
         if s.starts_with("GT3") || s.starts_with("LMGT3") {
@@ -230,72 +233,71 @@ impl CarClass {
         }
     }
 
-    pub const fn wheelbase(self) -> Meters {
-        Meters::new(match self {
-            Self::Gt3 => 2.65,
-            Self::Lmp2 | Self::Lmp2Elms => 3.00,
-            Self::Hyper => 3.15,
-            Self::Other => 2.80,
-        })
+    // classes.toml section name.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Gt3 => "GT3",
+            Self::Lmp2 => "LMP2",
+            Self::Lmp2Elms => "LMP2_ELMS",
+            Self::Hyper => "Hyper",
+            Self::Other => "Other",
+        }
+    }
+
+    #[inline]
+    pub fn knowledge(self) -> &'static ClassKnowledge {
+        crate::knowledge::shipped(self)
+    }
+
+    pub fn wheelbase(self) -> Meters {
+        Meters::new(self.knowledge().wheelbase_m)
     }
 
     // Apex speed separating low- from high-speed corners.
     pub fn band_split(self) -> MetersPerSec {
-        MetersPerSec::from_kmh(match self {
-            Self::Gt3 | Self::Other => 140.0,
-            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 150.0,
-        })
+        MetersPerSec::from_kmh(self.knowledge().band_split_kmh)
     }
 
-    // One feel step and the band half-width around a target cell (classes.toml).
-    pub const fn feel_step(self) -> Degrees {
-        Degrees::new(match self {
-            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 0.30,
-            Self::Gt3 | Self::Other => 0.25,
-        })
+    // One feel step and the band half-width around a target cell.
+    pub fn feel_step(self) -> Degrees {
+        Degrees::new(self.knowledge().feel_step_deg)
     }
 
-    pub const fn feel_tolerance(self) -> Degrees {
-        Degrees::new(match self {
-            Self::Lmp2 | Self::Lmp2Elms | Self::Hyper => 0.20,
-            Self::Gt3 | Self::Other => 0.15,
-        })
+    pub fn feel_tolerance(self) -> Degrees {
+        Degrees::new(self.knowledge().feel_tolerance_deg)
     }
 
-    // GT3 always runs the front ride height at its minimum setting.
-    pub const fn front_ride_height_at_min(self) -> bool {
-        matches!(self, Self::Gt3)
+    pub fn front_ride_height_at_min(self) -> bool {
+        self.knowledge().front_rh_at_min
     }
 
     // Shaft speed separating slow from fast damper circuits.
-    pub const fn damper_knee(self) -> MmPerSec {
-        MmPerSec::new(match self {
-            Self::Hyper => 22.0,
-            Self::Lmp2Elms => 40.0,
-            Self::Gt3 | Self::Lmp2 | Self::Other => 50.0,
-        })
+    pub fn damper_knee(self) -> MmPerSec {
+        MmPerSec::new(self.knowledge().damper_knee_mm_s)
     }
 
     // Target share of off-kerb shaft-velocity samples below the damper knee.
-    pub const fn damper_ls_target(self) -> f64 {
-        0.85
+    pub fn damper_ls_target(self) -> f64 {
+        self.knowledge().damper_ls_target
     }
 
     /* Fast-neutral default balance window, (centre, half-width) in road-wheel
-       deg, from docs/approach-and-architecture.md §3; the feel sliders shift it.
-       None for Braking: that phase here is straight-line braking before
-       turn-in, where the understeer angle sits near zero by definition (the
-       doc's braking row is trail braking, which these phases count as Entry
-       and Mid), so it stays anchored on the stint as driven.  */
-    pub const fn fast_neutral(self, cell: BalanceCell) -> Option<(Degrees, Degrees)> {
-        let centre = match (cell.phase, cell.band) {
-            (CornerPhase::Braking, _) => return None,
-            (CornerPhase::Entry, SpeedBand::Low) => -0.05,
-            (CornerPhase::Entry, SpeedBand::High) => 0.25,
-            (CornerPhase::Mid, SpeedBand::Low) => 0.10,
-            (CornerPhase::Mid, SpeedBand::High) => 0.35,
-            (CornerPhase::Exit, SpeedBand::Low) => 0.35,
-            (CornerPhase::Exit, SpeedBand::High) => 0.20,
+       deg; the feel sliders shift it.  None for Braking: that phase here is
+       straight-line braking before turn-in, where the understeer angle sits
+       near zero by definition (the doc's braking row is trail braking, which
+       these phases count as Entry and Mid), so it stays anchored on the
+       stint as driven.  */
+    pub fn fast_neutral(self, cell: BalanceCell) -> Option<(Degrees, Degrees)> {
+        let fnw = &self.knowledge().fast_neutral;
+        let (low, high) = match cell.phase {
+            CornerPhase::Braking => return None,
+            CornerPhase::Entry => fnw.entry,
+            CornerPhase::Mid => fnw.mid,
+            CornerPhase::Exit => fnw.exit,
+        };
+        let centre = match cell.band {
+            SpeedBand::Low => low,
+            SpeedBand::High => high,
         };
         Some((Degrees::new(centre), self.feel_tolerance()))
     }

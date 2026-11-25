@@ -104,6 +104,7 @@ impl TelemetrySource for DuckDbRecording {
             car_name,
             car_class: kv.get("CarClass").cloned().unwrap_or_default(),
             session_type: kv.get("SessionType").cloned().unwrap_or_default(),
+            recorded_at: kv.get("RecordingTime").and_then(|t| crate::lmu::builds::recording_time(t)),
             setup,
         })
     }

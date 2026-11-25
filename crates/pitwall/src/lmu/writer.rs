@@ -6,7 +6,8 @@
    the template's own values only survive where telemetry has no say (tyre
    compound).  Indices are already clamped to minValue ..= maxValue − 1 by
    CarSetup::set_value.  An unchanged setting keeps the recording's label; a
-   changed one has its label dropped until click-to-label scales exist.  The
+   changed one takes the label its car's scale has seen at the new index,
+   and none when it has only been interpolated (the game ignores it).  The
    file goes next to the template, under the lowest free revision of its
    name, and never replaces an existing file.  */
 
@@ -15,6 +16,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::lmu::scales::CarScales;
 use crate::lmu::svm::{best_match, SvmError, SvmFile};
 use crate::lmu::templates::{file_safe, render};
 use crate::lmu::svm::next_free_name;
@@ -43,7 +45,13 @@ pub struct Written {
 }
 
 // The template with `proposed`'s values and the garage notes applied.
-pub fn compose(template: &SvmFile, driven: &CarSetup, proposed: &CarSetup, notes: &str) -> (SvmFile, Vec<(String, i32, i32)>, Vec<String>) {
+pub fn compose(
+    template: &SvmFile,
+    driven: &CarSetup,
+    proposed: &CarSetup,
+    scales: &CarScales,
+    notes: &str,
+) -> (SvmFile, Vec<(String, i32, i32)>, Vec<String>) {
     let mut out = template.clone();
     let rows: Vec<(&str, i32, Option<&str>, i32)> = proposed
         .params
@@ -51,7 +59,7 @@ pub fn compose(template: &SvmFile, driven: &CarSetup, proposed: &CarSetup, notes
         .filter(|(_, p)| p.adjustable())
         .map(|(k, p)| {
             let before = driven.params.get(k).map_or(p.value, |d| d.value);
-            let label = (before == p.value).then_some(p.text.as_str()).filter(|t| !t.is_empty());
+            let label = if before == p.value { Some(p.text.as_str()) } else { scales.exact(k, p.value) }.filter(|t| !t.is_empty());
             (k.as_str(), p.value, label, before)
         })
         .collect();
@@ -67,13 +75,14 @@ pub fn write_proposal(
     saved: &[SvmFile],
     driven: &CarSetup,
     proposed: &CarSetup,
+    scales: &CarScales,
     name: &str,
     fields: &HashMap<&str, String>,
     notes: &str,
 ) -> Result<Written, WriteError> {
     let (_, template) = best_match(driven, saved, MIN_TEMPLATE_SCORE).ok_or(WriteError::NoTemplate)?;
     let folder = template.path.as_ref().and_then(|p| p.parent()).ok_or(WriteError::NoFolder)?.to_path_buf();
-    let (svm, changes, missing) = compose(template, driven, proposed, notes);
+    let (svm, changes, missing) = compose(template, driven, proposed, scales, notes);
     let path = next_free_name(&folder, |n| {
         let mut f = fields.clone();
         f.insert("n", n.to_string());
