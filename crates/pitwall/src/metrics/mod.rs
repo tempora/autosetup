@@ -18,9 +18,9 @@ pub mod summary;
 pub mod suspension;
 
 #[cfg(all(test, feature = "duckdb-native"))]
-mod tests;
+pub(crate) mod tests;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::chassis::CarClass;
 use crate::telemetry::{check_channel_rates, SessionMeta, TelemetryError, TelemetrySource};
@@ -33,7 +33,10 @@ use suspension::{damper_metrics, kerb_events, summarise_kerbs, DamperMetrics, Ke
 const SLOW_PASS: f64 = 0.9;
 const MIN_STINT_S: f64 = 10.0;
 
-#[derive(Debug, Clone, Serialize)]
+// Bump whenever analysis output changes: stored stints of another version are re-analysed.
+pub const METRICS_VERSION: i32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StintMetrics {
     pub class: CarClass,
     pub geometry: SteeringGeometry,

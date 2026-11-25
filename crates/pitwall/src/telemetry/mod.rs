@@ -51,6 +51,8 @@ pub enum TelemetryError {
     },
     #[error("recording too short to analyse: {0:.2} s")]
     TooShort(f64),
+    #[error("{0} is locked by LMU (being written)")]
+    Busy(String),
     #[error("backend error: {0}")]
     Backend(String),
 }

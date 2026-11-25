@@ -5,6 +5,8 @@ pub mod metrics;
 pub mod opt;
 pub mod physics;
 pub mod setup;
+#[cfg(feature = "duckdb-native")]
+pub mod store;
 pub mod telemetry;
 pub mod units;
 pub mod validation;

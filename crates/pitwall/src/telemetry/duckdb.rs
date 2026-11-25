@@ -1,5 +1,12 @@
+/* LMU .duckdb recordings.  `open` reads a file in place, read-only;
+   `open_copy` reads a private copy in a temp folder so LMU's own file is
+   never opened or locked, retrying while LMU holds its write lock.  A
+   leftover write-ahead log (the game stopped mid-outing) is copied too and
+   replayed into the copy, so its laps are kept.  */
+
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use ::duckdb::{AccessMode, Config, Connection};
 
@@ -17,6 +24,45 @@ pub struct DuckDbRecording {
     event_tables: HashMap<String, bool>,
     clock: Vec<Seconds>,
     clock_hz: f64,
+    // Declared last: the connection closes before the copy is deleted.
+    _copy: Option<TempCopy>,
+}
+
+const COPY_RETRIES: u32 = 5;
+
+// Write-ahead log LMU keeps beside a recording while the outing runs.
+pub fn wal_of(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".wal");
+    PathBuf::from(s)
+}
+
+struct TempCopy(PathBuf);
+
+impl Drop for TempCopy {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+// Copies `from`, retrying with backoff while another process holds it.
+fn copy_when_free(from: &Path, to: &Path) -> Result<(), TelemetryError> {
+    let mut delay = Duration::from_millis(200);
+    for attempt in 1..=COPY_RETRIES {
+        match std::fs::copy(from, to) {
+            Ok(_) => return Ok(()),
+            // Windows: 32 sharing violation, 33 lock violation.
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(32 | 33)) => {
+                if attempt == COPY_RETRIES {
+                    return Err(TelemetryError::Busy(from.display().to_string()));
+                }
+                std::thread::sleep(delay);
+                delay *= 2;
+            }
+            Err(e) => return Err(TelemetryError::Backend(format!("{}: {e}", from.display()))),
+        }
+    }
+    unreachable!("the last attempt returns")
 }
 
 impl DuckDbRecording {
@@ -26,6 +72,31 @@ impl DuckDbRecording {
             .map_err(|e| TelemetryError::Backend(e.to_string()))?;
         let conn = Connection::open_with_flags(path.as_ref(), cfg)
             .map_err(|e| TelemetryError::Backend(e.to_string()))?;
+        Self::from_connection(conn, None)
+    }
+
+    pub fn open_copy(path: impl AsRef<Path>) -> Result<Self, TelemetryError> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = path.as_ref();
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("pitwall_{}_{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| TelemetryError::Backend(e.to_string()))?;
+        let copy = TempCopy(dir);
+        let local = copy.0.join("session.duckdb");
+        copy_when_free(path, &local)?;
+        let wal = wal_of(path);
+        let conn = if wal.exists() {
+            copy_when_free(&wal, &wal_of(&local))?;
+            // Read-write so the log is replayed into the copy.
+            Connection::open(&local)
+        } else {
+            Config::default().access_mode(AccessMode::ReadOnly).and_then(|cfg| Connection::open_with_flags(&local, cfg))
+        }
+        .map_err(|e| TelemetryError::Backend(e.to_string()))?;
+        Self::from_connection(conn, Some(copy))
+    }
+
+    fn from_connection(conn: Connection, copy: Option<TempCopy>) -> Result<Self, TelemetryError> {
 
         let (frequencies, units) = read_channel_list(&conn)?;
         let event_tables = read_event_table_flags(&conn)?;
@@ -39,6 +110,7 @@ impl DuckDbRecording {
             event_tables,
             clock,
             clock_hz,
+            _copy: copy,
         })
     }
 

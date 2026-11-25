@@ -117,7 +117,17 @@ fn build_fixture(tag: &str, steer_gain: f64) -> Fixture {
 fn build_fixture_with_rates(tag: &str, steer_gain: f64, rates: Rates) -> Fixture {
     let path = std::env::temp_dir().join(format!("pitwall_metrics_{tag}_{}.duckdb", std::process::id()));
     let _ = std::fs::remove_file(&path);
-    let conn = Connection::open(&path).unwrap();
+    write_fixture(&path, steer_gain, rates);
+    Fixture { path }
+}
+
+// A complete synthetic LMU recording of the slalom at `path`.
+pub(crate) fn write_recording(path: &std::path::Path, steer_gain: f64) {
+    write_fixture(path, steer_gain, Rates::default());
+}
+
+fn write_fixture(path: &std::path::Path, steer_gain: f64, rates: Rates) {
+    let conn = Connection::open(path).unwrap();
     let setup = r#"{"VM_STEER_LOCK": {"available": true, "minValue": 0, "maxValue": 1, "value": 0, "stringValue": "540 (18) deg"}}"#;
     conn.execute_batch(&format!(
         "create table metadata (key varchar, value varchar);
@@ -190,7 +200,6 @@ fn build_fixture_with_rates(tag: &str, steer_gain: f64, rates: Rates) -> Fixture
     b.event("In Pits", &[(0.0, 1.0), (PIT_EXIT_S, 0.0)]);
     b.event("ABS", &[(0.0, 0.0)]);
     drop(conn);
-    Fixture { path }
 }
 
 #[test]
