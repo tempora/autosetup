@@ -240,6 +240,9 @@ fn a_recording_belongs_to_the_newest_build_installed_before_it() {
     assert_eq!(recording_time("2026-11-13T16_58_22Z"), Some(1_794_589_102));
     assert_eq!(recording_time("2000-02-29T00_00_00Z"), Some(951_782_400));
     assert_eq!(recording_time("2026-13-13T16_58_22Z"), None);
+    for t in ["2026-11-13T16_58_22Z", "2000-02-29T00_00_00Z", "1999-12-31T23_59_59Z", "2024-03-01T00_00_01Z"] {
+        assert_eq!(crate::lmu::builds::format_recording_time(recording_time(t).unwrap()), t);
+    }
     assert_eq!(recording_time("2026-11-13T16:58:22Z"), None);
     let b = |id: &str, t: i64| GameBuild { id: id.into(), installed_at: t };
     let h = BuildHistory::new([b("2", 200), b("1", 100), b("2", 250), b("3", 300)]);

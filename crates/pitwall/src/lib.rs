@@ -7,6 +7,8 @@ pub mod physics;
 pub mod setup;
 #[cfg(feature = "duckdb-native")]
 pub mod store;
+#[cfg(feature = "duckdb-native")]
+pub mod screens;
 pub mod telemetry;
 pub mod units;
 pub mod validation;

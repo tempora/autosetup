@@ -4,8 +4,9 @@
    locked balance fingerprints, setups written to the garage, app settings,
    and every game build seen.
    A stint is keyed by its LMU file name (unique per outing; it embeds the
-   UTC start).  A file that grew is re-imported and replaces its row; what
-   the driver said about it is keyed by the same name and survives.  An
+   UTC start) and carries a numeric id for the UI.  A file that grew is
+   re-imported and replaces its row under the same id; what the driver said
+   about it is keyed by the same name and survives.  An
    unusable recording is stored with its reason, so it is not analysed again
    at the same size.  Metrics are cached as JSON with METRICS_VERSION; a
    different version is stale and re-analysed from the recording.  Times are
@@ -59,7 +60,9 @@ pub enum StoreError {
 }
 
 const SCHEMA: &str = "
+create sequence if not exists recording_id;
 create table if not exists recordings (
+    id              integer not null,   -- from recording_id, reused on re-import
     file_name       varchar primary key,
     file_size       bigint not null,
     file_mtime      bigint not null,
@@ -123,6 +126,11 @@ create table if not exists proposals (
     setup           varchar not null,   -- the written CarSetup JSON
     written_at      bigint not null
 );
+create table if not exists track_maps (
+    layout          varchar primary key,
+    file_name       varchar not null,
+    data            varchar not null    -- screens::trackmap::TrackMap JSON
+);
 create table if not exists settings (
     key             varchar primary key,
     value           varchar not null    -- JSON
@@ -141,6 +149,8 @@ pub fn now() -> i64 {
 // One recording as stored: what it is and, when usable, its metrics.
 #[derive(Debug, Clone)]
 pub struct StoredStint {
+    // 0 until stored.
+    pub id: i64,
     pub file_name: String,
     pub file_size: u64,
     pub file_mtime: i64,
@@ -169,6 +179,7 @@ pub fn analyse_file(path: &Path) -> Result<StoredStint, StoreError> {
     let file_mtime = stat.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
     let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let unusable = |meta: SessionMeta, why: String| StoredStint {
+        id: 0,
         file_name: file_name.clone(),
         file_size: stat.len(),
         file_mtime,
@@ -186,7 +197,7 @@ pub fn analyse_file(path: &Path) -> Result<StoredStint, StoreError> {
         Err(e) => return Ok(unusable(empty_meta(), e.to_string())),
     };
     Ok(match analyse_stint(&rec) {
-        Ok(m) => StoredStint { file_name, file_size: stat.len(), file_mtime, signature: meta.setup.signature(), meta, metrics: Ok(m) },
+        Ok(m) => StoredStint { id: 0, file_name, file_size: stat.len(), file_mtime, signature: meta.setup.signature(), meta, metrics: Ok(m) },
         Err(e) => unusable(meta, e.to_string()),
     })
 }
@@ -244,7 +255,7 @@ pub struct Planned {
 }
 
 const STINT_COLUMNS: &str =
-    "file_name, file_size, file_mtime, recorded_at, track, layout, car_name, car_class, session_type, signature, setup, metrics, error";
+    "id, file_name, file_size, file_mtime, recorded_at, track, layout, car_name, car_class, session_type, signature, setup, metrics, error";
 
 pub struct Store {
     conn: Connection,
@@ -269,15 +280,20 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    // Inserts or replaces the stint by file name.
-    pub fn save(&self, s: &StoredStint) -> Result<(), StoreError> {
+    // Inserts or replaces the stint by file name, keeping its id; returns the id.
+    pub fn save(&self, s: &StoredStint) -> Result<i64, StoreError> {
         let (metrics, error) = match &s.metrics {
             Ok(m) => (Some(serde_json::to_string(m)?), None),
             Err(e) => (None, Some(e.as_str())),
         };
+        let id: i64 = match self.conn.query_row("select id from recordings where file_name = ?", [&s.file_name], |r| r.get(0)).optional()? {
+            Some(id) => id,
+            None => self.conn.query_row("select nextval('recording_id')", [], |r| r.get(0))?,
+        };
         self.conn.execute(
-            &format!("insert or replace into recordings ({STINT_COLUMNS}, metrics_version, imported_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+            &format!("insert or replace into recordings ({STINT_COLUMNS}, metrics_version, imported_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
             params![
+                id,
                 s.file_name,
                 s.file_size as i64,
                 s.file_mtime,
@@ -295,17 +311,21 @@ impl Store {
                 now(),
             ],
         )?;
-        Ok(())
+        Ok(id)
     }
 
     pub fn import(&self, path: &Path) -> Result<StoredStint, StoreError> {
-        let s = analyse_file(path)?;
-        self.save(&s)?;
+        let mut s = analyse_file(path)?;
+        s.id = self.save(&s)?;
         Ok(s)
     }
 
     pub fn stint(&self, file_name: &str) -> Result<Option<StoredStint>, StoreError> {
         self.query_stints("where file_name = ?", &[file_name]).map(|v| v.into_iter().next())
+    }
+
+    pub fn stint_by_id(&self, id: i64) -> Result<Option<StoredStint>, StoreError> {
+        self.query_stints("where id = cast(? as bigint)", &[&id.to_string()]).map(|v| v.into_iter().next())
     }
 
     // Usable stints of one car model and layout, oldest first.
@@ -350,18 +370,19 @@ impl Store {
         ))?;
         let rows = stmt.query_map(::duckdb::params_from_iter(args), |r| {
             Ok((
-                (r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, Option<i64>>(3)?),
-                (r.get::<_, String>(4)?, r.get::<_, String>(5)?, r.get::<_, String>(6)?, r.get::<_, String>(7)?, r.get::<_, String>(8)?),
-                (r.get::<_, String>(9)?, r.get::<_, String>(10)?, r.get::<_, Option<String>>(11)?, r.get::<_, Option<String>>(12)?),
+                (r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?, r.get::<_, Option<i64>>(4)?),
+                (r.get::<_, String>(5)?, r.get::<_, String>(6)?, r.get::<_, String>(7)?, r.get::<_, String>(8)?, r.get::<_, String>(9)?),
+                (r.get::<_, String>(10)?, r.get::<_, String>(11)?, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?),
             ))
         })?;
         rows.map(|row| {
-            let ((file_name, size, file_mtime, recorded_at), (track, layout, car_name, car_class, session_type), (signature, setup, metrics, error)) = row?;
+            let ((id, file_name, size, file_mtime, recorded_at), (track, layout, car_name, car_class, session_type), (signature, setup, metrics, error)) = row?;
             let metrics = match metrics {
                 Some(json) => Ok(serde_json::from_str(&json)?),
                 None => Err(error.unwrap_or_default()),
             };
             Ok(StoredStint {
+                id,
                 file_name,
                 file_size: size as u64,
                 file_mtime,
@@ -572,6 +593,17 @@ impl Store {
             Ok(WrittenSetup { id, file_name, path: PathBuf::from(path), changes: serde_json::from_str(&changes)?, setup_json, written_at })
         })
         .collect()
+    }
+
+    // -- track maps ----------------------------------------------------------
+
+    pub fn track_map_json(&self, layout: &str) -> Result<Option<String>, StoreError> {
+        Ok(self.conn.query_row("select data from track_maps where layout = ?", [layout], |r| r.get(0)).optional()?)
+    }
+
+    pub fn put_track_map_json(&self, layout: &str, file_name: &str, json: &str) -> Result<(), StoreError> {
+        self.conn.execute("insert or replace into track_maps values (?, ?, ?)", [layout, file_name, json])?;
+        Ok(())
     }
 
     // -- settings ------------------------------------------------------------

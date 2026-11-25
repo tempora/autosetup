@@ -58,8 +58,10 @@ fn a_stored_stint_reads_back_exactly_after_reopening_and_lmus_folder_is_untouche
     let path = tmp.telemetry().join(NAME);
     write_recording(&path, 1.25);
     let before = snapshot(&tmp.telemetry());
-    tmp.store().import(&path).unwrap();
+    let first = tmp.store().import(&path).unwrap().id;
+    assert_eq!(tmp.store().import(&path).unwrap().id, first, "re-importing changed the stint's id");
     let back = tmp.store().stint(NAME).unwrap().expect("stored");
+    assert_eq!(back.id, first);
     let fresh = analyse_stint(&DuckDbRecording::open(&path).unwrap()).unwrap();
     assert_eq!(back.usable(), Some(&fresh), "metrics change through the store");
     assert_eq!((back.meta.track.as_str(), back.meta.car_name.as_str()), ("Slalom", "Fixture GT3 #1"));

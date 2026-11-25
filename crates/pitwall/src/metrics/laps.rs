@@ -4,7 +4,10 @@
    last (last crossing → recording end) are partial.  A lap is in the pits when
    `In Pits` is non-zero anywhere in [start, end).  `Lap Dist` wraps to 0 at the
    line; it is unwrapped before interpolation and wrapped again so resampling
-   never blends across the start/finish line.  */
+   never blends across the start/finish line.  The lap length is the median
+   over wraps of (last value before the line + that sample's advance − first
+   value after it); the largest sample falls short by up to one sample's
+   travel.  */
 
 use serde::{Deserialize, Serialize};
 
@@ -96,14 +99,28 @@ fn any_nonzero(events: &TimeSeries<f64>, t0: Seconds, t1: Seconds) -> bool {
 
 // Lap distance (m) on `grid`, unwrapped across the line before interpolation.
 pub fn lap_distance<S: TelemetrySource + ?Sized>(src: &S, grid: &[f64]) -> Result<Vec<f64>, TelemetryError> {
+    let (resampled, lap_len) = unwrapped_lap_distance(src, grid)?;
+    Ok(if lap_len > 0.0 {
+        resampled.into_iter().map(|x| x.rem_euclid(lap_len)).collect()
+    } else {
+        resampled
+    })
+}
+
+// Distance driven (m) on `grid`, continuous through the line, and the lap length.
+pub fn unwrapped_lap_distance<S: TelemetrySource + ?Sized>(src: &S, grid: &[f64]) -> Result<(Vec<f64>, f64), TelemetryError> {
     let d = src.scalar_channel("Lap Dist")?;
     if d.len() < 2 {
         return Err(TelemetryError::MissingChannel("Lap Dist".to_string()));
     }
-    let lap_len = d.values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let longest = d.values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let wraps = |w: &[f64]| w[1] - w[0] < -longest / 2.0;
+    let mut at_wraps: Vec<f64> = d.values.windows(3).filter(|w| wraps(&w[1..])).map(|w| w[1] + (w[1] - w[0]) - w[2]).collect();
+    at_wraps.sort_by(f64::total_cmp);
+    let lap_len = crate::metrics::stats::median(&at_wraps).filter(|&l| l >= longest).unwrap_or(longest);
     let t: Vec<f64> = d.times.iter().map(|s| s.raw()).collect();
     let unwrapped: Vec<f64> = std::iter::once(0.0)
-        .chain(d.values.windows(2).map(|w| f64::from(u8::from(w[1] - w[0] < -lap_len / 2.0))))
+        .chain(d.values.windows(2).map(|w| f64::from(u8::from(wraps(w)))))
         .scan(0.0, |wraps, step| {
             *wraps += step;
             Some(*wraps)
@@ -111,10 +128,5 @@ pub fn lap_distance<S: TelemetrySource + ?Sized>(src: &S, grid: &[f64]) -> Resul
         .zip(&d.values)
         .map(|(wraps, &v)| v + wraps * lap_len)
         .collect();
-    let resampled = interp(grid, &t, &unwrapped, None);
-    Ok(if lap_len > 0.0 {
-        resampled.into_iter().map(|x| x.rem_euclid(lap_len)).collect()
-    } else {
-        resampled
-    })
+    Ok((interp(grid, &t, &unwrapped, None), lap_len))
 }

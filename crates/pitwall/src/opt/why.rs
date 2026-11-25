@@ -2,7 +2,8 @@
    Four short sections: what the telemetry showed, what changes and why,
    what it should do on track, and notes (blocked moves, pace just outside
    the band).  Degrees are understeer angle at the road wheels (+ understeer,
-   − oversteer); grip is p95 lateral G.  */
+   − oversteer); grip is p95 lateral G.  Settings read as their garage
+   labels when a labeller knows them (lmu::scales), else as clicks.  */
 
 use std::fmt;
 
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::chassis::{BalanceCell, CornerPhase, SpeedBand};
 use crate::opt::rules::Rule;
+use crate::opt::dampers::{DamperChange, DamperPlan};
 use crate::opt::solve::{Change, Gate, Outcome};
 use crate::opt::space::DimKind;
 use crate::opt::target::FeelAxis;
@@ -77,8 +79,17 @@ fn move_words(kind: DimKind, up: bool) -> String {
     }
 }
 
-fn change_line(c: &Change) -> String {
-    let mut s = format!("{}: {} → {} ({})", capitalise(c.kind.label()), c.from, c.to, direction(c.kind, c.to > c.from));
+// A setting's display text at a click: (key, index) → label.
+pub type Labeller<'a> = dyn Fn(&str, i32) -> Option<String> + 'a;
+
+fn clicks(label: &Labeller, key: Option<&str>, from: i32, to: i32) -> String {
+    let at = |i: i32| key.and_then(|k| label(k, i)).unwrap_or_else(|| i.to_string());
+    format!("{} → {}", at(from), at(to))
+}
+
+// "stiffer, mainly for less understeer at turn-in in slow corners (−0.12°)".
+pub fn change_reason(c: &Change) -> String {
+    let mut s = direction(c.kind, c.to > c.from).to_string();
     if let Some((cell, dua, dlat)) = c.strongest {
         if dua.raw().abs() > NOTABLE_DEG {
             let what = if dua.raw() < 0.0 { "less understeer" } else { "more understeer" };
@@ -92,12 +103,24 @@ fn change_line(c: &Change) -> String {
     s
 }
 
-fn capitalise(s: &str) -> String {
+// "softer, takes the kerbs better".
+pub fn damper_reason(dp: &DamperPlan, d: &DamperChange) -> String {
+    let why = if dp.exploring {
+        "learning what it does to the tyre load and kerbs"
+    } else if dp.kerb_change.abs() > dp.contact_change.abs() {
+        "takes the kerbs better"
+    } else {
+        "steadier tyre load"
+    };
+    format!("{}, {why}", if d.to > d.from { "stiffer" } else { "softer" })
+}
+
+pub fn capitalise(s: &str) -> String {
     let mut c = s.chars();
     c.next().map_or_else(String::new, |f| f.to_uppercase().collect::<String>() + c.as_str())
 }
 
-fn rule_label(r: Rule) -> &'static str {
+pub fn rule_label(r: Rule) -> &'static str {
     match r {
         Rule::AeroTrim => "Rear wing",
         Rule::TyrePressure => "Tyre pressure",
@@ -121,6 +144,10 @@ fn gate_words(g: Gate) -> &'static str {
 }
 
 pub fn explain(p: &Proposal) -> Why {
+    explain_with(p, &|_, _| None)
+}
+
+pub fn explain_with(p: &Proposal, label: &Labeller) -> Why {
     let s = &p.solution;
     let mut why = Why {
         headline: match s.outcome {
@@ -152,26 +179,23 @@ pub fn explain(p: &Proposal) -> Why {
         }
     }
 
-    why.changes = s.changes.iter().map(change_line).collect();
-    why.changes.extend(p.rules.iter().map(|r| format!("{}: {} → {} ({})", rule_label(r.rule), r.from, r.to, r.reason)));
     let dp = &p.dampers;
-    let damper_reason = if dp.exploring {
-        "learning what it does to the tyre load and kerbs".to_string()
-    } else if dp.kerb_change.abs() > dp.contact_change.abs() {
-        "takes the kerbs better".to_string()
-    } else {
-        "steadier tyre load".to_string()
-    };
-    why.changes.extend(dp.changes.iter().map(|d| {
-        format!(
-            "{}: {} → {} ({}, {})",
-            capitalise(&d.setting.label()),
-            d.from,
-            d.to,
-            if d.to > d.from { "stiffer" } else { "softer" },
-            damper_reason
-        )
-    }));
+    why.changes = s
+        .changes
+        .iter()
+        .map(|c| format!("{}: {} ({})", capitalise(c.kind.label()), clicks(label, c.kind.keys().first().copied(), c.from, c.to), change_reason(c)))
+        .chain(p.rules.iter().map(|r| {
+            format!("{}: {} ({})", rule_label(r.rule), clicks(label, r.keys.first().map(String::as_str), r.from, r.to), r.reason)
+        }))
+        .chain(dp.changes.iter().map(|d| {
+            format!(
+                "{}: {} ({})",
+                capitalise(&d.setting.label()),
+                clicks(label, d.keys.first().map(String::as_str), d.from, d.to),
+                damper_reason(dp, d)
+            )
+        }))
+        .collect();
 
     for after in &s.chosen.cells {
         let dua = after.predicted_ua - after.measured_ua;

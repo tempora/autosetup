@@ -17,7 +17,7 @@ use crate::chassis::{BalanceCell, CarClass, CornerPhase, SpeedBand};
 use crate::metrics::balance::CellStats;
 use crate::units::Degrees;
 
-const RANGE_STEPS: f64 = 2.0;
+pub const RANGE_STEPS: f64 = 2.0;
 const RES_MIN_DEG: f64 = 0.05;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

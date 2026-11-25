@@ -34,7 +34,7 @@ const SLOW_PASS: f64 = 0.9;
 const MIN_STINT_S: f64 = 10.0;
 
 // Bump whenever analysis output changes: stored stints of another version are re-analysed.
-pub const METRICS_VERSION: i32 = 1;
+pub const METRICS_VERSION: i32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StintMetrics {
