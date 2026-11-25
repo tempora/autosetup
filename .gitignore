@@ -10,3 +10,4 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 dist/
 scratch/
+target/

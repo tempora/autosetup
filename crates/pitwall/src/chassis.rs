@@ -1,0 +1,304 @@
+use serde::{Deserialize, Serialize};
+
+use crate::knowledge::ClassKnowledge;
+use crate::units::{Degrees, Meters, MetersPerSec, MmPerSec};
+
+// Canonical LMU wheel order: FL, FR, RL, RR.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Wheel<T> {
+    pub fl: T,
+    pub fr: T,
+    pub rl: T,
+    pub rr: T,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Axle<T> {
+    pub front: T,
+    pub rear: T,
+}
+
+impl<T> Wheel<T> {
+    #[inline]
+    pub const fn new(fl: T, fr: T, rl: T, rr: T) -> Self {
+        Self { fl, fr, rl, rr }
+    }
+
+    #[inline]
+    pub fn from_array([fl, fr, rl, rr]: [T; 4]) -> Self {
+        Self { fl, fr, rl, rr }
+    }
+
+    #[inline]
+    pub fn into_array(self) -> [T; 4] {
+        [self.fl, self.fr, self.rl, self.rr]
+    }
+
+    #[inline]
+    pub fn as_array(&self) -> [&T; 4] {
+        [&self.fl, &self.fr, &self.rl, &self.rr]
+    }
+
+    #[inline]
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Wheel<U> {
+        Wheel {
+            fl: f(self.fl),
+            fr: f(self.fr),
+            rl: f(self.rl),
+            rr: f(self.rr),
+        }
+    }
+
+    #[inline]
+    pub fn zip_with<U, V>(self, other: Wheel<U>, mut f: impl FnMut(T, U) -> V) -> Wheel<V> {
+        Wheel {
+            fl: f(self.fl, other.fl),
+            fr: f(self.fr, other.fr),
+            rl: f(self.rl, other.rl),
+            rr: f(self.rr, other.rr),
+        }
+    }
+
+    #[inline]
+    pub fn any(self, mut pred: impl FnMut(T) -> bool) -> bool {
+        pred(self.fl) || pred(self.fr) || pred(self.rl) || pred(self.rr)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.as_array().into_iter()
+    }
+}
+
+impl Wheel<f64> {
+    #[inline]
+    pub fn axle_means(self) -> Axle<f64> {
+        Axle {
+            front: 0.5 * (self.fl + self.fr),
+            rear: 0.5 * (self.rl + self.rr),
+        }
+    }
+
+    #[inline]
+    pub fn mean(self) -> f64 {
+        0.25 * (self.fl + self.fr + self.rl + self.rr)
+    }
+}
+
+impl<T> Axle<T> {
+    #[inline]
+    pub const fn new(front: T, rear: T) -> Self {
+        Self { front, rear }
+    }
+
+    #[inline]
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Axle<U> {
+        Axle {
+            front: f(self.front),
+            rear: f(self.rear),
+        }
+    }
+
+    #[inline]
+    pub fn zip_with<U, V>(self, other: Axle<U>, mut f: impl FnMut(T, U) -> V) -> Axle<V> {
+        Axle {
+            front: f(self.front, other.front),
+            rear: f(self.rear, other.rear),
+        }
+    }
+}
+
+impl Axle<f64> {
+    #[inline]
+    pub fn front_share(self) -> f64 {
+        let sum = self.front + self.rear;
+        if sum > 0.0 { self.front / sum } else { 0.5 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CornerPhase {
+    Braking,
+    Entry,
+    Mid,
+    Exit,
+}
+
+impl CornerPhase {
+    pub const ALL: [Self; 4] = [Self::Braking, Self::Entry, Self::Mid, Self::Exit];
+
+    #[inline]
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SpeedBand {
+    Low,
+    High,
+}
+
+impl SpeedBand {
+    pub const ALL: [Self; 2] = [Self::Low, Self::High];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct BalanceCell {
+    pub phase: CornerPhase,
+    pub band: SpeedBand,
+}
+
+impl BalanceCell {
+    pub fn all() -> impl Iterator<Item = Self> {
+        CornerPhase::ALL
+            .into_iter()
+            .flat_map(|phase| SpeedBand::ALL.into_iter().map(move |band| Self { phase, band }))
+    }
+}
+
+// Turning direction: the sign of steering and of yaw rate (+ right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Direction {
+    Left,
+    Right,
+}
+
+impl Direction {
+    #[inline]
+    pub fn from_sign(x: f64) -> Option<Self> {
+        if x > 0.0 {
+            Some(Self::Right)
+        } else if x < 0.0 {
+            Some(Self::Left)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub const fn sign(self) -> f64 {
+        match self {
+            Self::Left => -1.0,
+            Self::Right => 1.0,
+        }
+    }
+}
+
+// Samples split by whether the wheel was on a kerb (SurfaceTypes == 5).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct KerbSplit<T> {
+    pub off: T,
+    pub on: T,
+}
+
+impl<T> KerbSplit<T> {
+    #[inline]
+    pub fn get_mut(&mut self, on_kerb: bool) -> &mut T {
+        if on_kerb {
+            &mut self.on
+        } else {
+            &mut self.off
+        }
+    }
+}
+
+/* Car classes in v1.0 scope; everything else maps to Other with generic
+   defaults.  Class constants come from classes.toml (knowledge.rs); the
+   accessors below return them in typed units.  */
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CarClass {
+    Gt3,
+    Lmp2,
+    Lmp2Elms,
+    Hyper,
+    Other,
+}
+
+impl CarClass {
+    pub const ALL: [Self; 5] = [Self::Gt3, Self::Lmp2, Self::Lmp2Elms, Self::Hyper, Self::Other];
+
+    pub fn parse(raw: &str) -> Self {
+        let s = raw.trim().to_ascii_uppercase();
+        if s.starts_with("GT3") || s.starts_with("LMGT3") {
+            Self::Gt3
+        } else if s.starts_with("LMP2") && s.contains("ELMS") {
+            Self::Lmp2Elms
+        } else if s.starts_with("LMP2") {
+            Self::Lmp2
+        } else if s.starts_with("HYPER") || s.starts_with("LMH") || s.starts_with("LMDH") {
+            Self::Hyper
+        } else {
+            Self::Other
+        }
+    }
+
+    // classes.toml section name.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Gt3 => "GT3",
+            Self::Lmp2 => "LMP2",
+            Self::Lmp2Elms => "LMP2_ELMS",
+            Self::Hyper => "Hyper",
+            Self::Other => "Other",
+        }
+    }
+
+    #[inline]
+    pub fn knowledge(self) -> &'static ClassKnowledge {
+        crate::knowledge::shipped(self)
+    }
+
+    pub fn wheelbase(self) -> Meters {
+        Meters::new(self.knowledge().wheelbase_m)
+    }
+
+    // Apex speed separating low- from high-speed corners.
+    pub fn band_split(self) -> MetersPerSec {
+        MetersPerSec::from_kmh(self.knowledge().band_split_kmh)
+    }
+
+    // One feel step and the band half-width around a target cell.
+    pub fn feel_step(self) -> Degrees {
+        Degrees::new(self.knowledge().feel_step_deg)
+    }
+
+    pub fn feel_tolerance(self) -> Degrees {
+        Degrees::new(self.knowledge().feel_tolerance_deg)
+    }
+
+    pub fn front_ride_height_at_min(self) -> bool {
+        self.knowledge().front_rh_at_min
+    }
+
+    // Shaft speed separating slow from fast damper circuits.
+    pub fn damper_knee(self) -> MmPerSec {
+        MmPerSec::new(self.knowledge().damper_knee_mm_s)
+    }
+
+    // Target share of off-kerb shaft-velocity samples below the damper knee.
+    pub fn damper_ls_target(self) -> f64 {
+        self.knowledge().damper_ls_target
+    }
+
+    /* Fast-neutral default balance window, (centre, half-width) in road-wheel
+       deg; the feel sliders shift it.  None for Braking: that phase here is
+       straight-line braking before turn-in, where the understeer angle sits
+       near zero by definition (the doc's braking row is trail braking, which
+       these phases count as Entry and Mid), so it stays anchored on the
+       stint as driven.  */
+    pub fn fast_neutral(self, cell: BalanceCell) -> Option<(Degrees, Degrees)> {
+        let fnw = &self.knowledge().fast_neutral;
+        let (low, high) = match cell.phase {
+            CornerPhase::Braking => return None,
+            CornerPhase::Entry => fnw.entry,
+            CornerPhase::Mid => fnw.mid,
+            CornerPhase::Exit => fnw.exit,
+        };
+        let centre = match cell.band {
+            SpeedBand::Low => low,
+            SpeedBand::High => high,
+        };
+        Some((Degrees::new(centre), self.feel_tolerance()))
+    }
+}

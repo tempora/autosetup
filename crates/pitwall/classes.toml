@@ -1,0 +1,85 @@
+# Per-class constants and targets.  [default] holds every key; a class section
+# only lists the keys it changes and applies to every class whose name it
+# prefixes ([LMP2] also covers LMP2_ELMS), shorter sections first.  Tables are
+# replaced whole, not merged.  Units are in the key names; ranges are [lo, hi];
+# an empty range means the rule is off for the class.
+#
+# The GT3 bands sit around the p10–p90 of 78 racing laps on published pro
+# setups, so a rule only acts when a stint is clearly outside normal.
+
+[default]
+# Understeer-angle wheelbase until per-car wheelbases exist.
+wheelbase_m = 2.80
+# Apex speed separating low- from high-speed corners.
+band_split_kmh = 140.0
+# One feel-slider step, and the band half-width around a target cell.
+feel_step_deg = 0.25
+feel_tolerance_deg = 0.15
+# Front ride height always at its lowest setting: moved there, never raised or searched.
+front_rh_at_min = false
+# Hybrid regen always at its maximum setting.
+regen_at_max = false
+# Shaft speed between the slow and fast damper circuits (LMU doesn't expose it),
+# and the off-kerb share of samples below it the damper planner aims for.
+damper_knee_mm_s = 50.0
+damper_ls_target = 0.85
+# Inner-minus-outer tread temperature per axle (camber), °C.
+spread_front = [5.0, 12.0]
+spread_rear = [6.0, 13.0]
+# Centre-minus-edges tread temperature (pressure), °C.  The centre runs ~4–7 °C
+# hotter than the edges even at the minimum allowed pressure.
+crown_target = 5.0
+crown_band = 3.0
+# Peak brake disc temperature per axle (ducts), °C.
+brake_temp_front = [450.0, 850.0]
+brake_temp_rear = [450.0, 850.0]
+# Comfortable brake pressure (% of maximum) on cars without ABS.
+brake_pressure_pct = []
+# Platform: seconds per lap with an axle under 1 mm, the 1st-percentile ride
+# height below which the axle comes up, and the third-spring packer share under
+# which a prototype gets a packer step instead of ride height.
+bottoming_s = 0.2
+min_ride_height_mm = 2.0
+third_packers_lo = 0.05
+max_platform_changes = 1
+
+# Fast-neutral balance window centres, road-wheel degrees of understeer angle
+# as [low speed, high speed] (docs/approach-and-architecture.md §3).  The
+# half-width is feel_tolerance_deg.  Braking has none: it stays anchored on the
+# stint as driven.
+[default.fast_neutral]
+entry = [-0.05, 0.25]
+mid = [0.10, 0.35]
+exit = [0.35, 0.20]
+
+[GT3]
+wheelbase_m = 2.65
+front_rh_at_min = true
+
+[LMP2]
+wheelbase_m = 3.00
+band_split_kmh = 150.0
+feel_step_deg = 0.30
+feel_tolerance_deg = 0.20
+brake_temp_front = [400.0, 1000.0]
+brake_temp_rear = [400.0, 1000.0]
+brake_pressure_pct = [90.0, 94.0]
+
+[LMP2_ELMS]
+damper_knee_mm_s = 40.0
+
+# Genesis (Lusail), Peugeot 9X8 and BMW M Hybrid V8 (Spa).  Brakes peak cooler
+# than GT3, regen offloads the rear discs further, the fronts run less camber,
+# and off-kerb shaft velocity p85 sits at 12.5–22.5 mm/s.
+[Hyper]
+wheelbase_m = 3.15
+band_split_kmh = 150.0
+feel_step_deg = 0.30
+feel_tolerance_deg = 0.20
+regen_at_max = true
+damper_knee_mm_s = 22.0
+spread_front = [3.0, 10.0]
+spread_rear = [3.0, 12.0]
+brake_temp_front = [380.0, 1000.0]
+brake_temp_rear = [300.0, 1000.0]
+brake_pressure_pct = [93.0, 100.0]

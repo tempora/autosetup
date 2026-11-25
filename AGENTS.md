@@ -7,22 +7,27 @@ These rules apply to every AI agent working in this repository.
 Write concise, adaptable code where every abstraction serves a concrete purpose.
 Avoid speculative plumbing, unused indirection, and duplicate boilerplate.
 
-In Rust (`autosetup-core` and Tauri code), factor repeated patterns into shared
+In Rust (`pitwall` and Tauri code), factor repeated patterns into shared
 traits and generalizable declarative macros rather than copy-pasting per-metric
 or per-channel logic.  Prefer functional paradigms: pure functions, iterator
 combinators, immutable data pipelines, and explicit algebraic types for units
 and states so invalid states fail to compile.
 
-## Comments (GNU Style)
+## Comments
 
-Write comments in the style of GNU projects (GCC, glibc, coreutils): terse,
-factual, technical prose stating invariants, preconditions, coordinate or unit
-conventions, return semantics, and non-obvious algorithmic constraints.
+Place one concise architectural block comment at the top of each non-trivial
+module stating its role, coordinate or unit conventions, and invariants.  Keep
+inline comments terse and factual, documenting only non-trivial invariants,
+preconditions, return semantics, or algorithmic constraints.
 
 Do not write conversational narration, restatements of obvious syntax, or
 self-congratulatory rationales ("We do X so that Y works cleanly!").  If the
-code already says *what* it does, omit the comment; document *why*, the
-invariant, or the boundary contract.
+code already says *what* it does, omit the comment.
+
+## Documentation
+
+Never use bullet points or ordered lists in `README.md` files.  Write READMEs
+in concise technical prose paragraphs and raw code blocks.
 
 ## Testing and Validation
 
